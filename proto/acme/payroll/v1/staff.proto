@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package acme.payroll.v1;
+
+// 派遣社員の登録と参照
+service StaffService {
+  // 派遣社員を登録し、認証基盤にユーザーを作る。管理者のみ
+  rpc CreateStaff(CreateStaffRequest) returns (CreateStaffResponse);
+  // 派遣社員を一覧する。管理者のみ
+  rpc ListStaff(ListStaffRequest) returns (ListStaffResponse);
+  // ログイン中の利用者に対応する派遣社員を返す
+  rpc GetMe(GetMeRequest) returns (GetMeResponse);
+}
+
+message CreateStaffRequest {
+  string email = 1;
+  string display_name = 2;
+  // 初回ログインで変更を求める仮パスワード
+  string temporary_password = 3;
+}
+
+message CreateStaffResponse {
+  int64 staff_id = 1;
+}
+
+message ListStaffRequest {}
+
+message ListStaffResponse {
+  repeated Staff staff = 1;
+}
+
+message GetMeRequest {}
+
+message GetMeResponse {
+  // 管理者など、派遣社員として登録されていない利用者では未設定
+  optional Staff staff = 1;
+  repeated string roles = 2;
+}
+
+message Staff {
+  int64 staff_id = 1;
+  string email = 2;
+  string display_name = 3;
+}

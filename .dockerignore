@@ -1,0 +1,9 @@
+target/
+**/node_modules/
+frontend/
+e2e/
+infra/
+docs/
+.git/
+.env
+mise.local.toml

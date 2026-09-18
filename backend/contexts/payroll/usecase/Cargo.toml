@@ -1,0 +1,18 @@
+[package]
+name = "payroll-usecase"
+version = "0.1.0"
+edition.workspace = true
+publish.workspace = true
+description = "payroll のユースケースと、usecase 固有の外部依存 trait(ports)"
+
+[dependencies]
+async-trait.workspace = true
+payroll-domain.workspace = true
+platform-kernel.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,14 @@
+# trivy config の想定内の指摘。理由を書いて個別に無視する(無視は期限を決めて見直す)
+misconfigurations:
+  - id: AWS-0053
+    paths: ["modules/backend-service/main.tf"]
+    statement: ALB はブラウザから直接叩く API の入口なので公開する。受けるのは 443 だけ
+  - id: AWS-0104
+    paths: ["modules/backend-service/main.tf", "modules/lambda-function/main.tf"]
+    statement: 外向き 443 は AWS API・Cognito の JWKS・振込 API に必要。VPC エンドポイントで置き換えるまでの措置
+  - id: AWS-0011
+    paths: ["modules/frontend-hosting/main.tf"]
+    statement: 静的ファイル配信のみで、API は ALB 側。WAF は費用対効果を見て後から付ける
+  - id: AWS-0132
+    paths: ["modules/frontend-hosting/main.tf"]
+    statement: 公開前提の静的ファイルなので SSE-S3 で足りる。CMK は不要

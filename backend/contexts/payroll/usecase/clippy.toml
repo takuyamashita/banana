@@ -1,0 +1,9 @@
+# ルートの clippy.toml はこのファイルで丸ごと置き換わる(マージされない)ので、共通設定も再掲する
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+
+disallowed-methods = [
+  { path = "payroll_domain::payslip::Payslip::reconstruct", reason = "永続化からの再構築はrepository実装専用です。usecaseでは NewPayslip::draft を使ってください" },
+  { path = "payroll_domain::staff::Staff::reconstruct", reason = "永続化からの再構築はrepository実装専用です" },
+  { path = "payroll_domain::project::Project::reconstruct", reason = "永続化からの再構築はrepository実装専用です" },
+]

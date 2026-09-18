@@ -1,0 +1,17 @@
+[package]
+name = "platform-telemetry"
+version = "0.1.0"
+edition.workspace = true
+publish.workspace = true
+description = "ログとトレースの初期化。トレースは OTLP で出すだけで、送り先の差は collector 側に閉じる"
+
+[dependencies]
+opentelemetry.workspace = true
+opentelemetry-otlp.workspace = true
+opentelemetry_sdk.workspace = true
+tracing.workspace = true
+tracing-opentelemetry.workspace = true
+tracing-subscriber.workspace = true
+
+[lints]
+workspace = true

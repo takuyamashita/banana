@@ -1,0 +1,122 @@
+# ツール版数・環境変数・タスクをここに集約する。Rust 本体は rust-toolchain.toml に任せる
+[tools]
+node = "24"
+pnpm = "12"
+terraform = "1.16.3"
+buf = "1.73.0"
+tflint = "0.64.0"
+trivy = "0.74.0"
+lefthook = "2.1.14"
+gitleaks = "8.30.1"
+hadolint = "2.15.1"
+"github:reteps/dockerfmt" = "latest"
+actionlint = "latest"
+grpcurl = "latest"
+jq = "latest"
+cargo-binstall = "latest"
+"cargo:cargo-lambda" = "1.9.2"
+# 既定機能は native-tls(libssl-dev が要る)なので、MySQL + rustls に絞ってビルドする
+"cargo:sqlx-cli" = { version = "0.9.0", default-features = false, features = "mysql,rustls,completions" }
+"cargo:cargo-nextest" = "0.9.145"
+"cargo:cargo-llvm-cov" = "0.9.1"
+"cargo:cargo-deny" = "0.20.2"
+
+[settings]
+# cargo: バックエンドはソースビルドせず cargo-binstall でバイナリを取る
+cargo.binstall = true
+
+[env]
+APP_ENV = "local"
+DATABASE_URL = "mysql://platform:platform@127.0.0.1:3306/platform"
+# query! は既定でコミット済みの .sqlx/ を使う。DATABASE_URL があると live DB を見に行き、
+# 空の DB では migrate 自体がビルドできなくなるため
+SQLX_OFFLINE = "true"
+_.file = [".env"]
+
+[tasks.gen]
+description = "protoからRust・TSを生成(変更がなければスキップ)"
+sources = ["proto/**/*.proto", "buf.yaml", "buf.gen.yaml"]
+outputs = ["backend/gen/src/gen/**/*.rs", "frontend/packages/api-client/src/gen/**/*.ts"]
+run = "buf generate"
+
+[tasks.dev-backend]
+description = "gRPCサーバーを起動"
+run = "cargo run -p server"
+
+[tasks.dev-frontend]
+description = "Viteの開発サーバーを起動"
+run = "pnpm --filter web dev"
+
+[tasks.sqlx-prepare]
+description = "query! のオフラインキャッシュ(.sqlx/)を更新する。DB はマイグレーション済みであること"
+run = "cargo sqlx prepare --workspace"
+env = { SQLX_OFFLINE = "false" }
+
+[tasks.migrate]
+description = "マイグレーションを実行"
+run = "cargo run -p migrate"
+
+[tasks.test]
+description = "Rust(nextest)とフロントのテスト"
+depends = ["test:rust", "test:ts"]
+
+[tasks."test:rust"]
+run = "cargo nextest run --workspace"
+
+[tasks."test:ts"]
+# E2E は mise run e2e で別に回す(依存サービスと server が要る)
+run = "pnpm -r --filter '!e2e' --if-present test"
+
+[tasks.e2e]
+description = "DB起動・マイグレーション後にPlaywright"
+run = ["docker compose up -d --wait mysql keycloak elasticmq", "cargo run -p migrate", "pnpm --filter e2e test"]
+
+[tasks.lint]
+description = "全言語のlintを並列実行"
+depends = ["lint:rust", "lint:ts", "lint:proto", "lint:tf", "lint:docker", "lint:secrets"]
+
+[tasks."lint:rust"]
+run = [
+  "cargo fmt --all --check",
+  "cargo clippy --workspace --all-targets -- -D warnings",
+  "cargo deny check",
+  "scripts/check-deps.sh",
+]
+
+[tasks."lint:ts"]
+run = ["pnpm oxfmt --check", "pnpm oxlint", "pnpm -r --if-present typecheck"]
+
+[tasks."lint:proto"]
+run = ["buf format --diff --exit-code", "buf lint"]
+
+[tasks."lint:tf"]
+dir = "infra"
+run = [
+  "terraform fmt -check -recursive",
+  "tflint --init --config \"$PWD/.tflint.hcl\"",
+  "tflint --recursive --config \"$PWD/.tflint.hcl\"",
+  "trivy config --quiet --exit-code 1 --severity HIGH,CRITICAL --ignorefile .trivyignore.yaml .",
+]
+
+[tasks."lint:docker"]
+run = [
+  "hadolint backend/app/server/Dockerfile",
+  "dockerfmt --check backend/app/server/Dockerfile",
+  "trivy config --quiet --exit-code 1 --severity HIGH,CRITICAL backend/app/server/Dockerfile",
+]
+
+[tasks."lint:secrets"]
+run = "gitleaks dir . --config .gitleaks.toml --no-banner"
+
+[tasks.fmt]
+description = "全言語を整形"
+run = ["cargo fmt --all", "pnpm oxfmt", "buf format -w", "terraform fmt -recursive infra"]
+
+[tasks.lambda-build]
+description = "cargo-lambdaでzipを作成"
+run = "cargo lambda build --release --arm64 --output-format zip -p payout-dispatcher"
+
+[tasks.tf-plan]
+description = "dev環境のterraform plan"
+dir = "infra/envs/dev"
+run = ["terraform init -input=false", "terraform plan -input=false"]

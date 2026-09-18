@@ -1,0 +1,150 @@
+{
+  "db_name": "MySQL",
+  "query": "select p.id, p.staff_id, p.pay_year, p.pay_month, p.status,\n                    l.project_id, l.work_minutes, l.hourly_rate\n             from payslips p\n             join payslip_lines l on l.payslip_id = p.id\n             where p.id = ?\n             order by l.id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | PRIMARY_KEY | AUTO_INCREMENT",
+          "collation": 63,
+          "max_size": 20
+        },
+        "origin": {
+          "Table": {
+            "table": "platform.payslips",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "staff_id",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | MULTIPLE_KEY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 20
+        },
+        "origin": {
+          "Table": {
+            "table": "platform.payslips",
+            "name": "staff_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "pay_year",
+        "type_info": {
+          "type": "Short",
+          "flags": "NOT_NULL | UNSIGNED | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 5
+        },
+        "origin": {
+          "Table": {
+            "table": "platform.payslips",
+            "name": "pay_year"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "pay_month",
+        "type_info": {
+          "type": "Tiny",
+          "flags": "NOT_NULL | UNSIGNED | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 3
+        },
+        "origin": {
+          "Table": {
+            "table": "platform.payslips",
+            "name": "pay_month"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "status",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL | NO_DEFAULT_VALUE",
+          "collation": 255,
+          "max_size": 80
+        },
+        "origin": {
+          "Table": {
+            "table": "platform.payslips",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "project_id",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 20
+        },
+        "origin": {
+          "Table": {
+            "table": "platform.payslip_lines",
+            "name": "project_id"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "work_minutes",
+        "type_info": {
+          "type": "Long",
+          "flags": "NOT_NULL | UNSIGNED | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 10
+        },
+        "origin": {
+          "Table": {
+            "table": "platform.payslip_lines",
+            "name": "work_minutes"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "hourly_rate",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 20
+        },
+        "origin": {
+          "Table": {
+            "table": "platform.payslip_lines",
+            "name": "hourly_rate"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "6b724e8f77ba2e175d7f057823d19f15d9fd785f212f72fd0f4eff7058bc3307"
+}

@@ -1,0 +1,16 @@
+[package]
+name = "migrate"
+version = "0.1.0"
+edition.workspace = true
+publish.workspace = true
+description = "マイグレーションの実行。ECS の単発タスクとしてデプロイ前に動かす"
+
+[dependencies]
+anyhow.workspace = true
+bootstrap.workspace = true
+payroll-infrastructure.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

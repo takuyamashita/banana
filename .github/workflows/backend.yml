@@ -1,0 +1,60 @@
+name: backend
+
+on:
+  pull_request:
+    paths:
+      [
+        "backend/**",
+        "proto/**",
+        "Cargo.toml",
+        "Cargo.lock",
+        ".sqlx/**",
+        "deny.toml",
+        "clippy.toml",
+        "rustfmt.toml",
+        "mise.toml",
+        "scripts/check-deps.sh",
+      ]
+  push:
+    branches: [main]
+    paths: ["backend/**", "proto/**", "Cargo.toml", "Cargo.lock", ".sqlx/**"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    runs-on: ubuntu-24.04
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_USER: platform
+          MYSQL_PASSWORD: platform
+          MYSQL_DATABASE: platform
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uplatform -pplatform --silent"
+          --health-interval=5s --health-timeout=3s --health-retries=20
+    env:
+      APP_ENV: local
+      DATABASE_URL: mysql://platform:platform@127.0.0.1:3306/platform
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: jdx/mise-action@v4.3.0
+      - uses: Swatinem/rust-cache@v2
+      - name: lint(fmt・clippy・cargo-deny・依存ルール)
+        run: mise run lint:rust
+      - name: .sqlx が最新か(query! のオフラインキャッシュ)
+        run: |
+          sqlx migrate run --source backend/contexts/payroll/infrastructure/migrations
+          SQLX_OFFLINE=false cargo sqlx prepare --workspace --check
+      - name: test(nextest。DB 結合・API テストは testcontainers)
+        run: mise run test:rust
+      - name: Dockerfile
+        run: mise run lint:docker

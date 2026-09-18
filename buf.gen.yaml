@@ -1,0 +1,17 @@
+version: v2
+clean: true
+plugins:
+  # Rust: メッセージ(prost)・サービス(tonic)・モジュールをまとめる include ファイル
+  - remote: buf.build/community/neoeinstein-prost
+    out: backend/gen/src/gen
+  - remote: buf.build/community/neoeinstein-tonic
+    out: backend/gen/src/gen
+  - remote: buf.build/community/neoeinstein-prost-crate
+    out: backend/gen/src/gen
+    opt:
+      - no_features
+  # TS: Connect-ES v2 はメッセージとサービス記述子を protoc-gen-es だけで生成する
+  - remote: buf.build/bufbuild/es
+    out: frontend/packages/api-client/src/gen
+    opt:
+      - target=ts

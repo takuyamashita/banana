@@ -1,0 +1,11 @@
+[package]
+name = "platform-gen"
+version = "0.1.0"
+edition.workspace = true
+publish.workspace = true
+description = "proto から buf generate で生成したコード。lint 対象外"
+
+[dependencies]
+prost.workspace = true
+tonic.workspace = true
+tonic-prost.workspace = true

@@ -1,0 +1,12 @@
+[package]
+name = "platform-kernel"
+version = "0.1.0"
+edition.workspace = true
+publish.workspace = true
+description = "Money など、どのレイヤーからも使う最小限の共通値。ドメインロジックは置かない"
+
+[dependencies]
+thiserror.workspace = true
+
+[lints]
+workspace = true

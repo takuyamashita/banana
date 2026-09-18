@@ -1,0 +1,19 @@
+[extend]
+useDefault = true
+
+# ローカル開発専用のダミー値(compose の Keycloak・config/local.toml・.env.example)は検出対象外にする。
+# 本番の秘密情報は Secrets Manager にあり、リポジトリには置かない
+[[allowlists]]
+description = "ローカル開発用のダミー認証情報"
+paths = [
+  '''^compose/keycloak-realm\.json$''',
+  '''^config/local\.toml$''',
+  '''^\.env\.example$''',
+  '''^scripts/smoke-test\.sh$''',
+  '''^e2e/''',
+]
+
+# gitleaks dir は .gitignore を見ないので、ビルド成果物と依存を明示的に外す
+[[allowlists]]
+description = "ビルド成果物・依存"
+paths = ['''^target/''', '''node_modules/''', '''\.terraform/''', '''^e2e/test-results/''']

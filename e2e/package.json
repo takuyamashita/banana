@@ -1,0 +1,16 @@
+{
+  "name": "e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@bufbuild/protobuf": "2.15.0",
+    "@connectrpc/connect": "2.2.0",
+    "@platform/api-client": "workspace:*",
+    "@playwright/test": "1.63.0",
+    "@types/node": "24.13.5"
+  }
+}

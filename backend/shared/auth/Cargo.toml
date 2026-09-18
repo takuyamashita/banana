@@ -1,0 +1,19 @@
+[package]
+name = "platform-auth"
+version = "0.1.0"
+edition.workspace = true
+publish.workspace = true
+description = "OIDC トークン検証(JWKS キャッシュ・プロバイダ別クレーム mapper)"
+
+[dependencies]
+jsonwebtoken.workspace = true
+platform-kernel.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package acme.payroll.v1;
+
+// 案件の登録と参照
+service ProjectService {
+  // 案件を登録する。管理者のみ
+  rpc CreateProject(CreateProjectRequest) returns (CreateProjectResponse);
+  // 案件を一覧する。管理者のみ
+  rpc ListProjects(ListProjectsRequest) returns (ListProjectsResponse);
+}
+
+message CreateProjectRequest {
+  string name = 1;
+}
+
+message CreateProjectResponse {
+  int64 project_id = 1;
+}
+
+message ListProjectsRequest {}
+
+message ListProjectsResponse {
+  repeated Project projects = 1;
+}
+
+message Project {
+  int64 project_id = 1;
+  string name = 2;
+}

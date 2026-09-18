@@ -1,0 +1,133 @@
+{
+  "realm": "platform",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "accessTokenLifespan": 900,
+  "roles": {
+    "realm": [
+      {
+        "name": "admin",
+        "description": "給与の確定など管理操作ができる"
+      },
+      {
+        "name": "staff",
+        "description": "派遣社員。自分の給与明細だけ見られる"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "web",
+      "name": "Web frontend",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": ["http://localhost:5173/*"],
+      "webOrigins": ["http://localhost:5173"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:5173/*"
+      },
+      "protocolMappers": [
+        {
+          "name": "platform-api audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "platform-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "platform-backend",
+      "name": "Backend (user management)",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "platform-backend-secret",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true
+    }
+  ],
+  "users": [
+    {
+      "id": "7c0e3a52-1b2d-4f5e-8a9b-0c1d2e3f4a5b",
+      "username": "admin@example.com",
+      "email": "admin@example.com",
+      "emailVerified": true,
+      "firstName": "Admin",
+      "lastName": "User",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["admin", "default-roles-platform"]
+    },
+    {
+      "id": "2f9d8c7b-6a5e-4d3c-9b2a-1f0e9d8c7b6a",
+      "username": "staff1@example.com",
+      "email": "staff1@example.com",
+      "emailVerified": true,
+      "firstName": "Taro",
+      "lastName": "Haken",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["staff", "default-roles-platform"]
+    },
+    {
+      "id": "5a4b3c2d-1e0f-4a9b-8c7d-6e5f4a3b2c1d",
+      "username": "staff2@example.com",
+      "email": "staff2@example.com",
+      "emailVerified": true,
+      "firstName": "Hanako",
+      "lastName": "Haken",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["staff", "default-roles-platform"]
+    },
+    {
+      "username": "service-account-platform-backend",
+      "enabled": true,
+      "serviceAccountClientId": "platform-backend",
+      "clientRoles": {
+        "realm-management": ["manage-users", "view-users"]
+      }
+    }
+  ],
+  "components": {
+    "org.keycloak.userprofile.UserProfileProvider": [
+      {
+        "providerId": "declarative-user-profile",
+        "subComponents": {},
+        "config": {
+          "kc.user.profile.config": [
+            "{\"attributes\": [{\"name\": \"username\", \"displayName\": \"${username}\", \"validations\": {\"length\": {\"min\": 3, \"max\": 255}, \"username-prohibited-characters\": {}, \"up-username-not-idn-homograph\": {}}, \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}, \"multivalued\": false}, {\"name\": \"email\", \"displayName\": \"${email}\", \"validations\": {\"email\": {}, \"length\": {\"max\": 255}}, \"required\": {\"roles\": [\"user\"]}, \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}, \"multivalued\": false}, {\"name\": \"firstName\", \"displayName\": \"${firstName}\", \"validations\": {\"length\": {\"max\": 255}, \"person-name-prohibited-characters\": {}}, \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}, \"multivalued\": false}, {\"name\": \"lastName\", \"displayName\": \"${lastName}\", \"validations\": {\"length\": {\"max\": 255}, \"person-name-prohibited-characters\": {}}, \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}, \"multivalued\": false}], \"groups\": [{\"name\": \"user-metadata\", \"displayHeader\": \"User metadata\", \"displayDescription\": \"Attributes, which refer to user metadata\"}]}"
+          ]
+        }
+      }
+    ]
+  }
+}

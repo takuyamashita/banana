@@ -1,0 +1,31 @@
+{
+  "db_name": "MySQL",
+  "query": "select event_id from processed_events where event_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "event_id",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | PRIMARY_KEY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 20
+        },
+        "origin": {
+          "Table": {
+            "table": "platform.processed_events",
+            "name": "event_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "baafff7c9a42aaaf8f86711099f665f69f7b6b0e81943f2c08e81c53623eaa7c"
+}

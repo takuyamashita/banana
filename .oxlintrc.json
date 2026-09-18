@@ -1,0 +1,68 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "react", "import", "jsx-a11y", "vitest"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn"
+  },
+  "ignorePatterns": ["**/gen/**", "**/dist/**", "target/**", "e2e/playwright-report/**"],
+  "rules": {
+    "react/react-in-jsx-scope": "off",
+    "import/no-unassigned-import": [
+      "warn",
+      {
+        "allow": ["**/*.css", "@testing-library/jest-dom/vitest"]
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["frontend/apps/web/src/features/payroll/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["**/features/staff/**", "**/features/project/**", "../staff/*", "../project/*"],
+                "message": "features/ 間の直接 import は禁止。共有するものは lib/ か packages/ に置く"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["frontend/apps/web/src/features/staff/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["**/features/payroll/**", "**/features/project/**", "../payroll/*", "../project/*"],
+                "message": "features/ 間の直接 import は禁止。共有するものは lib/ か packages/ に置く"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["frontend/apps/web/src/features/project/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["**/features/payroll/**", "**/features/staff/**", "../payroll/*", "../staff/*"],
+                "message": "features/ 間の直接 import は禁止。共有するものは lib/ か packages/ に置く"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

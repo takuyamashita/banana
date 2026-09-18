@@ -1,0 +1,23 @@
+# prd 環境。ID・URL は Terraform の出力で埋める。秘密情報は Secrets Manager から取る
+[server]
+cors_allowed_origins = ["https://app.prd.example.com"]
+
+[auth]
+provider = "cognito"
+issuer = "https://cognito-idp.ap-northeast-1.amazonaws.com/ap-northeast-1_REPLACE_ME"
+cognito_client_id = "REPLACE_ME"
+cognito_user_pool_id = "ap-northeast-1_REPLACE_ME"
+
+[messaging]
+queue_url = "https://sqs.ap-northeast-1.amazonaws.com/000000000000/payroll-events-prd.fifo"
+
+[payout]
+provider = "bank"
+base_url = "https://bank-api.prd.example.com"
+
+[secrets]
+database_url_secret_id = "platform/prd/database-url"
+
+[telemetry]
+# ADOT collector(ECS はサイドカー、Lambda はレイヤー)
+otlp_endpoint = "http://localhost:4317"

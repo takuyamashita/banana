@@ -1,0 +1,11 @@
+/target/
+node_modules/
+dist/
+.env
+mise.local.toml
+*.tfstate
+*.tfstate.*
+.terraform/
+/e2e/test-results/
+/e2e/playwright-report/
+/frontend/apps/web/.vite/

@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "update payslips\n             set status = ?,\n                 finalized_at = if(? = 'finalized', coalesce(finalized_at, current_timestamp(6)), null)\n             where id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "d71d5d31fe05d67b878cd396e06d371a1e1256e1ae1809d5fa567d087251cba9"
+}

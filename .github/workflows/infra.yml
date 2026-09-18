@@ -1,0 +1,48 @@
+name: infra
+
+on:
+  pull_request:
+    paths: ["infra/**"]
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: jdx/mise-action@v4.3.0
+      - run: mise run lint:tf
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+  plan:
+    runs-on: ubuntu-24.04
+    needs: lint
+    environment: dev-plan
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: jdx/mise-action@v4.3.0
+      - uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          aws-region: ap-northeast-1
+      - name: terraform plan(dev)
+        working-directory: infra/envs/dev
+        run: |
+          terraform init -input=false
+          terraform plan -input=false -no-color -var-file=ci.tfvars -var="image_tag=${{ github.sha }}" > plan.txt
+      - name: PR にコメント
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo '### terraform plan (dev)'
+            echo '```'
+            tail -c 60000 infra/envs/dev/plan.txt
+            echo '```'
+          } > comment.md
+          gh pr comment "${{ github.event.pull_request.number }}" --body-file comment.md --edit-last --create-if-none

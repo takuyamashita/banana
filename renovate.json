@@ -1,0 +1,22 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":timezone(Asia/Tokyo)"],
+  "schedule": ["before 9am on monday"],
+  "enabledManagers": ["cargo", "npm", "terraform", "github-actions", "mise", "dockerfile", "docker-compose"],
+  "packageRules": [
+    {
+      "matchManagers": ["cargo"],
+      "matchPackageNames": ["/^opentelemetry/", "tracing-opentelemetry"],
+      "groupName": "opentelemetry"
+    },
+    { "matchManagers": ["cargo"], "matchPackageNames": ["/^tonic/", "prost"], "groupName": "tonic" },
+    {
+      "matchManagers": ["cargo"],
+      "matchPackageNames": ["/^aws-/", "aws_lambda_events", "lambda_runtime"],
+      "groupName": "aws sdk"
+    },
+    { "matchManagers": ["npm"], "matchPackageNames": ["/^@connectrpc/", "@bufbuild/protobuf"], "groupName": "connect" },
+    { "matchManagers": ["npm"], "matchPackageNames": ["oxlint", "oxfmt", "oxlint-tsgolint"], "groupName": "oxc" },
+    { "matchManagers": ["terraform"], "groupName": "terraform providers" }
+  ]
+}

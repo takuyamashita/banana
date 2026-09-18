@@ -1,0 +1,18 @@
+{
+  "Records": [
+    {
+      "messageId": "m1",
+      "receiptHandle": "r1",
+      "body": "{\"event_id\": 900001, \"payload\": {\"staff_id\": 1, \"pay_year\": 2026, \"pay_month\": 9, \"total_yen\": 1000}}",
+      "attributes": {
+        "MessageGroupId": "1",
+        "MessageDeduplicationId": "900001"
+      },
+      "messageAttributes": {},
+      "md5OfBody": "",
+      "eventSource": "aws:sqs",
+      "eventSourceARN": "arn:aws:sqs:ap-northeast-1:000000000000:payroll-events.fifo",
+      "awsRegion": "ap-northeast-1"
+    }
+  ]
+}

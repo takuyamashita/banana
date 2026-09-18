@@ -1,0 +1,24 @@
+name: proto
+
+on:
+  pull_request:
+    paths: ["proto/**", "buf.yaml", "buf.gen.yaml"]
+
+permissions:
+  contents: read
+
+jobs:
+  buf:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: jdx/mise-action@v4.3.0
+      - run: mise run lint:proto
+      - name: 後方互換性(main と比較)
+        run: buf breaking --against ".git#branch=origin/main"
+      - name: 生成コードがコミット済みか
+        run: |
+          buf generate
+          git diff --exit-code -- backend/gen frontend/packages/api-client/src/gen

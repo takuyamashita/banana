@@ -1,0 +1,50 @@
+# cargo-deny: 脆弱性・ライセンス・禁止 crate を検査する。
+# bans は workspace 全体に効くルールで、「domain だけ tokio 禁止」のような crate 単位の制約は書けない。
+# レイヤーごとの依存ルールは scripts/check-deps.sh が担う
+[graph]
+all-features = true
+
+[advisories]
+version = 2
+yanked = "deny"
+
+[licenses]
+version = 2
+confidence-threshold = 0.9
+# workspace 内の crate は publish = false なのでライセンス表記を求めない
+private = { ignore = true }
+allow = [
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "MIT",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Unicode-3.0",
+  "Zlib",
+  "CDLA-Permissive-2.0",
+]
+
+[[licenses.clarify]]
+crate = "ring"
+expression = "MIT AND ISC AND OpenSSL"
+license-files = [{ path = "LICENSE", hash = 0xbd0eed23 }]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+deny = [
+  # ORM は入れない(DB モデルと domain モデルを分けて変換する前提なので利点が効かない)
+  { crate = "sea-orm", reason = "ORM は使わない方針" },
+  { crate = "diesel", reason = "ORM は使わない方針" },
+  # native-tls(OpenSSL)ではなく rustls に揃える
+  { crate = "native-tls", reason = "TLS は rustls に揃える" },
+  { crate = "openssl-sys", reason = "TLS は rustls に揃える" },
+  # sqlx を直接使ってよいのは DB に触る層だけ。wrappers は「直接依存してよい親」の一覧
+  { crate = "sqlx", wrappers = ["payroll-infrastructure", "bootstrap", "server"] },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

@@ -1,0 +1,25 @@
+[package]
+name = "payroll-handler"
+version = "0.1.0"
+edition.workspace = true
+publish.workspace = true
+description = "proto ⇔ domain の変換と gRPC ハンドラ(tonic + tonic-web)"
+
+[dependencies]
+axum.workspace = true
+payroll-domain.workspace = true
+payroll-usecase.workspace = true
+platform-auth.workspace = true
+platform-gen.workspace = true
+platform-kernel.workspace = true
+tonic.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+async-trait.workspace = true
+payroll-infrastructure.workspace = true
+testcontainers-modules.workspace = true
+tokio.workspace = true

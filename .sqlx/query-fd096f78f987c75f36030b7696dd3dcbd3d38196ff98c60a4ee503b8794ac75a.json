@@ -1,0 +1,82 @@
+{
+  "db_name": "MySQL",
+  "query": "select id, user_id, email, display_name from staff order by id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | PRIMARY_KEY | AUTO_INCREMENT",
+          "collation": 63,
+          "max_size": 20
+        },
+        "origin": {
+          "Table": {
+            "table": "platform.staff",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL | UNIQUE_KEY | NO_DEFAULT_VALUE",
+          "collation": 255,
+          "max_size": 256
+        },
+        "origin": {
+          "Table": {
+            "table": "platform.staff",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "email",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL | UNIQUE_KEY | NO_DEFAULT_VALUE",
+          "collation": 255,
+          "max_size": 1016
+        },
+        "origin": {
+          "Table": {
+            "table": "platform.staff",
+            "name": "email"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "display_name",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL | NO_DEFAULT_VALUE",
+          "collation": 255,
+          "max_size": 200
+        },
+        "origin": {
+          "Table": {
+            "table": "platform.staff",
+            "name": "display_name"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "fd096f78f987c75f36030b7696dd3dcbd3d38196ff98c60a4ee503b8794ac75a"
+}

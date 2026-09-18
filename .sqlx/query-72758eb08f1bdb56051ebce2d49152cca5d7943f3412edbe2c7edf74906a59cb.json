@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "insert into staff (user_id, email, display_name) values (?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "72758eb08f1bdb56051ebce2d49152cca5d7943f3412edbe2c7edf74906a59cb"
+}

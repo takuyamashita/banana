@@ -1,0 +1,87 @@
+name: deploy
+
+# main へのマージで dev に自動デプロイ。stg・prod は GitHub Environments の承認を経て同じ流れを実行する
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: デプロイ先
+        type: choice
+        options: [dev, stg, prod]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-${{ inputs.environment || 'dev' }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04-arm
+    environment: ${{ inputs.environment || 'dev' }}
+    env:
+      ENV_DIR: infra/envs/${{ inputs.environment || 'dev' }}
+      IMAGE_TAG: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: jdx/mise-action@v4.3.0
+      # アクセスキーは使わず、GitHub OIDC で環境ごとの IAM ロールを引き受ける
+      - uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ap-northeast-1
+
+      - name: Terraform の出力を読む
+        id: tf
+        working-directory: ${{ env.ENV_DIR }}
+        run: |
+          terraform init -input=false
+          for key in ecr_repository_url ecs_cluster_name ecs_service_name migrate_task_definition_arn web_bucket_name web_distribution_id; do
+            echo "$key=$(terraform output -raw $key)" >> "$GITHUB_OUTPUT"
+          done
+
+      - name: server イメージ(cargo-chef)をビルドして ECR に push
+        run: |
+          aws ecr get-login-password | docker login --username AWS --password-stdin "${{ steps.tf.outputs.ecr_repository_url }}"
+          docker build -f backend/app/server/Dockerfile -t "${{ steps.tf.outputs.ecr_repository_url }}:$IMAGE_TAG" .
+          docker push "${{ steps.tf.outputs.ecr_repository_url }}:$IMAGE_TAG"
+
+      - name: Lambda の zip を作って S3 にアップロード
+        run: |
+          mise run lambda-build
+          aws s3 cp target/lambda/payout-dispatcher/bootstrap.zip "s3://${{ vars.LAMBDA_ARTIFACT_BUCKET }}/payout-dispatcher/$IMAGE_TAG.zip"
+
+      - name: migrate(ECS 単発タスク)。失敗したらここで止める
+        run: |
+          task_arn=$(aws ecs run-task \
+            --cluster "${{ steps.tf.outputs.ecs_cluster_name }}" \
+            --task-definition "${{ steps.tf.outputs.migrate_task_definition_arn }}" \
+            --launch-type FARGATE \
+            --network-configuration "${{ vars.MIGRATE_NETWORK_CONFIGURATION }}" \
+            --overrides "{\"containerOverrides\":[{\"name\":\"migrate\",\"image\":\"${{ steps.tf.outputs.ecr_repository_url }}:$IMAGE_TAG\"}]}" \
+            --query 'tasks[0].taskArn' --output text)
+          aws ecs wait tasks-stopped --cluster "${{ steps.tf.outputs.ecs_cluster_name }}" --tasks "$task_arn"
+          code=$(aws ecs describe-tasks --cluster "${{ steps.tf.outputs.ecs_cluster_name }}" --tasks "$task_arn" \
+            --query 'tasks[0].containers[0].exitCode' --output text)
+          echo "migrate exit code: $code"
+          test "$code" = "0"
+
+      - name: terraform apply(サービス更新・Lambda 更新)
+        working-directory: ${{ env.ENV_DIR }}
+        run: |
+          terraform apply -input=false -auto-approve \
+            -var-file=ci.tfvars \
+            -var="image_tag=$IMAGE_TAG" \
+            -var="lambda_artifact_key=payout-dispatcher/$IMAGE_TAG.zip"
+
+      - name: フロントをビルドして S3 + CloudFront に配信(config.json は Terraform が置くので触らない)
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter web build
+          rm -f frontend/apps/web/dist/config.json
+          aws s3 sync frontend/apps/web/dist "s3://${{ steps.tf.outputs.web_bucket_name }}" --delete --exclude config.json
+          aws cloudfront create-invalidation --distribution-id "${{ steps.tf.outputs.web_distribution_id }}" --paths "/index.html"

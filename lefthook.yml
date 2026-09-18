@@ -1,0 +1,16 @@
+# pre-commit は変更ファイルへの軽い処理だけ。clippy・tflint など重いものは CI で回す
+pre-commit:
+  parallel: true
+  jobs:
+    - name: rustfmt
+      glob: "*.rs"
+      exclude: ["backend/gen/src/gen/**"]
+      run: rustfmt --edition 2024 --check {staged_files}
+    - name: oxfmt
+      glob: "*.{ts,tsx,js,json,css,md,yaml,yml,toml}"
+      run: pnpm oxfmt --check {staged_files}
+    - name: oxlint
+      glob: "*.{ts,tsx}"
+      run: pnpm oxlint {staged_files}
+    - name: gitleaks
+      run: gitleaks git --pre-commit --staged --config .gitleaks.toml --no-banner

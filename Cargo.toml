@@ -1,0 +1,106 @@
+[workspace]
+resolver = "3"
+members = [
+  "backend/gen",
+  "backend/shared/kernel",
+  "backend/shared/telemetry",
+  "backend/shared/auth",
+  "backend/contexts/payroll/domain",
+  "backend/contexts/payroll/usecase",
+  "backend/contexts/payroll/infrastructure",
+  "backend/contexts/payroll/handler",
+  "backend/app/bootstrap",
+  "backend/app/server",
+  "backend/app/migrate",
+  "backend/app/lambdas/payout-dispatcher",
+]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.98"
+publish = false
+
+[workspace.dependencies]
+# workspace 内
+platform-gen = { path = "backend/gen" }
+platform-kernel = { path = "backend/shared/kernel" }
+platform-telemetry = { path = "backend/shared/telemetry" }
+platform-auth = { path = "backend/shared/auth" }
+payroll-domain = { path = "backend/contexts/payroll/domain" }
+payroll-usecase = { path = "backend/contexts/payroll/usecase" }
+payroll-infrastructure = { path = "backend/contexts/payroll/infrastructure" }
+payroll-handler = { path = "backend/contexts/payroll/handler" }
+bootstrap = { path = "backend/app/bootstrap" }
+
+# 外部
+anyhow = "1.0.104"
+async-trait = "0.1.92"
+aws-config = { version = "1.12.0", default-features = false, features = [
+  "behavior-version-latest",
+  "rt-tokio",
+  "default-https-client",
+  "credentials-process",
+  "sso",
+] }
+aws-sdk-cognitoidentityprovider = { version = "1.135.0", default-features = false, features = [
+  "rt-tokio",
+  "default-https-client",
+] }
+aws-sdk-secretsmanager = { version = "1", default-features = false, features = ["rt-tokio", "default-https-client"] }
+aws-sdk-sqs = { version = "1.111.0", default-features = false, features = ["rt-tokio", "default-https-client"] }
+aws_lambda_events = { version = "1.2.0", default-features = false, features = ["sqs"] }
+axum = { version = "0.8.9", default-features = false, features = ["http1", "http2", "tokio"] }
+config = { version = "0.15.25", default-features = false, features = ["toml"] }
+http = "1.5.0"
+jsonwebtoken = { version = "11.1.0", default-features = false, features = ["aws_lc_rs"] }
+lambda_runtime = "1.4.0"
+opentelemetry = "0.32.0"
+opentelemetry-otlp = { version = "0.32.0", default-features = false, features = ["grpc-tonic", "trace"] }
+opentelemetry_sdk = { version = "0.32.0", features = ["rt-tokio"] }
+prost = "0.14.4"
+reqwest = { version = "0.13.5", default-features = false, features = ["json", "form", "rustls"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+sqlx = { version = "0.9.0", default-features = false, features = [
+  "runtime-tokio",
+  "tls-rustls",
+  "mysql",
+  "macros",
+  "migrate",
+  "time",
+  "json",
+] }
+testcontainers-modules = { version = "0.15.0", features = ["mysql"] }
+thiserror = "2.0.20"
+time = { version = "0.3.55", features = ["macros"] }
+tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "signal", "time", "sync"] }
+tokio-util = "0.7.19"
+tonic = "0.14.6"
+tonic-prost = "0.14.6"
+tonic-web = "0.14.6"
+tower = "0.5.3"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+tracing = "0.1.44"
+tracing-opentelemetry = "0.33.0"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
+
+# lint は workspace で一元管理し、各crateは [lints] workspace = true で継承する(gen は継承しない)
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+disallowed_methods = "deny"
+# pedantic のうち、この規模では手間の割に得がないもの
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+# 日本語の doc コメントで誤判定が多い(全角括弧の中まで識別子扱いする)
+doc_markdown = "allow"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
