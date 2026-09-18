@@ -1,4 +1,4 @@
-use payroll_domain::repository::RepositoryError;
+use payroll_usecase::ports::repository::RepositoryError;
 use sqlx::Executor;
 use sqlx::migrate::Migrator;
 use sqlx::mysql::{MySqlPool, MySqlPoolOptions};

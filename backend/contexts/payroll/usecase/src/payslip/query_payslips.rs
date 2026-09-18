@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
-use payroll_domain::payslip::{Payslip, PayslipId, PayslipRepository};
-use payroll_domain::staff::{StaffId, StaffRepository, UserId};
+use payroll_domain::payslip::{Payslip, PayslipId};
+use payroll_domain::staff::{StaffId, UserId};
 use platform_kernel::{AuthenticatedUser, Role};
 
 use crate::UseCaseError;
+use crate::ports::repository::{PayslipRepository, StaffRepository};
 
 /// 明細を見てよいのは管理者か、明細の本人だけ。
 /// ID は連番で API に露出するので、この確認が他人の明細を引けないことを保証する唯一の手段

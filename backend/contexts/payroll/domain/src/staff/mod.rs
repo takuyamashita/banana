@@ -3,11 +3,9 @@
 //! `UserId` は認証基盤上のID(Cognito の sub)で、雇用記録を指す `StaffId` とは別物。
 //! 両者の対応付けはこの集約が持つ。
 
-use async_trait::async_trait;
 use thiserror::Error;
 
 use crate::Unsaved;
-use crate::repository::RepositoryError;
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum StaffError {
@@ -148,15 +146,6 @@ impl Staff<StaffId> {
     pub fn id(&self) -> StaffId {
         self.id
     }
-}
-
-#[async_trait]
-pub trait StaffRepository: Send + Sync {
-    async fn insert(&self, new: &NewStaff) -> Result<StaffId, RepositoryError>;
-    async fn find(&self, id: StaffId) -> Result<Option<Staff>, RepositoryError>;
-    async fn find_by_user_id(&self, user_id: &UserId) -> Result<Option<Staff>, RepositoryError>;
-    async fn find_by_email(&self, email: &Email) -> Result<Option<Staff>, RepositoryError>;
-    async fn list(&self) -> Result<Vec<Staff>, RepositoryError>;
 }
 
 #[cfg(test)]

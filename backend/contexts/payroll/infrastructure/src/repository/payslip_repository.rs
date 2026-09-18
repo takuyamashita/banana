@@ -1,11 +1,11 @@
 use async_trait::async_trait;
 use payroll_domain::payslip::{
-    NewPayslip, PayPeriod, Payslip, PayslipEvent, PayslipId, PayslipLine, PayslipRepository,
-    PayslipStatus, WorkMinutes,
+    NewPayslip, PayPeriod, Payslip, PayslipEvent, PayslipId, PayslipLine, PayslipStatus,
+    WorkMinutes,
 };
 use payroll_domain::project::ProjectId;
-use payroll_domain::repository::RepositoryError;
 use payroll_domain::staff::StaffId;
+use payroll_usecase::ports::repository::{PayslipRepository, RepositoryError};
 use platform_kernel::Money;
 use sqlx::mysql::MySqlPool;
 use sqlx::{MySql, Transaction};

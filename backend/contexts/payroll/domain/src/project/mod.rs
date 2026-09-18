@@ -1,10 +1,8 @@
 //! 案件(project)集約
 
-use async_trait::async_trait;
 use thiserror::Error;
 
 use crate::Unsaved;
-use crate::repository::RepositoryError;
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum ProjectError {
@@ -83,12 +81,6 @@ impl Project<ProjectId> {
     pub fn id(&self) -> ProjectId {
         self.id
     }
-}
-
-#[async_trait]
-pub trait ProjectRepository: Send + Sync {
-    async fn insert(&self, new: &NewProject) -> Result<ProjectId, RepositoryError>;
-    async fn list(&self) -> Result<Vec<Project>, RepositoryError>;
 }
 
 #[cfg(test)]

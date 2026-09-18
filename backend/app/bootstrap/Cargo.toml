@@ -12,7 +12,6 @@ aws-sdk-cognitoidentityprovider.workspace = true
 aws-sdk-secretsmanager.workspace = true
 aws-sdk-sqs.workspace = true
 config.workspace = true
-payroll-domain.workspace = true
 payroll-handler.workspace = true
 payroll-infrastructure.workspace = true
 payroll-usecase.workspace = true

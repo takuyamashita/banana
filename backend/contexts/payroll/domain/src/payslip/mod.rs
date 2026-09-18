@@ -1,13 +1,11 @@
 //! 給与明細(payslip)集約。丸めルールと確定後の変更禁止がこのドメインの中核
 
-use async_trait::async_trait;
 use platform_kernel::Money;
 use thiserror::Error;
 use time::{Date, Month, OffsetDateTime, UtcOffset};
 
 use crate::Unsaved;
 use crate::project::ProjectId;
-use crate::repository::RepositoryError;
 use crate::staff::StaffId;
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -267,15 +265,6 @@ impl Payslip<PayslipId> {
     pub fn id(&self) -> PayslipId {
         self.id
     }
-}
-
-// 採番があるため insert と update を分ける。insert は採番済みの Payslip を返す
-#[async_trait]
-pub trait PayslipRepository: Send + Sync {
-    async fn insert(&self, new: &mut NewPayslip) -> Result<Payslip, RepositoryError>;
-    async fn update(&self, payslip: &mut Payslip) -> Result<(), RepositoryError>;
-    async fn find(&self, id: PayslipId) -> Result<Option<Payslip>, RepositoryError>;
-    async fn list_by_staff(&self, staff_id: StaffId) -> Result<Vec<Payslip>, RepositoryError>;
 }
 
 #[cfg(test)]

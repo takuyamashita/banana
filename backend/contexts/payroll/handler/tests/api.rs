@@ -12,6 +12,7 @@ use axum::middleware::Next;
 use axum::response::Response;
 use payroll_domain::staff::{Email, UserId};
 use payroll_handler::{PayrollServiceHandler, ProjectServiceHandler, StaffServiceHandler};
+use payroll_infrastructure::query::{MySqlProjectQuery, MySqlStaffQuery};
 use payroll_infrastructure::repository::{
     MySqlPayslipRepository, MySqlProjectRepository, MySqlStaffRepository,
 };
@@ -86,13 +87,13 @@ async fn api() -> Api {
     )
     .add_service(proto::staff_service_server::StaffServiceServer::new(StaffServiceHandler::new(
         CreateStaffUseCase::new(staff.clone(), Arc::new(FakeDirectory)),
-        ListStaffUseCase::new(staff.clone()),
+        ListStaffUseCase::new(Arc::new(MySqlStaffQuery::new(pool.clone()))),
         GetMeUseCase::new(staff),
     )))
     .add_service(proto::project_service_server::ProjectServiceServer::new(
         ProjectServiceHandler::new(
             CreateProjectUseCase::new(projects.clone()),
-            ListProjectsUseCase::new(projects),
+            ListProjectsUseCase::new(Arc::new(MySqlProjectQuery::new(pool.clone()))),
         ),
     ))
     .into_axum_router()

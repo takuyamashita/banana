@@ -3,14 +3,14 @@
 // allow-unwrap-in-tests は #[test] 関数の中にしか効かず、補助関数は対象外
 #![allow(clippy::unwrap_used)]
 
-use payroll_domain::payslip::{
-    NewPayslip, PayPeriod, PayslipLine, PayslipRepository, PayslipStatus, WorkMinutes,
-};
-use payroll_domain::project::{NewProject, ProjectName, ProjectRepository};
-use payroll_domain::repository::RepositoryError;
-use payroll_domain::staff::{DisplayName, Email, NewStaff, StaffId, StaffRepository, UserId};
+use payroll_domain::payslip::{NewPayslip, PayPeriod, PayslipLine, PayslipStatus, WorkMinutes};
+use payroll_domain::project::{NewProject, ProjectName};
+use payroll_domain::staff::{DisplayName, Email, NewStaff, StaffId, UserId};
 use payroll_infrastructure::repository::{
     MySqlPayslipRepository, MySqlProjectRepository, MySqlStaffRepository,
+};
+use payroll_usecase::ports::repository::{
+    PayslipRepository, ProjectRepository, RepositoryError, StaffRepository,
 };
 use platform_kernel::Money;
 use sqlx::MySqlPool;

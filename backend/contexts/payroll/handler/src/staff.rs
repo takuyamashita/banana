@@ -1,4 +1,5 @@
 use payroll_domain::staff::{DisplayName, Email, Staff};
+use payroll_usecase::ports::queries::StaffView;
 use payroll_usecase::staff::{
     CreateStaffInput, CreateStaffUseCase, GetMeUseCase, ListStaffUseCase,
 };
@@ -50,7 +51,9 @@ impl proto::staff_service_server::StaffService for StaffServiceHandler {
     ) -> Result<Response<proto::ListStaffResponse>, Status> {
         require_admin(&request)?;
         let staff = self.list_staff.execute().await.map_err(to_status)?;
-        Ok(Response::new(proto::ListStaffResponse { staff: staff.iter().map(to_proto).collect() }))
+        Ok(Response::new(proto::ListStaffResponse {
+            staff: staff.iter().map(view_to_proto).collect(),
+        }))
     }
 
     async fn get_me(
@@ -71,5 +74,13 @@ fn to_proto(s: &Staff) -> proto::Staff {
         staff_id: s.id().as_i64(),
         email: s.email().as_str().to_owned(),
         display_name: s.display_name().as_str().to_owned(),
+    }
+}
+
+fn view_to_proto(s: &StaffView) -> proto::Staff {
+    proto::Staff {
+        staff_id: s.id.as_i64(),
+        email: s.email.clone(),
+        display_name: s.display_name.clone(),
     }
 }

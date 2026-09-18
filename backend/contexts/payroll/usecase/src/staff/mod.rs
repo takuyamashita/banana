@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use payroll_domain::staff::{
-    DisplayName, Email, NewStaff, Staff, StaffId, StaffRepository, UserId,
-};
+use payroll_domain::staff::{DisplayName, Email, NewStaff, Staff, StaffId, UserId};
 use platform_kernel::AuthenticatedUser;
 
 use crate::UseCaseError;
+use crate::ports::queries::{StaffQuery, StaffView};
+use crate::ports::repository::StaffRepository;
 use crate::ports::user_directory::UserDirectory;
 
 pub struct CreateStaffInput {
@@ -51,17 +51,17 @@ impl CreateStaffUseCase {
 }
 
 pub struct ListStaffUseCase {
-    staff_repository: Arc<dyn StaffRepository>,
+    query: Arc<dyn StaffQuery>,
 }
 
 impl ListStaffUseCase {
     #[must_use]
-    pub fn new(staff_repository: Arc<dyn StaffRepository>) -> Self {
-        Self { staff_repository }
+    pub fn new(query: Arc<dyn StaffQuery>) -> Self {
+        Self { query }
     }
 
-    pub async fn execute(&self) -> Result<Vec<Staff>, UseCaseError> {
-        Ok(self.staff_repository.list().await?)
+    pub async fn execute(&self) -> Result<Vec<StaffView>, UseCaseError> {
+        Ok(self.query.list().await?)
     }
 }
 

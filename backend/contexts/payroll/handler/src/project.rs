@@ -39,10 +39,7 @@ impl proto::project_service_server::ProjectService for ProjectServiceHandler {
         Ok(Response::new(proto::ListProjectsResponse {
             projects: projects
                 .iter()
-                .map(|p| proto::Project {
-                    project_id: p.id().as_i64(),
-                    name: p.name().as_str().to_owned(),
-                })
+                .map(|p| proto::Project { project_id: p.id.as_i64(), name: p.name.clone() })
                 .collect(),
         }))
     }

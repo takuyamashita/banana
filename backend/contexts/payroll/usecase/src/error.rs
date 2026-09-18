@@ -1,11 +1,11 @@
 use payroll_domain::payslip::PayslipError;
 use payroll_domain::project::ProjectError;
-use payroll_domain::repository::RepositoryError;
 use payroll_domain::staff::StaffError;
 use platform_kernel::MoneyError;
 use thiserror::Error;
 
 use crate::ports::payout_gateway::PayoutError;
+use crate::ports::repository::RepositoryError;
 use crate::ports::user_directory::UserDirectoryError;
 
 /// usecase が返すエラー。gRPC のステータスへの翻訳は handler が行う

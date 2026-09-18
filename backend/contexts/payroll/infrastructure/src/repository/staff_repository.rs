@@ -1,8 +1,6 @@
 use async_trait::async_trait;
-use payroll_domain::repository::RepositoryError;
-use payroll_domain::staff::{
-    DisplayName, Email, NewStaff, Staff, StaffId, StaffRepository, UserId,
-};
+use payroll_domain::staff::{DisplayName, Email, NewStaff, Staff, StaffId, UserId};
+use payroll_usecase::ports::repository::{RepositoryError, StaffRepository};
 use sqlx::mysql::MySqlPool;
 
 use crate::db::{corrupted, db_err};
@@ -93,15 +91,5 @@ impl StaffRepository for MySqlStaffRepository {
         .map_err(db_err)?
         .map(Staff::try_from)
         .transpose()
-    }
-
-    async fn list(&self) -> Result<Vec<Staff>, RepositoryError> {
-        sqlx::query_as!(StaffRow, "select id, user_id, email, display_name from staff order by id",)
-            .fetch_all(&self.pool)
-            .await
-            .map_err(db_err)?
-            .into_iter()
-            .map(Staff::try_from)
-            .collect()
     }
 }

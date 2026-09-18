@@ -2,7 +2,6 @@
 
 pub mod payslip;
 pub mod project;
-pub mod repository;
 pub mod staff;
 
 /// 未保存の集約の ID の位置に入れる目印。

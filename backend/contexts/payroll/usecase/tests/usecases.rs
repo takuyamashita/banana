@@ -8,16 +8,13 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use payroll_domain::payslip::{
-    NewPayslip, PayPeriod, Payslip, PayslipEvent, PayslipId, PayslipLine, PayslipRepository,
-    WorkMinutes,
+    NewPayslip, PayPeriod, Payslip, PayslipEvent, PayslipId, PayslipLine, WorkMinutes,
 };
 use payroll_domain::project::ProjectId;
-use payroll_domain::repository::RepositoryError;
-use payroll_domain::staff::{
-    DisplayName, Email, NewStaff, Staff, StaffId, StaffRepository, UserId,
-};
+use payroll_domain::staff::{DisplayName, Email, NewStaff, Staff, StaffId, UserId};
 use payroll_usecase::UseCaseError;
 use payroll_usecase::payslip::{FinalizePayslipInput, FinalizePayslipUseCase, GetPayslipUseCase};
+use payroll_usecase::ports::repository::{PayslipRepository, RepositoryError, StaffRepository};
 use payroll_usecase::ports::user_directory::{UserDirectory, UserDirectoryError};
 use payroll_usecase::staff::{CreateStaffInput, CreateStaffUseCase};
 use platform_kernel::{AuthenticatedUser, Money, Role};
@@ -126,10 +123,6 @@ impl StaffRepository for FakeStaff {
 
     async fn find_by_email(&self, email: &Email) -> Result<Option<Staff>, RepositoryError> {
         Ok(self.rows.lock().unwrap().iter().find(|r| &r.2 == email).map(to_staff))
-    }
-
-    async fn list(&self) -> Result<Vec<Staff>, RepositoryError> {
-        Ok(self.rows.lock().unwrap().iter().map(to_staff).collect())
     }
 }
 

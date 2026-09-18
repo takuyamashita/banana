@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "select id, user_id, email, display_name from staff order by id",
+  "query": "select id, email, display_name from staff order by id",
   "describe": {
     "columns": [
       {
@@ -21,22 +21,6 @@
       },
       {
         "ordinal": 1,
-        "name": "user_id",
-        "type_info": {
-          "type": "VarString",
-          "flags": "NOT_NULL | UNIQUE_KEY | NO_DEFAULT_VALUE",
-          "collation": 255,
-          "max_size": 256
-        },
-        "origin": {
-          "Table": {
-            "table": "platform.staff",
-            "name": "user_id"
-          }
-        }
-      },
-      {
-        "ordinal": 2,
         "name": "email",
         "type_info": {
           "type": "VarString",
@@ -52,7 +36,7 @@
         }
       },
       {
-        "ordinal": 3,
+        "ordinal": 2,
         "name": "display_name",
         "type_info": {
           "type": "VarString",
@@ -74,9 +58,8 @@
     "nullable": [
       false,
       false,
-      false,
       false
     ]
   },
-  "hash": "fd096f78f987c75f36030b7696dd3dcbd3d38196ff98c60a4ee503b8794ac75a"
+  "hash": "054a9f7884f58af2047b9534c81b548849dcc0e5643327c1dfff56deed914060"
 }

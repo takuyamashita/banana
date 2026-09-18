@@ -1,6 +1,6 @@
 use async_trait::async_trait;
-use payroll_domain::project::{NewProject, Project, ProjectId, ProjectName, ProjectRepository};
-use payroll_domain::repository::RepositoryError;
+use payroll_domain::project::{NewProject, ProjectId};
+use payroll_usecase::ports::repository::{ProjectRepository, RepositoryError};
 use sqlx::mysql::MySqlPool;
 
 use crate::db::{corrupted, db_err};
@@ -27,20 +27,5 @@ impl ProjectRepository for MySqlProjectRepository {
         i64::try_from(result.last_insert_id())
             .map_err(corrupted)
             .and_then(|id| ProjectId::from_i64(id).map_err(corrupted))
-    }
-
-    async fn list(&self) -> Result<Vec<Project>, RepositoryError> {
-        sqlx::query!("select id, name from projects order by id")
-            .fetch_all(&self.pool)
-            .await
-            .map_err(db_err)?
-            .into_iter()
-            .map(|row| {
-                Ok(Project::reconstruct(
-                    ProjectId::from_i64(row.id).map_err(corrupted)?,
-                    ProjectName::new(row.name).map_err(corrupted)?,
-                ))
-            })
-            .collect()
     }
 }

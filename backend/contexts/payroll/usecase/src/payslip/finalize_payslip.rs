@@ -1,9 +1,10 @@
 use std::sync::Arc;
 
-use payroll_domain::payslip::{NewPayslip, PayPeriod, PayslipId, PayslipLine, PayslipRepository};
-use payroll_domain::staff::{StaffId, StaffRepository};
+use payroll_domain::payslip::{NewPayslip, PayPeriod, PayslipId, PayslipLine};
+use payroll_domain::staff::StaffId;
 
 use crate::UseCaseError;
+use crate::ports::repository::{PayslipRepository, StaffRepository};
 
 pub struct FinalizePayslipInput {
     pub staff_id: StaffId,

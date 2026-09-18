@@ -1,8 +1,10 @@
 use std::sync::Arc;
 
-use payroll_domain::project::{NewProject, Project, ProjectId, ProjectName, ProjectRepository};
+use payroll_domain::project::{NewProject, ProjectId, ProjectName};
 
 use crate::UseCaseError;
+use crate::ports::queries::{ProjectQuery, ProjectView};
+use crate::ports::repository::ProjectRepository;
 
 pub struct CreateProjectUseCase {
     repository: Arc<dyn ProjectRepository>,
@@ -20,16 +22,16 @@ impl CreateProjectUseCase {
 }
 
 pub struct ListProjectsUseCase {
-    repository: Arc<dyn ProjectRepository>,
+    query: Arc<dyn ProjectQuery>,
 }
 
 impl ListProjectsUseCase {
     #[must_use]
-    pub fn new(repository: Arc<dyn ProjectRepository>) -> Self {
-        Self { repository }
+    pub fn new(query: Arc<dyn ProjectQuery>) -> Self {
+        Self { query }
     }
 
-    pub async fn execute(&self) -> Result<Vec<Project>, UseCaseError> {
-        Ok(self.repository.list().await?)
+    pub async fn execute(&self) -> Result<Vec<ProjectView>, UseCaseError> {
+        Ok(self.query.list().await?)
     }
 }

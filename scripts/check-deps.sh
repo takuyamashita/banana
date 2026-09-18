@@ -64,8 +64,8 @@ for crate in $MEMBERS; do
   done
 done
 
-# domain の純度: I/O 系 crate に推移的にも依存しない
-IO_CRATES='^(tokio|sqlx|sqlx-core|tonic|hyper|reqwest|axum|mio|aws-config|aws-smithy-runtime|lambda_runtime|serde_json)$'
+# domain の純度: I/O 系 crate に推移的にも依存しない。リポジトリの trait は usecase にあるので async-trait も不要
+IO_CRATES='^(tokio|sqlx|sqlx-core|tonic|hyper|reqwest|axum|mio|aws-config|aws-smithy-runtime|lambda_runtime|serde_json|async-trait|futures-core)$'
 for crate in $(grep -- '-domain$' <<<"$MEMBERS"); do
   for dep in $(transitive "$crate"); do
     if [[ "$dep" =~ $IO_CRATES ]]; then
