@@ -6,6 +6,7 @@ use crate::UseCaseError;
 use crate::ports::queries::{ProjectQuery, ProjectView};
 use crate::ports::repository::ProjectRepository;
 
+/// 管理者が案件を登録する
 pub struct CreateProjectUseCase {
     repository: Arc<dyn ProjectRepository>,
 }
@@ -16,11 +17,13 @@ impl CreateProjectUseCase {
         Self { repository }
     }
 
+    /// 案件を登録し、振られた案件番号を返す
     pub async fn execute(&self, name: ProjectName) -> Result<ProjectId, UseCaseError> {
         Ok(self.repository.insert(&NewProject::new(name)).await?)
     }
 }
 
+/// 管理者が、登録済みの案件を一覧する
 pub struct ListProjectsUseCase {
     query: Arc<dyn ProjectQuery>,
 }

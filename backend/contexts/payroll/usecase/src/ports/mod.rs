@@ -1,8 +1,9 @@
-//! usecase が外部に求めるもの(ports)。実装は infrastructure に置く。
+//! 操作を進めるために頼る先。
 //!
-//! - repository: 集約の出し入れ(書き込み側)。集約を丸ごと保存・復元する
-//! - queries: 画面向けの読み取り。集約を組み立てず、表示用の型を直接返す
-//! - payout_gateway・user_directory: 外部 API
+//! - repository: 案件・派遣社員・給与明細を記録し、記録から取り出す
+//! - queries: 一覧画面に出すための情報を取り出す
+//! - payout_gateway: 派遣社員の口座への振込を依頼する先
+//! - user_directory: 派遣社員のログイン用アカウントを発行・停止する先
 
 pub mod payout_gateway;
 pub mod queries;

@@ -7,8 +7,7 @@ use platform_kernel::{AuthenticatedUser, Role};
 use crate::UseCaseError;
 use crate::ports::repository::{PayslipRepository, StaffRepository};
 
-/// 明細を見てよいのは管理者か、明細の本人だけ。
-/// ID は連番で API に露出するので、この確認が他人の明細を引けないことを保証する唯一の手段
+/// 給与明細を見てよいのは、管理者と、その給与明細を受け取る派遣社員本人だけ
 async fn can_view(
     staff_repository: &dyn StaffRepository,
     user: &AuthenticatedUser,
@@ -22,6 +21,7 @@ async fn can_view(
     Ok(me.is_some_and(|s| s.id() == owner))
 }
 
+/// 給与明細を1件見る。管理者はすべて、派遣社員は自分のものだけ見られる
 pub struct GetPayslipUseCase {
     repository: Arc<dyn PayslipRepository>,
     staff_repository: Arc<dyn StaffRepository>,
@@ -36,6 +36,10 @@ impl GetPayslipUseCase {
         Self { repository, staff_repository }
     }
 
+    /// 給与明細番号で給与明細を返す。
+    ///
+    /// 見る権限のない給与明細は、存在しないものと同じく `NotFound` になる。
+    /// 他人の給与明細が存在するかどうかも、本人以外には知らせない
     pub async fn execute(
         &self,
         user: &AuthenticatedUser,
@@ -43,7 +47,6 @@ impl GetPayslipUseCase {
     ) -> Result<Payslip, UseCaseError> {
         let payslip = self.repository.find(id).await?.ok_or(UseCaseError::NotFound)?;
 
-        // 他人の明細は「存在しない」と同じ応答にし、IDの存在を漏らさない
         if !can_view(self.staff_repository.as_ref(), user, payslip.staff_id()).await? {
             return Err(UseCaseError::NotFound);
         }
@@ -51,6 +54,7 @@ impl GetPayslipUseCase {
     }
 }
 
+/// 派遣社員の給与明細を一覧する。管理者は誰のものでも、派遣社員は自分のものだけ見られる
 pub struct ListPayslipsUseCase {
     repository: Arc<dyn PayslipRepository>,
     staff_repository: Arc<dyn StaffRepository>,
@@ -65,6 +69,8 @@ impl ListPayslipsUseCase {
         Self { repository, staff_repository }
     }
 
+    /// 派遣社員の有効な給与明細を、新しい月から順に返す。
+    /// 見る権限がなければ `NotFound` になる
     pub async fn execute(
         &self,
         user: &AuthenticatedUser,

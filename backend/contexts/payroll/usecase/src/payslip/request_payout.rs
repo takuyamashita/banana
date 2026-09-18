@@ -6,7 +6,7 @@ use platform_kernel::Money;
 use crate::UseCaseError;
 use crate::ports::payout_gateway::PayoutGateway;
 
-// SQSのconsumerから呼ばれるユースケース
+/// 確定した給与を、派遣社員の口座に振り込むよう依頼する
 pub struct RequestPayoutUseCase {
     payout_gateway: Arc<dyn PayoutGateway>,
 }
@@ -17,6 +17,8 @@ impl RequestPayoutUseCase {
         Self { payout_gateway }
     }
 
+    /// 派遣社員に支給額を振り込むよう依頼する。
+    /// `idempotency_key` は給与確定ごとの番号で、同じ給与確定について何度依頼しても振込は1回になる
     pub async fn execute(
         &self,
         staff_id: StaffId,
