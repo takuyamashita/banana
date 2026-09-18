@@ -2,7 +2,7 @@ name: proto
 
 on:
   pull_request:
-    paths: ["proto/**", "buf.yaml", "buf.gen.yaml"]
+    paths: ["proto/**", "buf.yaml", "buf.gen.yaml", ".github/workflows/proto.yml"]
 
 permissions:
   contents: read

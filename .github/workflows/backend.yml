@@ -13,11 +13,23 @@ on:
         "clippy.toml",
         "rustfmt.toml",
         "mise.toml",
+        "rust-toolchain.toml",
         "scripts/check-deps.sh",
+        ".github/workflows/backend.yml",
       ]
   push:
     branches: [main]
-    paths: ["backend/**", "proto/**", "Cargo.toml", "Cargo.lock", ".sqlx/**"]
+    paths:
+      [
+        "backend/**",
+        "proto/**",
+        "Cargo.toml",
+        "Cargo.lock",
+        ".sqlx/**",
+        "mise.toml",
+        "rust-toolchain.toml",
+        ".github/workflows/backend.yml",
+      ]
 
 permissions:
   contents: read

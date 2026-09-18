@@ -2,7 +2,7 @@ name: infra
 
 on:
   pull_request:
-    paths: ["infra/**"]
+    paths: ["infra/**", "mise.toml", ".github/workflows/infra.yml"]
 
 permissions:
   contents: read

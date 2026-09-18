@@ -2,7 +2,18 @@ name: e2e
 
 on:
   pull_request:
-    paths: ["backend/**", "frontend/**", "proto/**", "e2e/**", "compose.yaml", "compose/**"]
+    paths:
+      [
+        "backend/**",
+        "frontend/**",
+        "proto/**",
+        "e2e/**",
+        "compose.yaml",
+        "compose/**",
+        "mise.toml",
+        "rust-toolchain.toml",
+        ".github/workflows/e2e.yml",
+      ]
   push:
     branches: [main]
   schedule:
