@@ -3,6 +3,7 @@
 use async_trait::async_trait;
 use thiserror::Error;
 
+use crate::Unsaved;
 use crate::repository::RepositoryError;
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -48,30 +49,30 @@ impl ProjectName {
     }
 }
 
+/// 案件。`Id` は保存済みなら `ProjectId`、未保存なら `Unsaved`
 #[derive(Debug)]
-pub struct NewProject {
+pub struct Project<Id = ProjectId> {
+    id: Id,
     name: ProjectName,
 }
 
-impl NewProject {
-    #[must_use]
-    pub fn new(name: ProjectName) -> Self {
-        Self { name }
-    }
+pub type NewProject = Project<Unsaved>;
 
+impl<Id> Project<Id> {
     #[must_use]
     pub fn name(&self) -> &ProjectName {
         &self.name
     }
 }
 
-#[derive(Debug)]
-pub struct Project {
-    id: ProjectId,
-    name: ProjectName,
+impl Project<Unsaved> {
+    #[must_use]
+    pub fn new(name: ProjectName) -> Self {
+        Self { id: Unsaved, name }
+    }
 }
 
-impl Project {
+impl Project<ProjectId> {
     // 永続化からの再構築専用
     #[must_use]
     pub fn reconstruct(id: ProjectId, name: ProjectName) -> Self {
@@ -81,11 +82,6 @@ impl Project {
     #[must_use]
     pub fn id(&self) -> ProjectId {
         self.id
-    }
-
-    #[must_use]
-    pub fn name(&self) -> &ProjectName {
-        &self.name
     }
 }
 

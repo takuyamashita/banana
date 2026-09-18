@@ -61,7 +61,8 @@ description = "Rust(nextest)とフロントのテスト"
 depends = ["test:rust", "test:ts"]
 
 [tasks."test:rust"]
-run = "cargo nextest run --workspace"
+# nextest は doc テストを実行しないので、cargo test --doc を別に回す
+run = ["cargo nextest run --workspace", "cargo test --doc --workspace --quiet"]
 
 [tasks."test:ts"]
 # E2E は mise run e2e で別に回す(依存サービスと server が要る)

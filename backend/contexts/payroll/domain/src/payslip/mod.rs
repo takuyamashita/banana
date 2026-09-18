@@ -5,6 +5,7 @@ use platform_kernel::Money;
 use thiserror::Error;
 use time::{Date, Month, OffsetDateTime, UtcOffset};
 
+use crate::Unsaved;
 use crate::project::ProjectId;
 use crate::repository::RepositoryError;
 use crate::staff::StaffId;
@@ -167,9 +168,11 @@ pub enum PayslipEvent {
     Finalized { staff_id: StaffId, period: PayPeriod, total: Money },
 }
 
-// 未保存・保存済みに共通の中身。不変条件・状態遷移・合計の業務ルールはここにだけ書く
+/// 給与明細。`Id` は保存済みなら `PayslipId`、未保存なら `Unsaved`。
+/// 不変条件・状態遷移・合計の業務ルールは `impl<Id>` に1回だけ書き、未保存・保存済みの両方で使う
 #[derive(Debug)]
-struct PayslipBody {
+pub struct Payslip<Id = PayslipId> {
+    id: Id,
     staff_id: StaffId,
     period: PayPeriod,
     lines: Vec<PayslipLine>,
@@ -177,8 +180,11 @@ struct PayslipBody {
     events: Vec<PayslipEvent>,
 }
 
-impl PayslipBody {
-    fn new(
+pub type NewPayslip = Payslip<Unsaved>;
+
+impl<Id> Payslip<Id> {
+    fn with_id(
+        id: Id,
         staff_id: StaffId,
         period: PayPeriod,
         lines: Vec<PayslipLine>,
@@ -187,14 +193,35 @@ impl PayslipBody {
         if lines.is_empty() {
             return Err(PayslipError::EmptyLines);
         }
-        Ok(Self { staff_id, period, lines, status, events: Vec::new() })
+        Ok(Self { id, staff_id, period, lines, status, events: Vec::new() })
     }
 
-    fn total(&self) -> Money {
+    #[must_use]
+    pub fn staff_id(&self) -> StaffId {
+        self.staff_id
+    }
+
+    #[must_use]
+    pub fn period(&self) -> PayPeriod {
+        self.period
+    }
+
+    #[must_use]
+    pub fn lines(&self) -> &[PayslipLine] {
+        &self.lines
+    }
+
+    #[must_use]
+    pub fn status(&self) -> PayslipStatus {
+        self.status
+    }
+
+    #[must_use]
+    pub fn total(&self) -> Money {
         self.lines.iter().map(PayslipLine::amount).fold(Money::ZERO, |acc, m| acc + m)
     }
 
-    fn finalize(&mut self) -> Result<(), PayslipError> {
+    pub fn finalize(&mut self) -> Result<(), PayslipError> {
         if self.status != PayslipStatus::Draft {
             return Err(PayslipError::AlreadyFinalized);
         }
@@ -209,69 +236,22 @@ impl PayslipBody {
         Ok(())
     }
 
-    fn take_events(&mut self) -> Vec<PayslipEvent> {
+    pub fn take_events(&mut self) -> Vec<PayslipEvent> {
         std::mem::take(&mut self.events)
     }
 }
 
-// 未保存の給与明細。ID を持たないことを型で表す
-#[derive(Debug)]
-pub struct NewPayslip {
-    body: PayslipBody,
-}
-
-// 保存済みの給与明細。常に ID を持つ
-#[derive(Debug)]
-pub struct Payslip {
-    id: PayslipId,
-    body: PayslipBody,
-}
-
-impl NewPayslip {
+impl Payslip<Unsaved> {
     pub fn draft(
         staff_id: StaffId,
         period: PayPeriod,
         lines: Vec<PayslipLine>,
     ) -> Result<Self, PayslipError> {
-        let body = PayslipBody::new(staff_id, period, lines, PayslipStatus::Draft)?;
-        Ok(Self { body })
-    }
-
-    #[must_use]
-    pub fn staff_id(&self) -> StaffId {
-        self.body.staff_id
-    }
-
-    #[must_use]
-    pub fn period(&self) -> PayPeriod {
-        self.body.period
-    }
-
-    #[must_use]
-    pub fn lines(&self) -> &[PayslipLine] {
-        &self.body.lines
-    }
-
-    #[must_use]
-    pub fn status(&self) -> PayslipStatus {
-        self.body.status
-    }
-
-    #[must_use]
-    pub fn total(&self) -> Money {
-        self.body.total()
-    }
-
-    pub fn finalize(&mut self) -> Result<(), PayslipError> {
-        self.body.finalize()
-    }
-
-    pub fn take_events(&mut self) -> Vec<PayslipEvent> {
-        self.body.take_events()
+        Self::with_id(Unsaved, staff_id, period, lines, PayslipStatus::Draft)
     }
 }
 
-impl Payslip {
+impl Payslip<PayslipId> {
     // 永続化からの再構築専用。repository実装からのみ呼ぶ(usecase・handler は clippy で禁止)
     pub fn reconstruct(
         id: PayslipId,
@@ -280,46 +260,12 @@ impl Payslip {
         lines: Vec<PayslipLine>,
         status: PayslipStatus,
     ) -> Result<Self, PayslipError> {
-        let body = PayslipBody::new(staff_id, period, lines, status)?;
-        Ok(Self { id, body })
+        Self::with_id(id, staff_id, period, lines, status)
     }
 
     #[must_use]
     pub fn id(&self) -> PayslipId {
         self.id
-    }
-
-    #[must_use]
-    pub fn staff_id(&self) -> StaffId {
-        self.body.staff_id
-    }
-
-    #[must_use]
-    pub fn period(&self) -> PayPeriod {
-        self.body.period
-    }
-
-    #[must_use]
-    pub fn lines(&self) -> &[PayslipLine] {
-        &self.body.lines
-    }
-
-    #[must_use]
-    pub fn status(&self) -> PayslipStatus {
-        self.body.status
-    }
-
-    #[must_use]
-    pub fn total(&self) -> Money {
-        self.body.total()
-    }
-
-    pub fn finalize(&mut self) -> Result<(), PayslipError> {
-        self.body.finalize()
-    }
-
-    pub fn take_events(&mut self) -> Vec<PayslipEvent> {
-        self.body.take_events()
     }
 }
 

@@ -6,6 +6,7 @@
 use async_trait::async_trait;
 use thiserror::Error;
 
+use crate::Unsaved;
 use crate::repository::RepositoryError;
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -96,19 +97,18 @@ impl DisplayName {
     }
 }
 
+/// 派遣社員。`Id` は保存済みなら `StaffId`、未保存なら `Unsaved`
 #[derive(Debug)]
-pub struct NewStaff {
+pub struct Staff<Id = StaffId> {
+    id: Id,
     user_id: UserId,
     email: Email,
     display_name: DisplayName,
 }
 
-impl NewStaff {
-    #[must_use]
-    pub fn new(user_id: UserId, email: Email, display_name: DisplayName) -> Self {
-        Self { user_id, email, display_name }
-    }
+pub type NewStaff = Staff<Unsaved>;
 
+impl<Id> Staff<Id> {
     #[must_use]
     pub fn user_id(&self) -> &UserId {
         &self.user_id
@@ -125,15 +125,14 @@ impl NewStaff {
     }
 }
 
-#[derive(Debug)]
-pub struct Staff {
-    id: StaffId,
-    user_id: UserId,
-    email: Email,
-    display_name: DisplayName,
+impl Staff<Unsaved> {
+    #[must_use]
+    pub fn new(user_id: UserId, email: Email, display_name: DisplayName) -> Self {
+        Self { id: Unsaved, user_id, email, display_name }
+    }
 }
 
-impl Staff {
+impl Staff<StaffId> {
     // 永続化からの再構築専用
     #[must_use]
     pub fn reconstruct(
@@ -148,21 +147,6 @@ impl Staff {
     #[must_use]
     pub fn id(&self) -> StaffId {
         self.id
-    }
-
-    #[must_use]
-    pub fn user_id(&self) -> &UserId {
-        &self.user_id
-    }
-
-    #[must_use]
-    pub fn email(&self) -> &Email {
-        &self.email
-    }
-
-    #[must_use]
-    pub fn display_name(&self) -> &DisplayName {
-        &self.display_name
     }
 }
 
