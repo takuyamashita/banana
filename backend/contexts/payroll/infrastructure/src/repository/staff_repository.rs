@@ -1,8 +1,9 @@
 use async_trait::async_trait;
 use payroll_domain::staff::{DisplayName, NewStaff, Staff, StaffId};
-use payroll_usecase::ports::repository::{RepositoryError, StaffRepository};
+use payroll_usecase::ports::repository::{RepositoryError, StaffRepository, StaffStore};
 use platform_kernel::{Email, UserId};
 use sqlx::mysql::MySqlPool;
+use sqlx::{MySql, Transaction};
 
 use crate::db::{corrupted, db_err};
 
@@ -39,22 +40,6 @@ impl TryFrom<StaffRow> for Staff {
 
 #[async_trait]
 impl StaffRepository for MySqlStaffRepository {
-    async fn insert(&self, new: &NewStaff) -> Result<StaffId, RepositoryError> {
-        let result = sqlx::query!(
-            "insert into staff (user_id, email, display_name) values (?, ?, ?)",
-            new.user_id().as_str(),
-            new.email().as_str(),
-            new.display_name().as_str(),
-        )
-        .execute(&self.pool)
-        .await
-        .map_err(db_err)?;
-
-        i64::try_from(result.last_insert_id())
-            .map_err(corrupted)
-            .and_then(|id| StaffId::from_i64(id).map_err(corrupted))
-    }
-
     async fn find(&self, id: StaffId) -> Result<Option<Staff>, RepositoryError> {
         sqlx::query_as!(
             StaffRow,
@@ -92,5 +77,35 @@ impl StaffRepository for MySqlStaffRepository {
         .map_err(db_err)?
         .map(Staff::try_from)
         .transpose()
+    }
+}
+
+/// トランザクションの中での派遣社員の記録
+pub struct MySqlStaffStore<'a> {
+    tx: &'a mut Transaction<'static, MySql>,
+}
+
+impl<'a> MySqlStaffStore<'a> {
+    pub(crate) fn new(tx: &'a mut Transaction<'static, MySql>) -> Self {
+        Self { tx }
+    }
+}
+
+#[async_trait]
+impl StaffStore for MySqlStaffStore<'_> {
+    async fn insert(&mut self, new: &NewStaff) -> Result<StaffId, RepositoryError> {
+        let result = sqlx::query!(
+            "insert into staff (user_id, email, display_name) values (?, ?, ?)",
+            new.user_id().as_str(),
+            new.email().as_str(),
+            new.display_name().as_str(),
+        )
+        .execute(&mut **self.tx)
+        .await
+        .map_err(db_err)?;
+
+        i64::try_from(result.last_insert_id())
+            .map_err(corrupted)
+            .and_then(|id| StaffId::from_i64(id).map_err(corrupted))
     }
 }

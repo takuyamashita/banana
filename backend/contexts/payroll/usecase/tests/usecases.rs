@@ -8,82 +8,48 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use payroll_domain::payslip::{
-    NewPayslip, PayPeriod, Payslip, PayslipEvent, PayslipId, PayslipLine, WorkMinutes,
+    NewPayslip, PayPeriod, Payslip, PayslipEvent, PayslipId, PayslipLine, PayslipStatus,
+    WorkMinutes,
 };
-use payroll_domain::project::ProjectId;
+use payroll_domain::project::{NewProject, ProjectId};
 use payroll_domain::staff::{DisplayName, NewStaff, Staff, StaffId};
 use payroll_usecase::UseCaseError;
 use payroll_usecase::payslip::{FinalizePayslipInput, FinalizePayslipUseCase, GetPayslipUseCase};
-use payroll_usecase::ports::repository::{PayslipRepository, RepositoryError, StaffRepository};
+use payroll_usecase::ports::events::{EventOutbox, PayrollEvent};
+use payroll_usecase::ports::repository::{
+    PayslipRepository, PayslipStore, ProjectStore, RepositoryError, StaffRepository, StaffStore,
+};
+use payroll_usecase::ports::transaction::{TransactionScope, Transactions};
 use payroll_usecase::ports::user_directory::{UserDirectory, UserDirectoryError};
 use payroll_usecase::staff::{CreateStaffInput, CreateStaffUseCase};
-use platform_kernel::{AuthenticatedUser, Money, Role};
-use platform_kernel::{Email, UserId};
+use platform_kernel::{AuthenticatedUser, Email, Money, Role, UserId};
 
 // ---- フェイク ----
 // フェイクも「リポジトリ実装」なので reconstruct を呼ぶ必要がある。usecase の clippy.toml は
 // crate 全体(tests/ も含む)に効くため、ここだけ明示的に許可する
 
 type PayslipRow = (PayslipId, StaffId, PayPeriod, Vec<PayslipLine>);
+type StaffRow = (StaffId, UserId, Email);
 
-#[derive(Default)]
-struct FakePayslips {
-    rows: Mutex<Vec<PayslipRow>>,
-    events: Mutex<Vec<PayslipEvent>>,
-}
-
-#[async_trait]
-impl PayslipRepository for FakePayslips {
-    async fn insert(&self, new: &mut NewPayslip) -> Result<Payslip, RepositoryError> {
-        let mut rows = self.rows.lock().unwrap();
-        let id = PayslipId::from_i64(i64::try_from(rows.len()).unwrap() + 1).unwrap();
-        rows.push((id, new.staff_id(), new.period(), new.lines().to_vec()));
-        self.events.lock().unwrap().extend(new.take_events());
-        #[allow(clippy::disallowed_methods, reason = "フェイクのリポジトリ実装")]
-        Ok(Payslip::reconstruct(
-            id,
-            new.staff_id(),
-            new.period(),
-            new.lines().to_vec(),
-            new.status(),
-        )
-        .unwrap())
-    }
-
-    async fn update(&self, _payslip: &mut Payslip) -> Result<(), RepositoryError> {
-        unimplemented!()
-    }
-
-    async fn find(&self, id: PayslipId) -> Result<Option<Payslip>, RepositoryError> {
-        Ok(self.rows.lock().unwrap().iter().find(|r| r.0 == id).map(to_payslip))
-    }
-
-    async fn list_by_staff(&self, staff_id: StaffId) -> Result<Vec<Payslip>, RepositoryError> {
-        Ok(self.rows.lock().unwrap().iter().filter(|r| r.1 == staff_id).map(to_payslip).collect())
-    }
-}
-
-#[allow(clippy::disallowed_methods, reason = "フェイクのリポジトリ実装")]
-fn to_payslip(r: &PayslipRow) -> Payslip {
-    Payslip::reconstruct(
-        r.0,
-        r.1,
-        r.2,
-        r.3.clone(),
-        payroll_domain::payslip::PayslipStatus::Finalized,
-    )
-    .unwrap()
+/// 確定済みの記録。取り出しはここを見て、トランザクションは commit でここへ反映する
+#[derive(Default, Clone)]
+struct Records {
+    payslips: Vec<PayslipRow>,
+    staff: Vec<StaffRow>,
+    projects: Vec<ProjectId>,
+    events: Vec<PayrollEvent>,
 }
 
 #[derive(Default)]
-struct FakeStaff {
-    rows: Mutex<Vec<(StaffId, UserId, Email)>>,
-    fail_insert: bool,
+struct World {
+    committed: Mutex<Records>,
+    fail_staff_insert: bool,
+    fail_event_append: bool,
 }
 
-impl FakeStaff {
-    fn with(rows: &[(i64, &str)]) -> Self {
-        let rows = rows
+impl World {
+    fn with_staff(rows: &[(i64, &str)]) -> Self {
+        let staff = rows
             .iter()
             .map(|(id, user)| {
                 (
@@ -93,37 +59,145 @@ impl FakeStaff {
                 )
             })
             .collect();
-        Self { rows: Mutex::new(rows), fail_insert: false }
+        Self { committed: Mutex::new(Records { staff, ..Records::default() }), ..Self::default() }
     }
+
+    fn records(&self) -> Records {
+        self.committed.lock().unwrap().clone()
+    }
+}
+
+fn next_id(len: usize) -> i64 {
+    i64::try_from(len).unwrap() + 1
 }
 
 #[allow(clippy::disallowed_methods, reason = "フェイクのリポジトリ実装")]
-fn to_staff(r: &(StaffId, UserId, Email)) -> Staff {
+fn to_payslip(r: &PayslipRow) -> Payslip {
+    Payslip::reconstruct(r.0, r.1, r.2, r.3.clone(), PayslipStatus::Finalized).unwrap()
+}
+
+#[allow(clippy::disallowed_methods, reason = "フェイクのリポジトリ実装")]
+fn to_staff(r: &StaffRow) -> Staff {
     Staff::reconstruct(r.0, r.1.clone(), r.2.clone(), DisplayName::new("x").unwrap())
 }
 
+struct FakePayslips(Arc<World>);
+
 #[async_trait]
-impl StaffRepository for FakeStaff {
-    async fn insert(&self, new: &NewStaff) -> Result<StaffId, RepositoryError> {
-        if self.fail_insert {
-            return Err(RepositoryError::Unavailable("db down".into()));
-        }
-        let mut rows = self.rows.lock().unwrap();
-        let id = StaffId::from_i64(i64::try_from(rows.len()).unwrap() + 1).unwrap();
-        rows.push((id, new.user_id().clone(), new.email().clone()));
-        Ok(id)
+impl PayslipRepository for FakePayslips {
+    async fn find(&self, id: PayslipId) -> Result<Option<Payslip>, RepositoryError> {
+        Ok(self.0.records().payslips.iter().find(|r| r.0 == id).map(to_payslip))
     }
 
+    async fn list_by_staff(&self, staff_id: StaffId) -> Result<Vec<Payslip>, RepositoryError> {
+        Ok(self.0.records().payslips.iter().filter(|r| r.1 == staff_id).map(to_payslip).collect())
+    }
+}
+
+struct FakeStaff(Arc<World>);
+
+#[async_trait]
+impl StaffRepository for FakeStaff {
     async fn find(&self, id: StaffId) -> Result<Option<Staff>, RepositoryError> {
-        Ok(self.rows.lock().unwrap().iter().find(|r| r.0 == id).map(to_staff))
+        Ok(self.0.records().staff.iter().find(|r| r.0 == id).map(to_staff))
     }
 
     async fn find_by_user_id(&self, user_id: &UserId) -> Result<Option<Staff>, RepositoryError> {
-        Ok(self.rows.lock().unwrap().iter().find(|r| &r.1 == user_id).map(to_staff))
+        Ok(self.0.records().staff.iter().find(|r| &r.1 == user_id).map(to_staff))
     }
 
     async fn find_by_email(&self, email: &Email) -> Result<Option<Staff>, RepositoryError> {
-        Ok(self.rows.lock().unwrap().iter().find(|r| &r.2 == email).map(to_staff))
+        Ok(self.0.records().staff.iter().find(|r| &r.2 == email).map(to_staff))
+    }
+}
+
+struct FakeTransactions(Arc<World>);
+
+#[async_trait]
+impl Transactions for FakeTransactions {
+    async fn begin(&self) -> Result<Box<dyn TransactionScope>, RepositoryError> {
+        let pending = self.0.records();
+        Ok(Box::new(FakeScope { world: self.0.clone(), pending }))
+    }
+}
+
+/// commit までの記録を手元に溜め、commit で丸ごと反映する
+struct FakeScope {
+    world: Arc<World>,
+    pending: Records,
+}
+
+#[async_trait]
+impl TransactionScope for FakeScope {
+    fn payslips(&mut self) -> Box<dyn PayslipStore + '_> {
+        Box::new(Pending(self))
+    }
+
+    fn staff(&mut self) -> Box<dyn StaffStore + '_> {
+        Box::new(Pending(self))
+    }
+
+    fn projects(&mut self) -> Box<dyn ProjectStore + '_> {
+        Box::new(Pending(self))
+    }
+
+    fn events(&mut self) -> Box<dyn EventOutbox + '_> {
+        Box::new(Pending(self))
+    }
+
+    async fn commit(self: Box<Self>) -> Result<(), RepositoryError> {
+        *self.world.committed.lock().unwrap() = self.pending;
+        Ok(())
+    }
+}
+
+struct Pending<'a>(&'a mut FakeScope);
+
+#[async_trait]
+impl PayslipStore for Pending<'_> {
+    async fn insert(&mut self, new: &NewPayslip) -> Result<PayslipId, RepositoryError> {
+        let rows = &mut self.0.pending.payslips;
+        let id = PayslipId::from_i64(next_id(rows.len())).unwrap();
+        rows.push((id, new.staff_id(), new.period(), new.lines().to_vec()));
+        Ok(id)
+    }
+
+    async fn update(&mut self, _payslip: &Payslip) -> Result<(), RepositoryError> {
+        unimplemented!()
+    }
+}
+
+#[async_trait]
+impl StaffStore for Pending<'_> {
+    async fn insert(&mut self, new: &NewStaff) -> Result<StaffId, RepositoryError> {
+        if self.0.world.fail_staff_insert {
+            return Err(RepositoryError::Unavailable("db down".into()));
+        }
+        let rows = &mut self.0.pending.staff;
+        let id = StaffId::from_i64(next_id(rows.len())).unwrap();
+        rows.push((id, new.user_id().clone(), new.email().clone()));
+        Ok(id)
+    }
+}
+
+#[async_trait]
+impl ProjectStore for Pending<'_> {
+    async fn insert(&mut self, _new: &NewProject) -> Result<ProjectId, RepositoryError> {
+        let rows = &mut self.0.pending.projects;
+        let id = ProjectId::from_i64(next_id(rows.len())).unwrap();
+        rows.push(id);
+        Ok(id)
+    }
+}
+
+#[async_trait]
+impl EventOutbox for Pending<'_> {
+    async fn append(&mut self, event: PayrollEvent) -> Result<(), RepositoryError> {
+        if self.0.world.fail_event_append {
+            return Err(RepositoryError::Unavailable("db down".into()));
+        }
+        self.0.pending.events.push(event);
+        Ok(())
     }
 }
 
@@ -149,6 +223,14 @@ impl UserDirectory for FakeDirectory {
 
 // ---- ヘルパー ----
 
+fn finalize_usecase(world: &Arc<World>) -> FinalizePayslipUseCase {
+    FinalizePayslipUseCase::new(
+        Arc::new(FakePayslips(world.clone())),
+        Arc::new(FakeStaff(world.clone())),
+        Arc::new(FakeTransactions(world.clone())),
+    )
+}
+
 fn line() -> PayslipLine {
     PayslipLine::new(
         ProjectId::from_i64(1).unwrap(),
@@ -172,36 +254,44 @@ fn user(sub: &str, roles: &[Role]) -> AuthenticatedUser {
 // ---- テスト ----
 
 #[tokio::test]
-async fn finalize_records_event_through_repository() {
-    let payslips = Arc::new(FakePayslips::default());
-    let staff = Arc::new(FakeStaff::with(&[(1, "taro")]));
-    let usecase = FinalizePayslipUseCase::new(payslips.clone(), staff);
+async fn finalize_records_the_payslip_and_its_event_together() {
+    let world = Arc::new(World::with_staff(&[(1, "taro")]));
 
-    usecase.execute(input(1, 9)).await.unwrap();
+    let id = finalize_usecase(&world).execute(input(1, 9)).await.unwrap();
 
-    let events = payslips.events.lock().unwrap();
+    let records = world.records();
+    assert_eq!(records.payslips.len(), 1);
     assert!(matches!(
-        events.as_slice(),
-        [PayslipEvent::Finalized { total, .. }] if total.as_yen() == 12_000
+        records.events.as_slice(),
+        [PayrollEvent::Payslip { id: event_id, event: PayslipEvent::Finalized { total, .. } }]
+            if *event_id == id && total.as_yen() == 12_000
     ));
 }
 
 #[tokio::test]
+async fn finalize_keeps_nothing_when_the_event_cannot_be_recorded() {
+    let world = Arc::new(World { fail_event_append: true, ..World::with_staff(&[(1, "taro")]) });
+
+    let err = finalize_usecase(&world).execute(input(1, 9)).await.unwrap_err();
+
+    assert!(matches!(err, UseCaseError::Unavailable(_)));
+    let records = world.records();
+    assert!(records.payslips.is_empty());
+    assert!(records.events.is_empty());
+}
+
+#[tokio::test]
 async fn finalize_rejects_unknown_staff() {
-    let usecase = FinalizePayslipUseCase::new(
-        Arc::new(FakePayslips::default()),
-        Arc::new(FakeStaff::default()),
-    );
-    let err = usecase.execute(input(1, 9)).await.unwrap_err();
+    let world = Arc::new(World::default());
+    let err = finalize_usecase(&world).execute(input(1, 9)).await.unwrap_err();
     assert!(matches!(err, UseCaseError::InvalidInput(_)));
 }
 
 #[tokio::test]
 async fn finalize_rejects_same_month_twice() {
-    let usecase = FinalizePayslipUseCase::new(
-        Arc::new(FakePayslips::default()),
-        Arc::new(FakeStaff::with(&[(1, "taro")])),
-    );
+    let world = Arc::new(World::with_staff(&[(1, "taro")]));
+    let usecase = finalize_usecase(&world);
+
     usecase.execute(input(1, 9)).await.unwrap();
     let err = usecase.execute(input(1, 9)).await.unwrap_err();
     assert!(matches!(err, UseCaseError::Conflict(_)));
@@ -210,13 +300,10 @@ async fn finalize_rejects_same_month_twice() {
 
 #[tokio::test]
 async fn only_admin_or_owner_can_view_payslip() {
-    let payslips = Arc::new(FakePayslips::default());
-    let staff = Arc::new(FakeStaff::with(&[(1, "taro"), (2, "hanako")]));
-    let id = FinalizePayslipUseCase::new(payslips.clone(), staff.clone())
-        .execute(input(1, 9))
-        .await
-        .unwrap();
-    let get = GetPayslipUseCase::new(payslips, staff);
+    let world = Arc::new(World::with_staff(&[(1, "taro"), (2, "hanako")]));
+    let id = finalize_usecase(&world).execute(input(1, 9)).await.unwrap();
+    let get =
+        GetPayslipUseCase::new(Arc::new(FakePayslips(world.clone())), Arc::new(FakeStaff(world)));
 
     assert!(get.execute(&user("admin", &[Role::Admin]), id).await.is_ok());
     assert!(get.execute(&user("taro", &[]), id).await.is_ok());
@@ -232,10 +319,14 @@ async fn only_admin_or_owner_can_view_payslip() {
 }
 
 #[tokio::test]
-async fn create_staff_disables_user_when_insert_fails() {
+async fn create_staff_disables_user_when_registration_fails() {
+    let world = Arc::new(World { fail_staff_insert: true, ..World::default() });
     let directory = Arc::new(FakeDirectory::default());
-    let staff = Arc::new(FakeStaff { fail_insert: true, ..FakeStaff::default() });
-    let usecase = CreateStaffUseCase::new(staff, directory.clone());
+    let usecase = CreateStaffUseCase::new(
+        Arc::new(FakeStaff(world.clone())),
+        Arc::new(FakeTransactions(world)),
+        directory.clone(),
+    );
 
     let err = usecase
         .execute(CreateStaffInput {

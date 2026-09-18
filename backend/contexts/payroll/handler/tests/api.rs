@@ -12,9 +12,8 @@ use axum::middleware::Next;
 use axum::response::Response;
 use payroll_handler::{PayrollServiceHandler, ProjectServiceHandler, StaffServiceHandler};
 use payroll_infrastructure::query::{MySqlProjectQuery, MySqlStaffQuery};
-use payroll_infrastructure::repository::{
-    MySqlPayslipRepository, MySqlProjectRepository, MySqlStaffRepository,
-};
+use payroll_infrastructure::repository::{MySqlPayslipRepository, MySqlStaffRepository};
+use payroll_infrastructure::transaction::MySqlTransactions;
 use payroll_usecase::payslip::{FinalizePayslipUseCase, GetPayslipUseCase, ListPayslipsUseCase};
 use payroll_usecase::ports::user_directory::{UserDirectory, UserDirectoryError};
 use payroll_usecase::project::{CreateProjectUseCase, ListProjectsUseCase};
@@ -78,23 +77,23 @@ async fn api() -> Api {
 
     let payslips = Arc::new(MySqlPayslipRepository::new(pool.clone()));
     let staff = Arc::new(MySqlStaffRepository::new(pool.clone()));
-    let projects = Arc::new(MySqlProjectRepository::new(pool.clone()));
+    let transactions = Arc::new(MySqlTransactions::new(pool.clone()));
 
     let router = tonic::service::Routes::new(
         proto::payroll_service_server::PayrollServiceServer::new(PayrollServiceHandler::new(
-            FinalizePayslipUseCase::new(payslips.clone(), staff.clone()),
+            FinalizePayslipUseCase::new(payslips.clone(), staff.clone(), transactions.clone()),
             GetPayslipUseCase::new(payslips.clone(), staff.clone()),
             ListPayslipsUseCase::new(payslips, staff.clone()),
         )),
     )
     .add_service(proto::staff_service_server::StaffServiceServer::new(StaffServiceHandler::new(
-        CreateStaffUseCase::new(staff.clone(), Arc::new(FakeDirectory)),
+        CreateStaffUseCase::new(staff.clone(), transactions.clone(), Arc::new(FakeDirectory)),
         ListStaffUseCase::new(Arc::new(MySqlStaffQuery::new(pool.clone()))),
         GetMeUseCase::new(staff),
     )))
     .add_service(proto::project_service_server::ProjectServiceServer::new(
         ProjectServiceHandler::new(
-            CreateProjectUseCase::new(projects.clone()),
+            CreateProjectUseCase::new(transactions),
             ListProjectsUseCase::new(Arc::new(MySqlProjectQuery::new(pool.clone()))),
         ),
     ))

@@ -7,6 +7,7 @@ use platform_kernel::Email;
 use crate::UseCaseError;
 use crate::ports::queries::{StaffQuery, StaffView};
 use crate::ports::repository::StaffRepository;
+use crate::ports::transaction::Transactions;
 use crate::ports::user_directory::UserDirectory;
 
 /// 派遣社員の登録で管理者が入力する内容
@@ -25,6 +26,7 @@ pub struct CreateStaffInput {
 /// 同じメールアドレスの派遣社員は登録できない
 pub struct CreateStaffUseCase {
     staff_repository: Arc<dyn StaffRepository>,
+    transactions: Arc<dyn Transactions>,
     user_directory: Arc<dyn UserDirectory>,
 }
 
@@ -32,9 +34,10 @@ impl CreateStaffUseCase {
     #[must_use]
     pub fn new(
         staff_repository: Arc<dyn StaffRepository>,
+        transactions: Arc<dyn Transactions>,
         user_directory: Arc<dyn UserDirectory>,
     ) -> Self {
-        Self { staff_repository, user_directory }
+        Self { staff_repository, transactions, user_directory }
     }
 
     /// 派遣社員を登録し、振られた派遣社員番号を返す。
@@ -50,14 +53,21 @@ impl CreateStaffUseCase {
             self.user_directory.create_user(&input.email, &input.temporary_password).await?;
 
         let new = NewStaff::new(user_id.clone(), input.email, input.display_name);
-        match self.staff_repository.insert(&new).await {
+        match self.register(&new).await {
             Ok(id) => Ok(id),
             Err(err) => {
                 // アカウントの停止にも失敗したときは、登録の失敗のほうを返す
                 let _ = self.user_directory.disable_user(&user_id).await;
-                Err(err.into())
+                Err(err)
             }
         }
+    }
+
+    async fn register(&self, new: &NewStaff) -> Result<StaffId, UseCaseError> {
+        let mut tx = self.transactions.begin().await?;
+        let id = tx.staff().insert(new).await?;
+        tx.commit().await?;
+        Ok(id)
     }
 }
 

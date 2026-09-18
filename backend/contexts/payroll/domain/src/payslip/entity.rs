@@ -12,7 +12,10 @@ pub enum PayslipStatus {
     Finalized,
 }
 
-/// 給与明細に起きた、他の業務が知るべき出来事
+/// 給与明細に起きた、他の業務が知るべき出来事。
+///
+/// 出来事は起こした操作の戻り値として返る。受け取った側は必ず記録し、後続の業務に知らせる
+#[must_use = "給与明細の出来事は記録して後続の業務に知らせる必要がある"]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PayslipEvent {
     /// 給与明細が確定し、支給額が決まった。振込はこれを受けて行う
@@ -41,8 +44,6 @@ pub struct Payslip<Id = PayslipId> {
     lines: Vec<PayslipLine>,
     /// 作成中か、確定済みか
     status: PayslipStatus,
-    /// まだ他の業務に知らせていない出来事
-    events: Vec<PayslipEvent>,
 }
 
 /// まだ登録していない給与明細
@@ -59,7 +60,7 @@ impl<Id> Payslip<Id> {
         if lines.is_empty() {
             return Err(PayslipError::EmptyLines);
         }
-        Ok(Self { id, staff_id, period, lines, status, events: Vec::new() })
+        Ok(Self { id, staff_id, period, lines, status })
     }
 
     #[must_use]
@@ -88,26 +89,18 @@ impl<Id> Payslip<Id> {
         self.lines.iter().map(PayslipLine::amount).fold(Money::ZERO, |acc, m| acc + m)
     }
 
-    /// 給与明細を確定し、支給額を決める。確定できるのは作成中のものだけで、
-    /// 確定すると「確定した」という出来事を記録する
-    pub fn finalize(&mut self) -> Result<(), PayslipError> {
+    /// 給与明細を確定し、支給額を決める。確定できるのは作成中のものだけ。
+    /// 確定したという出来事を返す
+    pub fn finalize(&mut self) -> Result<PayslipEvent, PayslipError> {
         if self.status != PayslipStatus::Draft {
             return Err(PayslipError::AlreadyFinalized);
         }
         self.status = PayslipStatus::Finalized;
-
-        let event = PayslipEvent::Finalized {
+        Ok(PayslipEvent::Finalized {
             staff_id: self.staff_id,
             period: self.period,
             total: self.total(),
-        };
-        self.events.push(event);
-        Ok(())
-    }
-
-    /// まだ知らせていない出来事を取り出す。取り出した出来事は給与明細から消える
-    pub fn take_events(&mut self) -> Vec<PayslipEvent> {
-        std::mem::take(&mut self.events)
+        })
     }
 }
 
@@ -168,22 +161,19 @@ mod tests {
     }
 
     #[test]
-    fn finalize_records_event_once() {
+    fn finalize_returns_the_event_and_can_happen_once() {
         let period = PayPeriod::new(2026, 9).unwrap();
         let mut p = NewPayslip::draft(staff(), period, vec![line(600, 1_500)]).unwrap();
 
-        p.finalize().unwrap();
-        assert_eq!(p.finalize(), Err(PayslipError::AlreadyFinalized));
-
-        let events = p.take_events();
         assert_eq!(
-            events,
-            vec![PayslipEvent::Finalized {
+            p.finalize(),
+            Ok(PayslipEvent::Finalized {
                 staff_id: staff(),
                 period,
                 total: Money::from_yen(15_000).unwrap()
-            }]
+            })
         );
-        assert!(p.take_events().is_empty());
+        assert_eq!(p.status(), PayslipStatus::Finalized);
+        assert_eq!(p.finalize(), Err(PayslipError::AlreadyFinalized));
     }
 }

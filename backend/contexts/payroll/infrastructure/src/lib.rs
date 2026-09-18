@@ -5,5 +5,6 @@ pub mod external;
 pub mod messaging;
 pub mod query;
 pub mod repository;
+pub mod transaction;
 
 pub use db::{MIGRATOR, connect};

@@ -3,17 +3,17 @@
 // allow-unwrap-in-tests は #[test] 関数の中にしか効かず、補助関数は対象外
 #![allow(clippy::unwrap_used)]
 
-use payroll_domain::payslip::{NewPayslip, PayPeriod, PayslipLine, PayslipStatus, WorkMinutes};
-use payroll_domain::project::{NewProject, ProjectName};
+use payroll_domain::payslip::{
+    NewPayslip, PayPeriod, PayslipId, PayslipLine, PayslipStatus, WorkMinutes,
+};
+use payroll_domain::project::{NewProject, ProjectId, ProjectName};
 use payroll_domain::staff::{DisplayName, NewStaff, StaffId};
-use payroll_infrastructure::repository::{
-    MySqlPayslipRepository, MySqlProjectRepository, MySqlStaffRepository,
-};
-use payroll_usecase::ports::repository::{
-    PayslipRepository, ProjectRepository, RepositoryError, StaffRepository,
-};
-use platform_kernel::Money;
-use platform_kernel::{Email, UserId};
+use payroll_infrastructure::repository::MySqlPayslipRepository;
+use payroll_infrastructure::transaction::MySqlTransactions;
+use payroll_usecase::ports::events::PayrollEvent;
+use payroll_usecase::ports::repository::{PayslipRepository, RepositoryError};
+use payroll_usecase::ports::transaction::Transactions;
+use platform_kernel::{Email, Money, UserId};
 use sqlx::MySqlPool;
 use testcontainers_modules::mysql::Mysql;
 use testcontainers_modules::testcontainers::runners::AsyncRunner;
@@ -34,8 +34,10 @@ async fn db() -> Db {
     Db { pool, _container: container }
 }
 
-async fn seed(pool: &MySqlPool) -> (StaffId, payroll_domain::project::ProjectId) {
-    let staff = MySqlStaffRepository::new(pool.clone())
+async fn seed(txs: &MySqlTransactions) -> (StaffId, ProjectId) {
+    let mut tx = txs.begin().await.unwrap();
+    let staff = tx
+        .staff()
         .insert(&NewStaff::new(
             UserId::parse("sub-1").unwrap(),
             Email::parse("taro@example.com").unwrap(),
@@ -43,14 +45,13 @@ async fn seed(pool: &MySqlPool) -> (StaffId, payroll_domain::project::ProjectId)
         ))
         .await
         .unwrap();
-    let project = MySqlProjectRepository::new(pool.clone())
-        .insert(&NewProject::new(ProjectName::new("案件A").unwrap()))
-        .await
-        .unwrap();
+    let project =
+        tx.projects().insert(&NewProject::new(ProjectName::new("案件A").unwrap())).await.unwrap();
+    tx.commit().await.unwrap();
     (staff, project)
 }
 
-fn finalized(staff: StaffId, project: payroll_domain::project::ProjectId, month: u8) -> NewPayslip {
+fn draft(staff: StaffId, project: ProjectId, month: u8) -> NewPayslip {
     let lines = vec![
         PayslipLine::new(
             project,
@@ -63,20 +64,38 @@ fn finalized(staff: StaffId, project: payroll_domain::project::ProjectId, month:
             Money::from_yen(1_001).unwrap(),
         ),
     ];
-    let mut p = NewPayslip::draft(staff, PayPeriod::new(2026, month).unwrap(), lines).unwrap();
-    p.finalize().unwrap();
-    p
+    NewPayslip::draft(staff, PayPeriod::new(2026, month).unwrap(), lines).unwrap()
+}
+
+/// 給与確定のユースケースと同じく、給与明細とその出来事を1つのトランザクションで記録する
+async fn finalize(
+    txs: &MySqlTransactions,
+    mut payslip: NewPayslip,
+) -> Result<PayslipId, RepositoryError> {
+    let finalized = payslip.finalize().unwrap();
+    let mut tx = txs.begin().await?;
+    let id = tx.payslips().insert(&payslip).await?;
+    tx.events().append(PayrollEvent::Payslip { id, event: finalized }).await?;
+    tx.commit().await?;
+    Ok(id)
+}
+
+async fn outbox_count(pool: &MySqlPool) -> i64 {
+    let (count,): (i64,) =
+        sqlx::query_as("select count(*) from outbox").fetch_one(pool).await.unwrap();
+    count
 }
 
 #[tokio::test]
-async fn insert_round_trips_aggregate_and_writes_outbox_in_same_tx() {
+async fn payslip_and_its_event_are_committed_together() {
     let db = db().await;
-    let (staff, project) = seed(&db.pool).await;
+    let txs = MySqlTransactions::new(db.pool.clone());
+    let (staff, project) = seed(&txs).await;
     let repo = MySqlPayslipRepository::new(db.pool.clone());
 
-    let saved = repo.insert(&mut finalized(staff, project, 9)).await.unwrap();
+    let id = finalize(&txs, draft(staff, project, 9)).await.unwrap();
 
-    let found = repo.find(saved.id()).await.unwrap().unwrap();
+    let found = repo.find(id).await.unwrap().unwrap();
     assert_eq!(found.status(), PayslipStatus::Finalized);
     assert_eq!(found.lines().len(), 2);
     // 600分×1500/60 = 15,000 と 45分×1001/60 = 750.75 → 750
@@ -88,44 +107,60 @@ async fn insert_round_trips_aggregate_and_writes_outbox_in_same_tx() {
     .fetch_one(&db.pool)
     .await
     .unwrap();
-    assert_eq!(
-        (count, event_type.as_str(), aggregate_id),
-        (1, "payslip.finalized", saved.id().as_i64())
-    );
+    assert_eq!((count, event_type.as_str(), aggregate_id), (1, "payslip.finalized", id.as_i64()));
+}
+
+#[tokio::test]
+async fn records_are_discarded_when_the_scope_is_not_committed() {
+    let db = db().await;
+    let txs = MySqlTransactions::new(db.pool.clone());
+    let (staff, project) = seed(&txs).await;
+    let repo = MySqlPayslipRepository::new(db.pool.clone());
+
+    let mut payslip = draft(staff, project, 9);
+    let finalized = payslip.finalize().unwrap();
+    {
+        let mut tx = txs.begin().await.unwrap();
+        let id = tx.payslips().insert(&payslip).await.unwrap();
+        tx.events().append(PayrollEvent::Payslip { id, event: finalized }).await.unwrap();
+        // commit せずに捨てる
+    }
+
+    assert!(repo.list_by_staff(staff).await.unwrap().is_empty());
+    assert_eq!(outbox_count(&db.pool).await, 0);
 }
 
 #[tokio::test]
 async fn second_active_payslip_for_same_month_violates_unique_key() {
     let db = db().await;
-    let (staff, project) = seed(&db.pool).await;
+    let txs = MySqlTransactions::new(db.pool.clone());
+    let (staff, project) = seed(&txs).await;
     let repo = MySqlPayslipRepository::new(db.pool.clone());
 
-    repo.insert(&mut finalized(staff, project, 9)).await.unwrap();
-    let err = repo.insert(&mut finalized(staff, project, 9)).await.unwrap_err();
+    finalize(&txs, draft(staff, project, 9)).await.unwrap();
+    let err = finalize(&txs, draft(staff, project, 9)).await.unwrap_err();
     assert!(matches!(err, RepositoryError::Conflict(_)));
-
-    // 失敗したトランザクションの outbox は残らない
-    let (count,): (i64,) =
-        sqlx::query_as("select count(*) from outbox").fetch_one(&db.pool).await.unwrap();
-    assert_eq!(count, 1);
+    // 失敗したトランザクションの出来事は残らない
+    assert_eq!(outbox_count(&db.pool).await, 1);
 
     // 別の月は入る
-    repo.insert(&mut finalized(staff, project, 10)).await.unwrap();
+    finalize(&txs, draft(staff, project, 10)).await.unwrap();
     assert_eq!(repo.list_by_staff(staff).await.unwrap().len(), 2);
 }
 
 #[tokio::test]
 async fn corrupted_row_is_reported_not_panicked() {
     let db = db().await;
-    let (staff, project) = seed(&db.pool).await;
+    let txs = MySqlTransactions::new(db.pool.clone());
+    let (staff, project) = seed(&txs).await;
     let repo = MySqlPayslipRepository::new(db.pool.clone());
-    let saved = repo.insert(&mut finalized(staff, project, 9)).await.unwrap();
+    let id = finalize(&txs, draft(staff, project, 9)).await.unwrap();
 
     sqlx::query("update payslips set status = 'paid' where id = ?")
-        .bind(saved.id().as_i64())
+        .bind(id.as_i64())
         .execute(&db.pool)
         .await
         .unwrap();
 
-    assert!(matches!(repo.find(saved.id()).await, Err(RepositoryError::CorruptedData(_))));
+    assert!(matches!(repo.find(id).await, Err(RepositoryError::CorruptedData(_))));
 }

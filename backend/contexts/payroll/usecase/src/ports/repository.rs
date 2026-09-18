@@ -1,4 +1,9 @@
-//! 案件・派遣社員・給与明細の記録と取り出し
+//! 案件・派遣社員・給与明細の記録と取り出し。
+//!
+//! 取り出し(`*Repository`)はいつでも使える。記録(`*Store`)は [`TransactionScope`] の中でだけ使え、
+//! 一緒に確定させたい記録はまとめて確定するか、まとめて取り消される。
+//!
+//! [`TransactionScope`]: super::transaction::TransactionScope
 
 use async_trait::async_trait;
 use payroll_domain::payslip::{NewPayslip, Payslip, PayslipId};
@@ -21,24 +26,27 @@ pub enum RepositoryError {
     Unavailable(String),
 }
 
-/// 給与明細の記録
+/// 給与明細の取り出し
 #[async_trait]
 pub trait PayslipRepository: Send + Sync {
-    /// 新しい給与明細を登録する。給与明細番号が振られた給与明細を返す
-    async fn insert(&self, new: &mut NewPayslip) -> Result<Payslip, RepositoryError>;
-    /// 登録済みの給与明細の変更(状態の変化など)を記録する
-    async fn update(&self, payslip: &mut Payslip) -> Result<(), RepositoryError>;
     /// 給与明細番号で給与明細を探す
     async fn find(&self, id: PayslipId) -> Result<Option<Payslip>, RepositoryError>;
     /// 派遣社員の有効な給与明細を、新しい月から順に返す
     async fn list_by_staff(&self, staff_id: StaffId) -> Result<Vec<Payslip>, RepositoryError>;
 }
 
-/// 派遣社員の記録
+/// 給与明細の記録
+#[async_trait]
+pub trait PayslipStore: Send {
+    /// 新しい給与明細を登録し、振られた給与明細番号を返す
+    async fn insert(&mut self, new: &NewPayslip) -> Result<PayslipId, RepositoryError>;
+    /// 登録済みの給与明細の変更(状態の変化など)を記録する
+    async fn update(&mut self, payslip: &Payslip) -> Result<(), RepositoryError>;
+}
+
+/// 派遣社員の取り出し
 #[async_trait]
 pub trait StaffRepository: Send + Sync {
-    /// 新しい派遣社員を登録し、振られた派遣社員番号を返す
-    async fn insert(&self, new: &NewStaff) -> Result<StaffId, RepositoryError>;
     /// 派遣社員番号で派遣社員を探す
     async fn find(&self, id: StaffId) -> Result<Option<Staff>, RepositoryError>;
     /// ログイン用アカウントから、その持ち主の派遣社員を探す
@@ -47,9 +55,16 @@ pub trait StaffRepository: Send + Sync {
     async fn find_by_email(&self, email: &Email) -> Result<Option<Staff>, RepositoryError>;
 }
 
+/// 派遣社員の記録
+#[async_trait]
+pub trait StaffStore: Send {
+    /// 新しい派遣社員を登録し、振られた派遣社員番号を返す
+    async fn insert(&mut self, new: &NewStaff) -> Result<StaffId, RepositoryError>;
+}
+
 /// 案件の記録
 #[async_trait]
-pub trait ProjectRepository: Send + Sync {
+pub trait ProjectStore: Send {
     /// 新しい案件を登録し、振られた案件番号を返す
-    async fn insert(&self, new: &NewProject) -> Result<ProjectId, RepositoryError>;
+    async fn insert(&mut self, new: &NewProject) -> Result<ProjectId, RepositoryError>;
 }

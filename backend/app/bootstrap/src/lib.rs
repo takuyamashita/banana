@@ -13,15 +13,15 @@ use payroll_infrastructure::external::{
     BankPayoutGateway, CognitoUserDirectory, KeycloakUserDirectory, LoggingPayoutGateway,
 };
 use payroll_infrastructure::query::{MySqlProjectQuery, MySqlStaffQuery};
-use payroll_infrastructure::repository::{
-    MySqlPayslipRepository, MySqlProjectRepository, MySqlStaffRepository,
-};
+use payroll_infrastructure::repository::{MySqlPayslipRepository, MySqlStaffRepository};
+use payroll_infrastructure::transaction::MySqlTransactions;
 use payroll_usecase::payslip::{
     FinalizePayslipUseCase, GetPayslipUseCase, ListPayslipsUseCase, RequestPayoutUseCase,
 };
 use payroll_usecase::ports::payout_gateway::PayoutGateway;
 use payroll_usecase::ports::queries::{ProjectQuery, StaffQuery};
-use payroll_usecase::ports::repository::{PayslipRepository, ProjectRepository, StaffRepository};
+use payroll_usecase::ports::repository::{PayslipRepository, StaffRepository};
+use payroll_usecase::ports::transaction::Transactions;
 use payroll_usecase::ports::user_directory::UserDirectory;
 use payroll_usecase::project::{CreateProjectUseCase, ListProjectsUseCase};
 use payroll_usecase::staff::{CreateStaffUseCase, GetMeUseCase, ListStaffUseCase};
@@ -118,23 +118,23 @@ pub struct Handlers {
 pub fn build_handlers(pool: &MySqlPool, user_directory: Arc<dyn UserDirectory>) -> Handlers {
     let payslips: Arc<dyn PayslipRepository> = Arc::new(MySqlPayslipRepository::new(pool.clone()));
     let staff: Arc<dyn StaffRepository> = Arc::new(MySqlStaffRepository::new(pool.clone()));
-    let projects: Arc<dyn ProjectRepository> = Arc::new(MySqlProjectRepository::new(pool.clone()));
+    let transactions: Arc<dyn Transactions> = Arc::new(MySqlTransactions::new(pool.clone()));
     let staff_query: Arc<dyn StaffQuery> = Arc::new(MySqlStaffQuery::new(pool.clone()));
     let project_query: Arc<dyn ProjectQuery> = Arc::new(MySqlProjectQuery::new(pool.clone()));
 
     Handlers {
         payroll: PayrollServiceHandler::new(
-            FinalizePayslipUseCase::new(payslips.clone(), staff.clone()),
+            FinalizePayslipUseCase::new(payslips.clone(), staff.clone(), transactions.clone()),
             GetPayslipUseCase::new(payslips.clone(), staff.clone()),
             ListPayslipsUseCase::new(payslips, staff.clone()),
         ),
         staff: StaffServiceHandler::new(
-            CreateStaffUseCase::new(staff.clone(), user_directory),
+            CreateStaffUseCase::new(staff.clone(), transactions.clone(), user_directory),
             ListStaffUseCase::new(staff_query),
             GetMeUseCase::new(staff),
         ),
         project: ProjectServiceHandler::new(
-            CreateProjectUseCase::new(projects),
+            CreateProjectUseCase::new(transactions),
             ListProjectsUseCase::new(project_query),
         ),
     }
