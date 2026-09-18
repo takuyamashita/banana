@@ -45,7 +45,6 @@ pub enum PayslipEvent {
 /// 給与明細。派遣社員1人の、ある1か月分の給与を表す。
 ///
 /// 同じ派遣社員・同じ月の給与明細は、有効なものが常に1つだけ存在する。
-/// `Id` はまだ登録していない給与明細なら [`Unsaved`]、登録済みなら [`PayslipId`]
 #[derive(Debug)]
 pub struct Payslip<Id = PayslipId> {
     /// 給与明細番号

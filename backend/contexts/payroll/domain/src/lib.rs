@@ -10,3 +10,6 @@
 pub mod payslip;
 pub mod project;
 pub mod staff;
+
+#[cfg(doctest)]
+mod doctests;
