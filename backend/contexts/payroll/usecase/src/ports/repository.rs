@@ -3,7 +3,8 @@
 use async_trait::async_trait;
 use payroll_domain::payslip::{NewPayslip, Payslip, PayslipId};
 use payroll_domain::project::{NewProject, ProjectId};
-use payroll_domain::staff::{Email, NewStaff, Staff, StaffId, UserId};
+use payroll_domain::staff::{NewStaff, Staff, StaffId};
+use platform_kernel::{Email, UserId};
 use thiserror::Error;
 
 /// 記録・取り出しができなかった理由

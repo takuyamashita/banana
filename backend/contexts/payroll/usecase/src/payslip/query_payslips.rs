@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use payroll_domain::payslip::{Payslip, PayslipId};
-use payroll_domain::staff::{StaffId, UserId};
+use payroll_domain::staff::StaffId;
 use platform_kernel::{AuthenticatedUser, Role};
 
 use crate::UseCaseError;
@@ -16,8 +16,7 @@ async fn can_view(
     if user.has_role(Role::Admin) {
         return Ok(true);
     }
-    let user_id = UserId::parse(user.user_id.clone())?;
-    let me = staff_repository.find_by_user_id(&user_id).await?;
+    let me = staff_repository.find_by_user_id(&user.user_id).await?;
     Ok(me.is_some_and(|s| s.id() == owner))
 }
 

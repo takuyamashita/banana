@@ -1,8 +1,8 @@
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
-use payroll_domain::staff::{Email, UserId};
 use payroll_usecase::ports::user_directory::{UserDirectory, UserDirectoryError};
+use platform_kernel::{Email, UserId};
 use reqwest::StatusCode;
 use serde::Deserialize;
 use tokio::sync::Mutex;

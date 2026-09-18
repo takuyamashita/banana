@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use payroll_domain::staff::{Email, UserId};
+use platform_kernel::{Email, UserId};
 use thiserror::Error;
 
 /// ログイン用アカウントを発行・停止できなかった理由

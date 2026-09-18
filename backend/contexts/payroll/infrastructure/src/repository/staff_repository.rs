@@ -1,6 +1,7 @@
 use async_trait::async_trait;
-use payroll_domain::staff::{DisplayName, Email, NewStaff, Staff, StaffId, UserId};
+use payroll_domain::staff::{DisplayName, NewStaff, Staff, StaffId};
 use payroll_usecase::ports::repository::{RepositoryError, StaffRepository};
+use platform_kernel::{Email, UserId};
 use sqlx::mysql::MySqlPool;
 
 use crate::db::{corrupted, db_err};

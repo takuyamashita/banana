@@ -11,13 +11,14 @@ use payroll_domain::payslip::{
     NewPayslip, PayPeriod, Payslip, PayslipEvent, PayslipId, PayslipLine, WorkMinutes,
 };
 use payroll_domain::project::ProjectId;
-use payroll_domain::staff::{DisplayName, Email, NewStaff, Staff, StaffId, UserId};
+use payroll_domain::staff::{DisplayName, NewStaff, Staff, StaffId};
 use payroll_usecase::UseCaseError;
 use payroll_usecase::payslip::{FinalizePayslipInput, FinalizePayslipUseCase, GetPayslipUseCase};
 use payroll_usecase::ports::repository::{PayslipRepository, RepositoryError, StaffRepository};
 use payroll_usecase::ports::user_directory::{UserDirectory, UserDirectoryError};
 use payroll_usecase::staff::{CreateStaffInput, CreateStaffUseCase};
 use platform_kernel::{AuthenticatedUser, Money, Role};
+use platform_kernel::{Email, UserId};
 
 // ---- フェイク ----
 // フェイクも「リポジトリ実装」なので reconstruct を呼ぶ必要がある。usecase の clippy.toml は
@@ -165,7 +166,7 @@ fn input(staff: i64, month: u8) -> FinalizePayslipInput {
 }
 
 fn user(sub: &str, roles: &[Role]) -> AuthenticatedUser {
-    AuthenticatedUser { user_id: sub.into(), roles: roles.to_vec() }
+    AuthenticatedUser { user_id: UserId::parse(sub).unwrap(), roles: roles.to_vec() }
 }
 
 // ---- テスト ----

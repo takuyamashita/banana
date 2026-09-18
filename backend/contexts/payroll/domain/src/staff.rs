@@ -4,18 +4,12 @@
 //! 派遣社員は自分の給与明細を見るためにログインするので、ログイン用のアカウント(利用者)と
 //! 1対1で結びつく。雇用記録を指す派遣社員番号と、アカウントを指す利用者IDは別のもの。
 
-use platform_kernel::Unsaved;
+use platform_kernel::{Email, Unsaved, UserId};
 use thiserror::Error;
 
 /// 派遣社員の業務ルールに反したときの理由
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum StaffError {
-    /// 利用者IDが空、または長すぎる
-    #[error("利用者IDが不正です")]
-    InvalidUserId,
-    /// メールアドレスの形になっていない
-    #[error("メールアドレスが不正です")]
-    InvalidEmail,
     /// 表示名が空、または50文字を超えている
     #[error("表示名は1〜50文字で指定してください")]
     InvalidDisplayName,
@@ -24,54 +18,6 @@ pub enum StaffError {
 platform_kernel::positive_id! {
     /// 派遣社員番号。雇用記録を一意に指す正の整数。給与明細はこの番号で派遣社員を指す
     pub struct StaffId;
-}
-
-/// 利用者ID。派遣社員がログインに使うアカウントを指す識別子。
-///
-/// アカウントは認証基盤が発行し、形式はそちらが決める(UUID など)。ここでは空でなく、
-/// 64文字以内であることだけを求める
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct UserId(String);
-
-impl UserId {
-    pub fn parse(value: impl Into<String>) -> Result<Self, StaffError> {
-        let value = value.into();
-        if value.is_empty() || value.len() > 64 {
-            return Err(StaffError::InvalidUserId);
-        }
-        Ok(Self(value))
-    }
-
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-/// メールアドレス。ログインと連絡に使う。
-///
-/// 前後の空白を除き、小文字にそろえて扱う(大文字小文字の違いで別人とみなさない)。
-/// 同じメールアドレスの派遣社員は2人登録できない
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Email(String);
-
-impl Email {
-    pub fn parse(value: impl Into<String>) -> Result<Self, StaffError> {
-        let value = value.into().trim().to_ascii_lowercase();
-        let valid = value.len() <= 254
-            && value.split_once('@').is_some_and(|(local, domain)| {
-                !local.is_empty() && domain.contains('.') && !domain.starts_with('.')
-            });
-        if !valid {
-            return Err(StaffError::InvalidEmail);
-        }
-        Ok(Self(value))
-    }
-
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
 }
 
 /// 表示名。画面で派遣社員を見分けるための名前(氏名など)で、前後の空白を除いて1〜50文字
@@ -149,21 +95,5 @@ impl Staff<StaffId> {
     #[must_use]
     pub fn id(&self) -> StaffId {
         self.id
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn email_is_normalized() {
-        assert_eq!(Email::parse(" Foo@Example.COM ").unwrap().as_str(), "foo@example.com");
-    }
-
-    #[test]
-    fn email_without_domain_is_rejected() {
-        assert_eq!(Email::parse("foo@"), Err(StaffError::InvalidEmail));
-        assert_eq!(Email::parse("foo@localhost"), Err(StaffError::InvalidEmail));
     }
 }

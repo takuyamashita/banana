@@ -2,8 +2,8 @@ use async_trait::async_trait;
 use aws_sdk_cognitoidentityprovider::Client;
 use aws_sdk_cognitoidentityprovider::operation::admin_create_user::AdminCreateUserError;
 use aws_sdk_cognitoidentityprovider::types::AttributeType;
-use payroll_domain::staff::{Email, UserId};
 use payroll_usecase::ports::user_directory::{UserDirectory, UserDirectoryError};
+use platform_kernel::{Email, UserId};
 
 /// stg/prd 用
 pub struct CognitoUserDirectory {

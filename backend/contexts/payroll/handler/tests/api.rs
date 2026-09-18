@@ -10,7 +10,6 @@ use async_trait::async_trait;
 use axum::extract::Request;
 use axum::middleware::Next;
 use axum::response::Response;
-use payroll_domain::staff::{Email, UserId};
 use payroll_handler::{PayrollServiceHandler, ProjectServiceHandler, StaffServiceHandler};
 use payroll_infrastructure::query::{MySqlProjectQuery, MySqlStaffQuery};
 use payroll_infrastructure::repository::{
@@ -25,6 +24,7 @@ use platform_gen::acme::payroll::v1::payroll_service_client::PayrollServiceClien
 use platform_gen::acme::payroll::v1::project_service_client::ProjectServiceClient;
 use platform_gen::acme::payroll::v1::staff_service_client::StaffServiceClient;
 use platform_kernel::{AuthenticatedUser, Role};
+use platform_kernel::{Email, UserId};
 use testcontainers_modules::mysql::Mysql;
 use testcontainers_modules::testcontainers::runners::AsyncRunner;
 use testcontainers_modules::testcontainers::{ContainerAsync, ImageExt};
@@ -56,7 +56,9 @@ async fn test_auth(mut request: Request, next: Next) -> Response {
     let roles = header(&request, "x-test-roles").unwrap_or_default();
     if let Some(sub) = sub {
         let roles = roles.split(',').filter_map(Role::from_name).collect();
-        request.extensions_mut().insert(AuthenticatedUser { user_id: sub, roles });
+        request
+            .extensions_mut()
+            .insert(AuthenticatedUser { user_id: UserId::parse(sub).unwrap(), roles });
     }
     next.run(request).await
 }

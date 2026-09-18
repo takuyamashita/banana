@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
-use payroll_domain::staff::{DisplayName, Email, NewStaff, Staff, StaffId, UserId};
+use payroll_domain::staff::{DisplayName, NewStaff, Staff, StaffId};
 use platform_kernel::AuthenticatedUser;
+use platform_kernel::Email;
 
 use crate::UseCaseError;
 use crate::ports::queries::{StaffQuery, StaffView};
@@ -89,7 +90,6 @@ impl GetMeUseCase {
     }
 
     pub async fn execute(&self, user: &AuthenticatedUser) -> Result<Option<Staff>, UseCaseError> {
-        let user_id = UserId::parse(user.user_id.clone())?;
-        Ok(self.staff_repository.find_by_user_id(&user_id).await?)
+        Ok(self.staff_repository.find_by_user_id(&user.user_id).await?)
     }
 }

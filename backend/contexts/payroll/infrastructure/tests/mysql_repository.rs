@@ -5,7 +5,7 @@
 
 use payroll_domain::payslip::{NewPayslip, PayPeriod, PayslipLine, PayslipStatus, WorkMinutes};
 use payroll_domain::project::{NewProject, ProjectName};
-use payroll_domain::staff::{DisplayName, Email, NewStaff, StaffId, UserId};
+use payroll_domain::staff::{DisplayName, NewStaff, StaffId};
 use payroll_infrastructure::repository::{
     MySqlPayslipRepository, MySqlProjectRepository, MySqlStaffRepository,
 };
@@ -13,6 +13,7 @@ use payroll_usecase::ports::repository::{
     PayslipRepository, ProjectRepository, RepositoryError, StaffRepository,
 };
 use platform_kernel::Money;
+use platform_kernel::{Email, UserId};
 use sqlx::MySqlPool;
 use testcontainers_modules::mysql::Mysql;
 use testcontainers_modules::testcontainers::runners::AsyncRunner;

@@ -1,5 +1,5 @@
 use jsonwebtoken::Validation;
-use platform_kernel::{AuthenticatedUser, Role};
+use platform_kernel::{AuthenticatedUser, Role, UserId};
 use serde_json::Value;
 
 use crate::AuthError;
@@ -26,8 +26,10 @@ impl ClaimMapper {
         let user_id = claims
             .get("sub")
             .and_then(Value::as_str)
-            .ok_or_else(|| AuthError::InvalidToken("sub missing".into()))?
-            .to_owned();
+            .ok_or_else(|| AuthError::InvalidToken("sub missing".into()))
+            .and_then(|sub| {
+                UserId::parse(sub).map_err(|e| AuthError::InvalidToken(e.to_string()))
+            })?;
 
         let role_names = match self {
             Self::Keycloak { .. } => claims.pointer("/realm_access/roles"),

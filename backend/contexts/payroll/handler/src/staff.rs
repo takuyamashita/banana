@@ -1,9 +1,10 @@
-use payroll_domain::staff::{DisplayName, Email, Staff};
+use payroll_domain::staff::{DisplayName, Staff};
 use payroll_usecase::ports::queries::StaffView;
 use payroll_usecase::staff::{
     CreateStaffInput, CreateStaffUseCase, GetMeUseCase, ListStaffUseCase,
 };
 use platform_gen::acme::payroll::v1 as proto;
+use platform_kernel::Email;
 use tonic::{Request, Response, Status};
 
 use crate::auth::{current_user, require_admin};
