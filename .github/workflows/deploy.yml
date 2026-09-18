@@ -28,6 +28,9 @@ jobs:
       IMAGE_TAG: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v7.0.1
+      # mise は cargo 系ツールを並列に入れるので、rust-toolchain.toml の版を先に入れておく
+      # (入れていないと各 cargo が同時にツールチェーンを取りに行き、rustup のダウンロードが競合する)
+      - run: rustup toolchain install
       - uses: jdx/mise-action@v4.3.0
       # アクセスキーは使わず、GitHub OIDC で環境ごとの IAM ロールを引き受ける
       - uses: aws-actions/configure-aws-credentials@v6.3.0

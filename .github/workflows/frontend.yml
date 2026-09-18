@@ -16,6 +16,9 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7.0.1
+      # mise は cargo 系ツールを並列に入れるので、rust-toolchain.toml の版を先に入れておく
+      # (入れていないと各 cargo が同時にツールチェーンを取りに行き、rustup のダウンロードが競合する)
+      - run: rustup toolchain install
       - uses: jdx/mise-action@v4.3.0
       - run: pnpm install --frozen-lockfile
       - name: lint(oxfmt・oxlint・tsc)

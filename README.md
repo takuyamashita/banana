@@ -14,6 +14,7 @@ echo '. "$HOME/.cargo/env"' >> ~/.bashrc
 echo 'eval "$(~/.local/bin/mise activate bash)"' >> ~/.bashrc && exec bash
 
 rustup default "$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)"  # リポジトリ外で動く cargo(sqlx-cli のビルド)用
+rustup toolchain install          # rust-toolchain.toml の版を先に入れる(mise install の並列ビルドで rustup が競合しないように)
 mise trust && mise install        # ツール一式(sqlx-cli はソースビルドで数分かかる)
 pnpm install
 lefthook install
