@@ -12,9 +12,6 @@ pub enum PayslipError {
     /// 月が1〜12の範囲にない
     #[error("対象年月が不正です")]
     InvalidPeriod,
-    /// 給与明細番号が正の数でない
-    #[error("給与明細IDが不正です")]
-    InvalidId,
     /// 確定済みの給与明細をもう一度確定しようとした
     #[error("確定済みの給与明細は変更できません")]
     AlreadyFinalized,

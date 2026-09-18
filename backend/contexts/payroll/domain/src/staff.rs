@@ -10,9 +10,6 @@ use thiserror::Error;
 /// 派遣社員の業務ルールに反したときの理由
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum StaffError {
-    /// 派遣社員番号が正の数でない
-    #[error("派遣社員IDが不正です")]
-    InvalidId,
     /// 利用者IDが空、または長すぎる
     #[error("利用者IDが不正です")]
     InvalidUserId,
@@ -24,22 +21,9 @@ pub enum StaffError {
     InvalidDisplayName,
 }
 
-/// 派遣社員番号。雇用記録を一意に指す正の整数。給与明細はこの番号で派遣社員を指す
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct StaffId(i64);
-
-impl StaffId {
-    pub fn from_i64(value: i64) -> Result<Self, StaffError> {
-        if value <= 0 {
-            return Err(StaffError::InvalidId);
-        }
-        Ok(Self(value))
-    }
-
-    #[must_use]
-    pub fn as_i64(&self) -> i64 {
-        self.0
-    }
+platform_kernel::positive_id! {
+    /// 派遣社員番号。雇用記録を一意に指す正の整数。給与明細はこの番号で派遣社員を指す
+    pub struct StaffId;
 }
 
 /// 利用者ID。派遣社員がログインに使うアカウントを指す識別子。

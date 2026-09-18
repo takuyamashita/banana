@@ -8,30 +8,14 @@ use thiserror::Error;
 /// 案件の業務ルールに反したときの理由
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum ProjectError {
-    /// 案件番号が正の数でない
-    #[error("案件IDが不正です")]
-    InvalidId,
     /// 案件名が空、または100文字を超えている
     #[error("案件名は1〜100文字で指定してください")]
     InvalidName,
 }
 
-/// 案件番号。登録された案件を一意に指す正の整数
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ProjectId(i64);
-
-impl ProjectId {
-    pub fn from_i64(value: i64) -> Result<Self, ProjectError> {
-        if value <= 0 {
-            return Err(ProjectError::InvalidId);
-        }
-        Ok(Self(value))
-    }
-
-    #[must_use]
-    pub fn as_i64(&self) -> i64 {
-        self.0
-    }
+platform_kernel::positive_id! {
+    /// 案件番号。登録された案件を一意に指す正の整数
+    pub struct ProjectId;
 }
 
 /// 案件名。画面や給与明細で案件を見分けるための名前で、前後の空白を除いて1〜100文字
