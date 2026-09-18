@@ -1,8 +1,12 @@
 name: proto
 
+# GitHub Actions の実行時間を節約するため、いったん手動実行だけにしている(2026-09-19)。
+# 元に戻すときは下のコメントを外し、その下の on: を消す
+# on:
+#   pull_request:
+#     paths: ["proto/**", "buf.yaml", "buf.gen.yaml", ".github/workflows/proto.yml"]
 on:
-  pull_request:
-    paths: ["proto/**", "buf.yaml", "buf.gen.yaml", ".github/workflows/proto.yml"]
+  workflow_dispatch:
 
 permissions:
   contents: read

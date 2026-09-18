@@ -1,9 +1,18 @@
 name: deploy
 
 # main へのマージで dev に自動デプロイ。stg・prod は GitHub Environments の承認を経て同じ流れを実行する
+# GitHub Actions の実行時間を節約するため、いったん手動実行だけにしている(2026-09-19)。
+# 元に戻すときは下のコメントを外し、その下の on: を消す
+# on:
+#   push:
+#     branches: [main]
+#   workflow_dispatch:
+#     inputs:
+#       environment:
+#         description: デプロイ先
+#         type: choice
+#         options: [dev, stg, prod]
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       environment:

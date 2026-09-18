@@ -1,35 +1,39 @@
 name: backend
 
+# GitHub Actions の実行時間を節約するため、いったん手動実行だけにしている(2026-09-19)。
+# 元に戻すときは下のコメントを外し、その下の on: を消す
+# on:
+#   pull_request:
+#     paths:
+#       [
+#         "backend/**",
+#         "proto/**",
+#         "Cargo.toml",
+#         "Cargo.lock",
+#         ".sqlx/**",
+#         "deny.toml",
+#         "clippy.toml",
+#         "rustfmt.toml",
+#         "mise.toml",
+#         "rust-toolchain.toml",
+#         "scripts/check-deps.sh",
+#         ".github/workflows/backend.yml",
+#       ]
+#   push:
+#     branches: [main]
+#     paths:
+#       [
+#         "backend/**",
+#         "proto/**",
+#         "Cargo.toml",
+#         "Cargo.lock",
+#         ".sqlx/**",
+#         "mise.toml",
+#         "rust-toolchain.toml",
+#         ".github/workflows/backend.yml",
+#       ]
 on:
-  pull_request:
-    paths:
-      [
-        "backend/**",
-        "proto/**",
-        "Cargo.toml",
-        "Cargo.lock",
-        ".sqlx/**",
-        "deny.toml",
-        "clippy.toml",
-        "rustfmt.toml",
-        "mise.toml",
-        "rust-toolchain.toml",
-        "scripts/check-deps.sh",
-        ".github/workflows/backend.yml",
-      ]
-  push:
-    branches: [main]
-    paths:
-      [
-        "backend/**",
-        "proto/**",
-        "Cargo.toml",
-        "Cargo.lock",
-        ".sqlx/**",
-        "mise.toml",
-        "rust-toolchain.toml",
-        ".github/workflows/backend.yml",
-      ]
+  workflow_dispatch:
 
 permissions:
   contents: read

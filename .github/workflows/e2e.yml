@@ -1,23 +1,27 @@
 name: e2e
 
+# GitHub Actions の実行時間を節約するため、いったん手動実行だけにしている(2026-09-19)。
+# 元に戻すときは下のコメントを外し、その下の on: を消す
+# on:
+#   pull_request:
+#     paths:
+#       [
+#         "backend/**",
+#         "frontend/**",
+#         "proto/**",
+#         "e2e/**",
+#         "compose.yaml",
+#         "compose/**",
+#         "mise.toml",
+#         "rust-toolchain.toml",
+#         ".github/workflows/e2e.yml",
+#       ]
+#   push:
+#     branches: [main]
+#   schedule:
+#     - cron: "0 18 * * *" # 毎日 03:00 JST に全件
 on:
-  pull_request:
-    paths:
-      [
-        "backend/**",
-        "frontend/**",
-        "proto/**",
-        "e2e/**",
-        "compose.yaml",
-        "compose/**",
-        "mise.toml",
-        "rust-toolchain.toml",
-        ".github/workflows/e2e.yml",
-      ]
-  push:
-    branches: [main]
-  schedule:
-    - cron: "0 18 * * *" # 毎日 03:00 JST に全件
+  workflow_dispatch:
 
 permissions:
   contents: read
