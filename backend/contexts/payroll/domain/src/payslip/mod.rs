@@ -1,4 +1,8 @@
-//! 給与明細(payslip)集約。丸めルールと確定後の変更禁止がこのドメインの中核
+//! 給与明細(payslip)。
+//!
+//! 派遣社員1人の、ある1か月分の給与を表す。案件ごとの稼働時間と時給を明細行として持ち、
+//! その合計が支給額になる。管理者が内容を確かめて「確定」すると、以後は変更できず、
+//! 確定した事実を振込などの後続業務に知らせる。
 
 use platform_kernel::Money;
 use thiserror::Error;
@@ -8,21 +12,27 @@ use crate::Unsaved;
 use crate::project::ProjectId;
 use crate::staff::StaffId;
 
+/// 給与明細の業務ルールに反したときの理由
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum PayslipError {
+    /// 明細行が1件もない。稼働のない月の給与明細は作らない
     #[error("給与明細には最低1件の行が必要です")]
     EmptyLines,
+    /// 稼働時間が15分に満たない、または1か月の上限を超えている
     #[error("稼働時間が不正です")]
     InvalidWorkMinutes,
+    /// 月が1〜12の範囲にない
     #[error("対象年月が不正です")]
     InvalidPeriod,
+    /// 給与明細番号が正の数でない
     #[error("給与明細IDが不正です")]
     InvalidId,
+    /// 確定済みの給与明細をもう一度確定しようとした
     #[error("確定済みの給与明細は変更できません")]
     AlreadyFinalized,
 }
 
-// DBが採番するBIGINT。アプリ側では生成しないので generate() は持たない
+/// 給与明細番号。登録された給与明細を一意に指す正の整数
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PayslipId(i64);
 
@@ -40,9 +50,15 @@ impl PayslipId {
     }
 }
 
+/// 給与の対象月(「2026年9月分」)。
+///
+/// 月の区切りは日本時間で数える。9月分は 9月1日 0:00(JST)から 10月1日 0:00(JST)の直前までに
+/// 行われた稼働が対象になる。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PayPeriod {
+    /// 西暦年
     year: u16,
+    /// 月(1〜12)
     month: u8,
 }
 
@@ -64,9 +80,10 @@ impl PayPeriod {
         self.month
     }
 
-    // 「2026年9月分」がUTCのどの区間かをdomainが答える。
-    // [月初00:00 JST, 翌月初00:00 JST) の半開区間。末尾を 23:59:59 にすると
-    // マイクロ秒の端が漏れるので半開にする
+    /// この月に含まれる時刻の範囲を UTC で返す。
+    ///
+    /// 始まり(月初 0:00 JST)を含み、終わり(翌月初 0:00 JST)を含まない。
+    /// 「月末 23:59:59 まで」とすると、その1秒の間の時刻が漏れるため、終わりは翌月初で表す
     #[must_use]
     pub fn range_utc(&self) -> (OffsetDateTime, OffsetDateTime) {
         let start = self.first_moment_jst();
@@ -74,7 +91,7 @@ impl PayPeriod {
         (start.to_offset(UtcOffset::UTC), end.to_offset(UtcOffset::UTC))
     }
 
-    // JSTにサマータイムがないので、固定オフセットで足りる
+    /// 月初 0:00(JST)。日本にはサマータイムがないので、常に UTC+9 で数える
     fn first_moment_jst(self) -> OffsetDateTime {
         let jst = UtcOffset::from_hms(9, 0, 0).expect("JST");
         Date::from_calendar_date(
@@ -96,32 +113,41 @@ impl PayPeriod {
     }
 }
 
-// 稼働時間。生成時に15分単位へ切り捨てる
+/// 1つの案件での、1か月分の稼働時間(分)。
+///
+/// 稼働は15分単位で数え、15分に満たない端数は切り捨てる(100分の稼働は90分として扱う)。
+/// 切り捨てた結果が0分になるもの(14分以下)は稼働として認めない。
+/// 1か月の上限は 744時間(31日 × 24時間)で、これを超える稼働はありえないので受け付けない
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WorkMinutes(u32);
 
+/// 1か月の稼働時間の上限(分)。31日 × 24時間
 const MAX_WORK_MINUTES: u32 = 744 * 60;
 
 impl WorkMinutes {
     pub fn from_minutes(minutes: u32) -> Result<Self, PayslipError> {
         let floored = minutes - minutes % 15;
-        // 切り捨て後に0分になる値(1〜14分)も弾く
         if floored == 0 || minutes > MAX_WORK_MINUTES {
             return Err(PayslipError::InvalidWorkMinutes);
         }
         Ok(Self(floored))
     }
 
+    /// 15分単位に切り捨てた後の分数
     #[must_use]
     pub fn as_minutes(&self) -> u32 {
         self.0
     }
 }
 
+/// 給与明細の1行。どの案件で、どれだけ働き、時給はいくらだったか
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PayslipLine {
+    /// 稼働した案件
     project_id: ProjectId,
+    /// その案件での、この月の稼働時間
     work_minutes: WorkMinutes,
+    /// その案件での時給(円)。同じ派遣社員でも案件ごとに異なる
     hourly_rate: Money,
 }
 
@@ -146,38 +172,58 @@ impl PayslipLine {
         self.hourly_rate
     }
 
-    // 時給 × 稼働分 / 60。円未満切り捨てという選択が業務ルール
+    /// この行の支給額。時給 × 稼働分 ÷ 60 で、円未満は切り捨てる
+    /// (1,001円で15分なら 250.25円 → 250円)
     #[must_use]
     pub fn amount(&self) -> Money {
         (self.hourly_rate * self.work_minutes.as_minutes()).div_floor(60)
     }
 }
 
+/// 給与明細の状態
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PayslipStatus {
+    /// 作成中。内容を確かめている段階で、まだ支給額として確定していない
     Draft,
+    /// 確定済み。支給額が決まり、以後は変更できない。振込の対象になる
     Finalized,
 }
 
-// 集約が発行するドメインイベント。serdeのderiveは付けない。
-// 新規時はIDが未採番なので、IDはoutbox行の aggregate_id に入れる(infrastructureの責務)
+/// 給与明細に起きた、他の業務が知るべき出来事
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PayslipEvent {
-    Finalized { staff_id: StaffId, period: PayPeriod, total: Money },
+    /// 給与明細が確定し、支給額が決まった。振込はこれを受けて行う
+    Finalized {
+        /// 支給を受ける派遣社員
+        staff_id: StaffId,
+        /// 対象月
+        period: PayPeriod,
+        /// 確定した支給額(全明細行の合計)
+        total: Money,
+    },
 }
 
-/// 給与明細。`Id` は保存済みなら `PayslipId`、未保存なら `Unsaved`。
-/// 不変条件・状態遷移・合計の業務ルールは `impl<Id>` に1回だけ書き、未保存・保存済みの両方で使う
+/// 給与明細。派遣社員1人の、ある1か月分の給与を表す。
+///
+/// 同じ派遣社員・同じ月の給与明細は、有効なものが常に1つだけ存在する。
+/// `Id` はまだ登録していない給与明細なら [`Unsaved`]、登録済みなら [`PayslipId`]
 #[derive(Debug)]
 pub struct Payslip<Id = PayslipId> {
+    /// 給与明細番号
     id: Id,
+    /// 給与を受け取る派遣社員
     staff_id: StaffId,
+    /// 対象月
     period: PayPeriod,
+    /// 案件ごとの稼働と時給。1件以上ある
     lines: Vec<PayslipLine>,
+    /// 作成中か、確定済みか
     status: PayslipStatus,
+    /// まだ他の業務に知らせていない出来事
     events: Vec<PayslipEvent>,
 }
 
+/// まだ登録していない給与明細
 pub type NewPayslip = Payslip<Unsaved>;
 
 impl<Id> Payslip<Id> {
@@ -214,11 +260,14 @@ impl<Id> Payslip<Id> {
         self.status
     }
 
+    /// 支給額。各明細行の金額(それぞれ円未満切り捨て済み)の合計
     #[must_use]
     pub fn total(&self) -> Money {
         self.lines.iter().map(PayslipLine::amount).fold(Money::ZERO, |acc, m| acc + m)
     }
 
+    /// 給与明細を確定し、支給額を決める。確定できるのは作成中のものだけで、
+    /// 確定すると「確定した」という出来事を記録する
     pub fn finalize(&mut self) -> Result<(), PayslipError> {
         if self.status != PayslipStatus::Draft {
             return Err(PayslipError::AlreadyFinalized);
@@ -234,12 +283,14 @@ impl<Id> Payslip<Id> {
         Ok(())
     }
 
+    /// まだ知らせていない出来事を取り出す。取り出した出来事は給与明細から消える
     pub fn take_events(&mut self) -> Vec<PayslipEvent> {
         std::mem::take(&mut self.events)
     }
 }
 
 impl Payslip<Unsaved> {
+    /// 作成中の給与明細を新しく作る。明細行は1件以上必要
     pub fn draft(
         staff_id: StaffId,
         period: PayPeriod,
@@ -250,7 +301,7 @@ impl Payslip<Unsaved> {
 }
 
 impl Payslip<PayslipId> {
-    // 永続化からの再構築専用。repository実装からのみ呼ぶ(usecase・handler は clippy で禁止)
+    /// 登録済みの給与明細を、記録されている内容から組み立て直す
     pub fn reconstruct(
         id: PayslipId,
         staff_id: StaffId,

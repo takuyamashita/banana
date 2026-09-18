@@ -1,24 +1,31 @@
-//! 派遣社員(staff)集約。
+//! 派遣社員(staff)。
 //!
-//! `UserId` は認証基盤上のID(Cognito の sub)で、雇用記録を指す `StaffId` とは別物。
-//! 両者の対応付けはこの集約が持つ。
+//! 派遣会社に登録し、派遣先の案件で働く人の雇用記録。給与明細はこの派遣社員ごとに作る。
+//! 派遣社員は自分の給与明細を見るためにログインするので、ログイン用のアカウント(利用者)と
+//! 1対1で結びつく。雇用記録を指す派遣社員番号と、アカウントを指す利用者IDは別のもの。
 
 use thiserror::Error;
 
 use crate::Unsaved;
 
+/// 派遣社員の業務ルールに反したときの理由
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum StaffError {
+    /// 派遣社員番号が正の数でない
     #[error("派遣社員IDが不正です")]
     InvalidId,
+    /// 利用者IDが空、または長すぎる
     #[error("利用者IDが不正です")]
     InvalidUserId,
+    /// メールアドレスの形になっていない
     #[error("メールアドレスが不正です")]
     InvalidEmail,
+    /// 表示名が空、または50文字を超えている
     #[error("表示名は1〜50文字で指定してください")]
     InvalidDisplayName,
 }
 
+/// 派遣社員番号。雇用記録を一意に指す正の整数。給与明細はこの番号で派遣社員を指す
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct StaffId(i64);
 
@@ -36,7 +43,10 @@ impl StaffId {
     }
 }
 
-/// 認証基盤上の利用者ID。形式はプロバイダ次第なので、空でないことと長さだけを見る
+/// 利用者ID。派遣社員がログインに使うアカウントを指す識別子。
+///
+/// アカウントは認証基盤が発行し、形式はそちらが決める(UUID など)。ここでは空でなく、
+/// 64文字以内であることだけを求める
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct UserId(String);
 
@@ -55,6 +65,10 @@ impl UserId {
     }
 }
 
+/// メールアドレス。ログインと連絡に使う。
+///
+/// 前後の空白を除き、小文字にそろえて扱う(大文字小文字の違いで別人とみなさない)。
+/// 同じメールアドレスの派遣社員は2人登録できない
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Email(String);
 
@@ -77,6 +91,7 @@ impl Email {
     }
 }
 
+/// 表示名。画面で派遣社員を見分けるための名前(氏名など)で、前後の空白を除いて1〜50文字
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DisplayName(String);
 
@@ -95,15 +110,22 @@ impl DisplayName {
     }
 }
 
-/// 派遣社員。`Id` は保存済みなら `StaffId`、未保存なら `Unsaved`
+/// 派遣社員。派遣先の案件で働く人の雇用記録と、その人のログイン用アカウントの対応。
+///
+/// `Id` はまだ登録していない派遣社員なら [`Unsaved`]、登録済みなら [`StaffId`]
 #[derive(Debug)]
 pub struct Staff<Id = StaffId> {
+    /// 派遣社員番号
     id: Id,
+    /// この派遣社員のログイン用アカウント。1人に1つ
     user_id: UserId,
+    /// メールアドレス
     email: Email,
+    /// 表示名
     display_name: DisplayName,
 }
 
+/// まだ登録していない派遣社員
 pub type NewStaff = Staff<Unsaved>;
 
 impl<Id> Staff<Id> {
@@ -124,6 +146,7 @@ impl<Id> Staff<Id> {
 }
 
 impl Staff<Unsaved> {
+    /// 派遣社員を新しく作る。ログイン用アカウントは先に用意しておく
     #[must_use]
     pub fn new(user_id: UserId, email: Email, display_name: DisplayName) -> Self {
         Self { id: Unsaved, user_id, email, display_name }
@@ -131,7 +154,7 @@ impl Staff<Unsaved> {
 }
 
 impl Staff<StaffId> {
-    // 永続化からの再構築専用
+    /// 登録済みの派遣社員を、記録されている内容から組み立て直す
     #[must_use]
     pub fn reconstruct(
         id: StaffId,

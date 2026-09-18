@@ -1,17 +1,23 @@
-//! 案件(project)集約
+//! 案件(project)。
+//!
+//! 派遣社員が派遣先で従事する仕事の単位。給与明細の各行は、どの案件での稼働かを案件で示す。
 
 use thiserror::Error;
 
 use crate::Unsaved;
 
+/// 案件の業務ルールに反したときの理由
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum ProjectError {
+    /// 案件番号が正の数でない
     #[error("案件IDが不正です")]
     InvalidId,
+    /// 案件名が空、または100文字を超えている
     #[error("案件名は1〜100文字で指定してください")]
     InvalidName,
 }
 
+/// 案件番号。登録された案件を一意に指す正の整数
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ProjectId(i64);
 
@@ -29,6 +35,7 @@ impl ProjectId {
     }
 }
 
+/// 案件名。画面や給与明細で案件を見分けるための名前で、前後の空白を除いて1〜100文字
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectName(String);
 
@@ -47,13 +54,18 @@ impl ProjectName {
     }
 }
 
-/// 案件。`Id` は保存済みなら `ProjectId`、未保存なら `Unsaved`
+/// 案件。派遣社員が従事する仕事の単位。
+///
+/// `Id` はまだ登録していない案件なら [`Unsaved`]、登録済みなら [`ProjectId`]
 #[derive(Debug)]
 pub struct Project<Id = ProjectId> {
+    /// 案件番号
     id: Id,
+    /// 案件名
     name: ProjectName,
 }
 
+/// まだ登録していない案件
 pub type NewProject = Project<Unsaved>;
 
 impl<Id> Project<Id> {
@@ -64,6 +76,7 @@ impl<Id> Project<Id> {
 }
 
 impl Project<Unsaved> {
+    /// 案件を新しく作る
     #[must_use]
     pub fn new(name: ProjectName) -> Self {
         Self { id: Unsaved, name }
@@ -71,7 +84,7 @@ impl Project<Unsaved> {
 }
 
 impl Project<ProjectId> {
-    // 永続化からの再構築専用
+    /// 登録済みの案件を、記録されている内容から組み立て直す
     #[must_use]
     pub fn reconstruct(id: ProjectId, name: ProjectName) -> Self {
         Self { id, name }
