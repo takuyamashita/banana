@@ -4,9 +4,8 @@
 //! 派遣社員は自分の給与明細を見るためにログインするので、ログイン用のアカウント(利用者)と
 //! 1対1で結びつく。雇用記録を指す派遣社員番号と、アカウントを指す利用者IDは別のもの。
 
+use platform_kernel::Unsaved;
 use thiserror::Error;
-
-use crate::Unsaved;
 
 /// 派遣社員の業務ルールに反したときの理由
 #[derive(Debug, Error, PartialEq, Eq)]

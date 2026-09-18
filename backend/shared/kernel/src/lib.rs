@@ -62,6 +62,15 @@ impl fmt::Display for Money {
     }
 }
 
+/// まだ登録していないことを表す目印。
+///
+/// 番号(ID)が登録したときに初めて決まるものは、登録前には番号を持たない。
+/// そうしたものを `Project<Id>` のように番号の型で引数化し、登録前は番号の位置にこの目印を入れる
+/// (`Project<Unsaved>`)。番号を尋ねられるのは登録済みのものだけになる。
+/// どのコンテキストでも同じ意味で使うので、ここに置く
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Unsaved;
+
 /// アプリが扱うロール。プロバイダ固有のクレーム(`cognito:groups`・`realm_access.roles`)は
 /// shared/auth の mapper でこれに詰め替える
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

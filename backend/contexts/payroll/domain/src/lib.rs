@@ -10,24 +10,3 @@
 pub mod payslip;
 pub mod project;
 pub mod staff;
-
-/// まだ登録していないことを表す目印。
-///
-/// 案件・派遣社員・給与明細の番号は、登録したときに初めて決まる。そのため登録前のものは番号を持たず、
-/// 番号の位置にこの目印を入れる(`Project<Unsaved>` など)。番号を尋ねられるのは登録済みのものだけ。
-///
-/// ```compile_fail
-/// use payroll_domain::project::{NewProject, ProjectName};
-///
-/// let project = NewProject::new(ProjectName::new("案件A").unwrap());
-/// project.id(); // 未保存なので id() はない
-/// ```
-///
-/// ```
-/// use payroll_domain::project::{Project, ProjectId, ProjectName};
-///
-/// let project = Project::reconstruct(ProjectId::from_i64(1).unwrap(), ProjectName::new("案件A").unwrap());
-/// assert_eq!(project.id().as_i64(), 1);
-/// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Unsaved;

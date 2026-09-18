@@ -2,9 +2,8 @@
 //!
 //! 派遣社員が派遣先で従事する仕事の単位。給与明細の各行は、どの案件での稼働かを案件で示す。
 
+use platform_kernel::Unsaved;
 use thiserror::Error;
-
-use crate::Unsaved;
 
 /// 案件の業務ルールに反したときの理由
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -56,7 +55,23 @@ impl ProjectName {
 
 /// 案件。派遣社員が従事する仕事の単位。
 ///
-/// `Id` はまだ登録していない案件なら [`Unsaved`]、登録済みなら [`ProjectId`]
+/// `Id` はまだ登録していない案件なら [`Unsaved`]、登録済みなら [`ProjectId`]。
+/// 案件番号を尋ねられるのは登録済みの案件だけ:
+///
+/// ```compile_fail
+/// use payroll_domain::project::{NewProject, ProjectName};
+///
+/// let project = NewProject::new(ProjectName::new("案件A").unwrap());
+/// project.id(); // まだ登録していないので案件番号はない
+/// ```
+///
+/// ```
+/// use payroll_domain::project::{Project, ProjectId, ProjectName};
+///
+/// let id = ProjectId::from_i64(1).unwrap();
+/// let project = Project::reconstruct(id, ProjectName::new("案件A").unwrap());
+/// assert_eq!(project.id(), id);
+/// ```
 #[derive(Debug)]
 pub struct Project<Id = ProjectId> {
     /// 案件番号

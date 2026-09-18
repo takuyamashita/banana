@@ -4,11 +4,10 @@
 //! その合計が支給額になる。管理者が内容を確かめて「確定」すると、以後は変更できず、
 //! 確定した事実を振込などの後続業務に知らせる。
 
-use platform_kernel::Money;
+use platform_kernel::{Money, Unsaved};
 use thiserror::Error;
 use time::{Date, Month, OffsetDateTime, UtcOffset};
 
-use crate::Unsaved;
 use crate::project::ProjectId;
 use crate::staff::StaffId;
 
