@@ -5,7 +5,7 @@
 //     await caption(page, "① …");           // 画面の下に字幕を出す
 //   });
 //
-// 動画は videos-out/<台本のファイル名>/<テスト名>[-<record の名前>].webm に保存する(mp4 への変換はタスクが行う)。
+// 動画は videos-out/<台本のファイル名>/<テスト名>[-<開いた順>-<record の名前>].webm に保存する(mp4 への変換はタスクが行う)。
 //
 // 台本は PR ごとに videos/<見せること>.spec.ts に書き、PR と一緒にコミットする(CI では流さない)。
 // 後で画面が変わって動かなくなったら、直さずに消してよい(動画は PR に残る)
@@ -18,7 +18,8 @@ export const VIDEO_DIR = join(import.meta.dirname, "..", "videos-out");
 export const VIDEO_SIZE = { width: 1280, height: 800 };
 
 /// ファイル名に使えない文字を除く
-const fileName = (text: string) => text.replace(/[\\/:*?"<>|\s]+/g, "_");
+/// ファイル名と、PR の本文の Markdown(![](<パス>))で使えない文字を除く
+const fileName = (text: string) => text.replace(/[\\/:*?"<>|()[\]\s]+/g, "_");
 
 export const test = base.extend<{ record: (label?: string) => Promise<Page> }>({
   record: async ({ browser }, use, testInfo) => {
@@ -36,11 +37,12 @@ export const test = base.extend<{ record: (label?: string) => Promise<Page> }>({
     });
     // テストの終わりにブラウザを閉じ、台本とテストの名前で保存する
     const dir = join(VIDEO_DIR, fileName(basename(testInfo.file).replace(/\.spec\.ts$/, "")));
-    for (const { page, label } of opened) {
+    for (const [i, { page, label }] of opened.entries()) {
       await page.context().close();
       const video = page.video();
       if (!video) throw new Error("録画されていない");
-      const name = label === undefined ? testInfo.title : `${testInfo.title}-${label}`;
+      // 何人分も開いたときは、開いた順に並ぶように番号を付ける
+      const name = label === undefined ? testInfo.title : `${testInfo.title}-${i + 1}-${label}`;
       await video.saveAs(join(dir, `${fileName(name)}.webm`));
       await video.delete();
     }
