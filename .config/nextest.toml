@@ -1,0 +1,19 @@
+# testcontainers で MySQL を立てるテスト(DB 結合テスト・API テスト)は、同時に走らせる数を抑える。
+# 一度に多数を立てると、起動待ちで遅くなり、カーネルの上限(fs.aio-max-nr など)にも当たりやすい
+[test-groups]
+mysql = { max-threads = 8 }
+
+[[profile.default.overrides]]
+filter = "(package(payroll-infrastructure) | package(server)) & kind(test)"
+test-group = "mysql"
+
+[profile.default]
+# 60秒を超えたら知らせ、3倍(180秒)で打ち切る
+slow-timeout = { period = "60s", terminate-after = 3 }
+
+# CI では最後まで流し切り、結果を JUnit で残す(NEXTEST_PROFILE=ci)
+[profile.ci]
+fail-fast = false
+
+[profile.ci.junit]
+path = "junit.xml"

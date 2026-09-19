@@ -38,8 +38,30 @@ use time::macros::datetime;
 // crate 全体(tests/ も含む)に効くため、ここだけ明示的に許可する
 
 /// 番号・派遣社員・対象月・明細行・確定日時(作成中なら None)
-type PayslipRow = (PayslipId, StaffId, PayPeriod, Vec<PayslipLine>, Option<OffsetDateTime>);
-type StaffRow = (StaffId, UserId, Email);
+#[derive(Clone)]
+struct PayslipRow {
+    id: PayslipId,
+    staff_id: StaffId,
+    period: PayPeriod,
+    lines: Vec<PayslipLine>,
+    /// 確定日時。作成中なら None
+    finalized_at: Option<OffsetDateTime>,
+}
+
+#[derive(Clone)]
+struct StaffRow {
+    id: StaffId,
+    user_id: UserId,
+    email: Email,
+}
+
+#[derive(Clone)]
+struct PayoutRow {
+    payslip_id: PayslipId,
+    staff_id: StaffId,
+    amount: Money,
+    outcome: PayoutOutcome,
+}
 
 /// 確定済みの記録。取り出しはここを見て、トランザクションは commit でここへ反映する
 #[derive(Default, Clone)]
@@ -47,7 +69,7 @@ struct Records {
     payslips: Vec<PayslipRow>,
     staff: Vec<StaffRow>,
     projects: Vec<ProjectId>,
-    payouts: Vec<(PayslipId, StaffId, Money, PayoutOutcome)>,
+    payouts: Vec<PayoutRow>,
     events: Vec<PayrollEvent>,
 }
 
@@ -63,12 +85,10 @@ impl World {
     fn with_staff(rows: &[(i64, &str)]) -> Self {
         let staff = rows
             .iter()
-            .map(|(id, user)| {
-                (
-                    StaffId::from_i64(*id).unwrap(),
-                    UserId::parse(*user).unwrap(),
-                    Email::parse(format!("{user}@example.com")).unwrap(),
-                )
+            .map(|(id, user)| StaffRow {
+                id: StaffId::from_i64(*id).unwrap(),
+                user_id: UserId::parse(*user).unwrap(),
+                email: Email::parse(format!("{user}@example.com")).unwrap(),
             })
             .collect();
         let projects = vec![ProjectId::from_i64(1).unwrap()];
@@ -89,16 +109,16 @@ fn next_id(len: usize) -> i64 {
 
 #[allow(clippy::disallowed_methods, reason = "フェイクのリポジトリ実装")]
 fn to_payslip(r: &PayslipRow) -> Payslip {
-    match r.4 {
-        Some(at) => Payslip::reconstruct_finalized(r.0, r.1, r.2, r.3.clone(), at),
-        None => Payslip::reconstruct_draft(r.0, r.1, r.2, r.3.clone()),
+    match r.finalized_at {
+        Some(at) => Payslip::reconstruct_finalized(r.id, r.staff_id, r.period, r.lines.clone(), at),
+        None => Payslip::reconstruct_draft(r.id, r.staff_id, r.period, r.lines.clone()),
     }
     .unwrap()
 }
 
 #[allow(clippy::disallowed_methods, reason = "フェイクのリポジトリ実装")]
 fn to_staff(r: &StaffRow) -> Staff {
-    Staff::reconstruct(r.0, r.1.clone(), r.2.clone(), DisplayName::new("x").unwrap())
+    Staff::reconstruct(r.id, r.user_id.clone(), r.email.clone(), DisplayName::new("x").unwrap())
 }
 
 /// フェイクの書き込み先。トランザクションは commit まで記録を手元に溜めて commit で丸ごと反映し、
@@ -156,11 +176,18 @@ struct FakePayslips(Arc<World>);
 #[async_trait]
 impl PayslipRepository for FakePayslips {
     async fn find(&self, id: PayslipId) -> Result<Option<Payslip>, RepositoryError> {
-        Ok(self.0.records().payslips.iter().find(|r| r.0 == id).map(to_payslip))
+        Ok(self.0.records().payslips.iter().find(|r| r.id == id).map(to_payslip))
     }
 
     async fn list_by_staff(&self, staff_id: StaffId) -> Result<Vec<Payslip>, RepositoryError> {
-        Ok(self.0.records().payslips.iter().filter(|r| r.1 == staff_id).map(to_payslip).collect())
+        Ok(self
+            .0
+            .records()
+            .payslips
+            .iter()
+            .filter(|r| r.staff_id == staff_id)
+            .map(to_payslip)
+            .collect())
     }
 
     async fn find_for_update(
@@ -173,14 +200,20 @@ impl PayslipRepository for FakePayslips {
         if matches!(db, FakeDb::Connection(_)) {
             return Err(RepositoryError::Internal("トランザクションが必要です".into()));
         }
-        Ok(db.write(|r| r.payslips.iter().find(|row| row.0 == id).map(to_payslip)))
+        Ok(db.write(|r| r.payslips.iter().find(|row| row.id == id).map(to_payslip)))
     }
 
     async fn insert(&self, db: &mut Db, new: &NewPayslip) -> Result<PayslipId, RepositoryError> {
         Ok(fake(db).write(|r| {
             let id = PayslipId::from_i64(next_id(r.payslips.len())).unwrap();
             let c = new.content();
-            r.payslips.push((id, c.staff_id(), c.period(), c.lines().to_vec(), None));
+            r.payslips.push(PayslipRow {
+                id,
+                staff_id: c.staff_id(),
+                period: c.period(),
+                lines: c.lines().to_vec(),
+                finalized_at: None,
+            });
             id
         }))
     }
@@ -192,9 +225,9 @@ impl PayslipRepository for FakePayslips {
     ) -> Result<(), RepositoryError> {
         fake(db).write(|r| {
             // 本物と同じく、作成中の記録だけを書き換える
-            match r.payslips.iter_mut().find(|row| row.0 == payslip.content().id()) {
-                Some(row) if row.4.is_none() => {
-                    row.4 = Some(payslip.finalized_at());
+            match r.payslips.iter_mut().find(|row| row.id == payslip.content().id()) {
+                Some(row) if row.finalized_at.is_none() => {
+                    row.finalized_at = Some(payslip.finalized_at());
                     Ok(())
                 }
                 _ => Err(RepositoryError::Conflict("作成中の給与明細ではありません".into())),
@@ -208,15 +241,15 @@ struct FakeStaff(Arc<World>);
 #[async_trait]
 impl StaffRepository for FakeStaff {
     async fn find(&self, id: StaffId) -> Result<Option<Staff>, RepositoryError> {
-        Ok(self.0.records().staff.iter().find(|r| r.0 == id).map(to_staff))
+        Ok(self.0.records().staff.iter().find(|r| r.id == id).map(to_staff))
     }
 
     async fn find_by_user_id(&self, user_id: &UserId) -> Result<Option<Staff>, RepositoryError> {
-        Ok(self.0.records().staff.iter().find(|r| &r.1 == user_id).map(to_staff))
+        Ok(self.0.records().staff.iter().find(|r| &r.user_id == user_id).map(to_staff))
     }
 
     async fn find_by_email(&self, email: &Email) -> Result<Option<Staff>, RepositoryError> {
-        Ok(self.0.records().staff.iter().find(|r| &r.2 == email).map(to_staff))
+        Ok(self.0.records().staff.iter().find(|r| &r.email == email).map(to_staff))
     }
 
     async fn insert(&self, db: &mut Db, new: &NewStaff) -> Result<StaffId, RepositoryError> {
@@ -225,7 +258,11 @@ impl StaffRepository for FakeStaff {
         }
         Ok(fake(db).write(|r| {
             let id = StaffId::from_i64(next_id(r.staff.len())).unwrap();
-            r.staff.push((id, new.user_id().clone(), new.email().clone()));
+            r.staff.push(StaffRow {
+                id,
+                user_id: new.user_id().clone(),
+                email: new.email().clone(),
+            });
             id
         }))
     }
@@ -277,19 +314,26 @@ impl PayoutRepository for FakePayouts {
         payslip_id: PayslipId,
     ) -> Result<Option<Payout>, RepositoryError> {
         let records = self.0.records();
-        Ok(records.payouts.iter().enumerate().find(|(_, r)| r.0 == payslip_id).map(|(i, r)| {
-            let id = PayoutId::from_i64(next_id(i)).unwrap();
-            Payout::reconstruct(id, r.0, r.1, r.2, r.3.clone())
-        }))
+        Ok(records.payouts.iter().enumerate().find(|(_, r)| r.payslip_id == payslip_id).map(
+            |(i, r)| {
+                let id = PayoutId::from_i64(next_id(i)).unwrap();
+                Payout::reconstruct(id, r.payslip_id, r.staff_id, r.amount, r.outcome.clone())
+            },
+        ))
     }
 
     async fn insert(&self, db: &mut Db, new: &NewPayout) -> Result<PayoutId, RepositoryError> {
         fake(db).write(|r| {
             // 本物と同じく、1つの給与明細の振込依頼は1つ
-            if r.payouts.iter().any(|p| p.0 == new.payslip_id()) {
+            if r.payouts.iter().any(|p| p.payslip_id == new.payslip_id()) {
                 return Err(RepositoryError::Conflict("一意制約に違反しました".into()));
             }
-            r.payouts.push((new.payslip_id(), new.staff_id(), new.amount(), new.outcome().clone()));
+            r.payouts.push(PayoutRow {
+                payslip_id: new.payslip_id(),
+                staff_id: new.staff_id(),
+                amount: new.amount(),
+                outcome: new.outcome().clone(),
+            });
             Ok(PayoutId::from_i64(next_id(r.payouts.len() - 1)).unwrap())
         })
     }
@@ -424,7 +468,7 @@ async fn create_makes_a_draft_payslip() {
     let records = world.records();
     assert_eq!(records.payslips.len(), 1);
     // 作成中なので確定日時はなく、出来事もまだない
-    assert_eq!(records.payslips[0].4, None);
+    assert_eq!(records.payslips[0].finalized_at, None);
     assert!(records.events.is_empty());
 }
 
@@ -474,7 +518,7 @@ async fn finalize_records_the_finalized_payslip_and_its_event_together() {
 
     let records = world.records();
     // 確定日時は時計の今
-    assert_eq!(records.payslips[0].4, Some(NOW));
+    assert_eq!(records.payslips[0].finalized_at, Some(NOW));
     assert!(matches!(
         records.events.as_slice(),
         [PayrollEvent::Payslip(PayslipEvent::Finalized { payslip_id, total, finalized_at, .. })]
@@ -491,7 +535,7 @@ async fn finalize_keeps_the_draft_when_the_event_cannot_be_recorded() {
 
     assert!(matches!(err, UseCaseError::Unavailable(_)));
     let records = world.records();
-    assert_eq!(records.payslips[0].4, None);
+    assert_eq!(records.payslips[0].finalized_at, None);
     assert!(records.events.is_empty());
 }
 
@@ -638,7 +682,7 @@ async fn accepted_payout_is_recorded_with_its_receipt() {
     assert_eq!(*gateway.requested.lock().unwrap(), ["event-1"]);
     let payouts = world.records().payouts;
     assert_eq!(payouts.len(), 1);
-    assert_eq!(payouts[0].3, PayoutOutcome::Accepted { receipt: "R-1".into() });
+    assert_eq!(payouts[0].outcome, PayoutOutcome::Accepted { receipt: "R-1".into() });
 }
 
 #[tokio::test]
@@ -653,7 +697,7 @@ async fn rejected_payout_is_recorded_and_not_treated_as_a_failure() {
     // やり直しても通らないので、失敗にはせず、理由とともに記録する
     assert_eq!(result, RequestPayoutResult::Rejected { reason: "口座が見つかりません".into() });
     assert_eq!(
-        world.records().payouts[0].3,
+        world.records().payouts[0].outcome,
         PayoutOutcome::Rejected { reason: "口座が見つかりません".into() }
     );
 }

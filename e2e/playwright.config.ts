@@ -18,12 +18,13 @@ export default defineConfig({
     launchOptions: { slowMo: Number(process.env["E2E_SLOW_MO"] ?? 0) },
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
-  // 起動済みならそれを使う。server は /health が 200 になるまで待つ
+  // server は /health が 200 になるまで待つ。Vite は変更を即座に反映するので、起動済みならそれを使う
   webServer: [
     {
       command: "cargo run -p server",
       url: `${API}/health`,
-      reuseExistingServer: true,
+      // 起動済みの server はコードを変えても古いまま(cargo run は作り直さない)なので、使い回すのは明示したときだけ
+      reuseExistingServer: process.env["E2E_REUSE_SERVER"] === "1",
       cwd: "..",
       timeout: 300_000,
     },

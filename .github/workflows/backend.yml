@@ -75,5 +75,7 @@ jobs:
           SQLX_OFFLINE=false cargo sqlx prepare --workspace --check
       - name: test(nextest。DB 結合・API テストは testcontainers)
         run: mise run test:rust
+        env:
+          NEXTEST_PROFILE: ci
       - name: Dockerfile
         run: mise run lint:docker

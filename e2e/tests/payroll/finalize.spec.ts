@@ -1,16 +1,15 @@
-import { expect, test } from "@playwright/test";
-
 import { PayslipPage } from "../../pages/payslip-page";
 import { LoginPage } from "../../pages/login-page";
 import { ADMIN, adminApi, seedProject, seedStaff } from "../../support/api";
+import { expect, test } from "../../support/fixtures";
 
-test("管理者が作成して確定した給与明細を、本人がログインして見られる", async ({ browser }) => {
+test("管理者が作成して確定した給与明細を、本人がログインして見られる", async ({ newPage }) => {
   const api = await adminApi();
   const staff = await seedStaff(api);
   const project = await seedProject(api);
 
   // 管理者: 給与明細を作成し、内容を確かめてから確定する
-  const adminPage = await (await browser.newContext()).newPage();
+  const adminPage = await newPage();
   await new LoginPage(adminPage).login(ADMIN.email, ADMIN.password);
   const payslips = new PayslipPage(adminPage);
   await payslips.open();
@@ -36,13 +35,15 @@ test("管理者が作成して確定した給与明細を、本人がログイ�
   await expect(adminPage.getByRole("alert")).toHaveText("この月の給与明細は既にあります");
 
   // 本人: 初回ログインでパスワードを変え、自分の明細を見る
-  const staffPage = await (await browser.newContext()).newPage();
+  const staffPage = await newPage();
   await new LoginPage(staffPage).login(staff.email, staff.temporaryPassword, "New-pass-12345");
   await expect(staffPage.getByRole("heading", { name: "自分の給与明細" })).toBeVisible();
   await expect(staffPage.getByTestId("payslip-total")).toHaveText("￥242,410");
 });
 
-test("他の派遣社員の給与明細は見えない", async ({ browser }) => {
+// 画面は自分の給与明細しか取りに行かないので、ここで確かめるのは「他人の明細が自分の画面に出ない」こと。
+// 他人の明細を API で取れないことは、API テスト・スモークテストで確かめている
+test("他の派遣社員の給与明細は、自分の画面に出ない", async ({ newPage }) => {
   const api = await adminApi();
   const owner = await seedStaff(api);
   const other = await seedStaff(api);
@@ -55,13 +56,13 @@ test("他の派遣社員の給与明細は見えない", async ({ browser }) => 
   });
   await api.payroll.finalizePayslip({ payslipId });
 
-  const page = await (await browser.newContext()).newPage();
+  const page = await newPage();
   await new LoginPage(page).login(other.email, other.temporaryPassword, "New-pass-12345");
   await expect(page.getByText("まだ確定した給与明細はありません。")).toBeVisible();
   await expect(page.getByTestId("payslip-total")).toHaveCount(0);
 });
 
-test("作成中の給与明細は本人に見えず、確定すると見える", async ({ browser }) => {
+test("作成中の給与明細は本人に見えず、確定すると見える", async ({ newPage }) => {
   const api = await adminApi();
   const staff = await seedStaff(api);
   const project = await seedProject(api);
@@ -73,7 +74,7 @@ test("作成中の給与明細は本人に見えず、確定すると見える",
   });
 
   // 作成中の間は、本人の画面に出ない
-  const page = await (await browser.newContext()).newPage();
+  const page = await newPage();
   await new LoginPage(page).login(staff.email, staff.temporaryPassword, "New-pass-12345");
   await expect(page.getByText("まだ確定した給与明細はありません。")).toBeVisible();
   await expect(page.getByTestId("payslip-total")).toHaveCount(0);

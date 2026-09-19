@@ -24,7 +24,8 @@ tracing.workspace = true
 
 [dev-dependencies]
 testcontainers-modules.workspace = true
-tokio.workspace = true
+# 振込 API のテストで、決めた応答を返すだけの HTTP サーバーを立てる
+tokio = { workspace = true, features = ["io-util"] }
 
 [lints]
 workspace = true

@@ -2,6 +2,8 @@
 # 起動中のローカル server に対して、主要なシナリオを grpcurl で一通り流す。
 # 前提: docker compose の依存サービスと server(mise run dev-backend)が起動済み
 set -euo pipefail
+# proto の import パスがリポジトリ直下からの相対なので、どこから実行してもリポジトリ直下で動かす
+cd "$(dirname "$0")/.."
 
 API=${API:-localhost:${API_PORT:-50051}}
 KEYCLOAK=${KEYCLOAK:-http://localhost:${KEYCLOAK_PORT:-8080}}
@@ -40,6 +42,21 @@ check() {
   fi
 }
 
+# 番号が返ったか。作成に失敗すると空や null になるので、数字であることを確かめる
+check_id() {
+  local name=$1; shift
+  local id
+  for id in "$@"; do
+    if [[ ! $id =~ ^[0-9]+$ ]]; then
+      FAIL=$((FAIL + 1)); echo "FAIL $name"; echo "     番号が返らなかった: '$id'"; return
+    fi
+  done
+  PASS=$((PASS + 1)); echo "ok   $name"
+}
+
+# 応答から番号を取り出す。失敗した応答(JSON でない)なら空にし、check_id で FAIL にする
+id_of() { jq -r "$1 // empty" 2>/dev/null || true; }
+
 call() { # call <token> <method> <json> → 標準出力に結果(エラー時はコード)
   g -H "authorization: Bearer $1" -d "$3" "$API" "acme.payroll.v1.$2" 2>&1 || true
 }
@@ -48,21 +65,21 @@ check "health" "ok" "$(curl -s "http://$API/health")"
 check "未認証は Unauthenticated" "Unauthenticated" "$(g -d '{}' "$API" acme.payroll.v1.ProjectService/ListProjects 2>&1 || true)"
 
 ADMIN=$(token admin@example.com)
-PROJECT_ID=$(call "$ADMIN" ProjectService/CreateProject "{\"name\":\"案件-$SUFFIX\"}" | jq -r .projectId)
-check "案件登録" "" "$PROJECT_ID"
+PROJECT_ID=$(call "$ADMIN" ProjectService/CreateProject "{\"name\":\"案件-$SUFFIX\"}" | id_of .projectId)
+check_id "案件登録" "$PROJECT_ID"
 
 TARO=taro-$SUFFIX@example.com
 HANAKO=hanako-$SUFFIX@example.com
-TARO_ID=$(call "$ADMIN" StaffService/CreateStaff "{\"email\":\"$TARO\",\"display_name\":\"派遣 太郎\",\"temporary_password\":\"Temp-pass-1\"}" | jq -r .staffId)
-HANAKO_ID=$(call "$ADMIN" StaffService/CreateStaff "{\"email\":\"$HANAKO\",\"display_name\":\"派遣 花子\",\"temporary_password\":\"Temp-pass-1\"}" | jq -r .staffId)
-check "派遣社員登録" "" "$TARO_ID/$HANAKO_ID"
+TARO_ID=$(call "$ADMIN" StaffService/CreateStaff "{\"email\":\"$TARO\",\"display_name\":\"派遣 太郎\",\"temporary_password\":\"Temp-pass-1\"}" | id_of .staffId)
+HANAKO_ID=$(call "$ADMIN" StaffService/CreateStaff "{\"email\":\"$HANAKO\",\"display_name\":\"派遣 花子\",\"temporary_password\":\"Temp-pass-1\"}" | id_of .staffId)
+check_id "派遣社員登録" "$TARO_ID" "$HANAKO_ID"
 check "同じメールの再登録は AlreadyExists" "AlreadyExists" \
   "$(call "$ADMIN" StaffService/CreateStaff "{\"email\":\"$TARO\",\"display_name\":\"x\",\"temporary_password\":\"Temp-pass-1\"}")"
 
 LINES="[{\"project_id\":$PROJECT_ID,\"work_minutes\":9600,\"hourly_rate\":1501},{\"project_id\":$PROJECT_ID,\"work_minutes\":90,\"hourly_rate\":1500}]"
 CREATE="{\"staff_id\":$TARO_ID,\"pay_year\":2026,\"pay_month\":9,\"lines\":$LINES}"
-PAYSLIP_ID=$(call "$ADMIN" PayrollService/CreatePayslip "$CREATE" | jq -r .payslipId)
-check "給与明細の作成" "" "$PAYSLIP_ID"
+PAYSLIP_ID=$(call "$ADMIN" PayrollService/CreatePayslip "$CREATE" | id_of .payslipId)
+check_id "給与明細の作成" "$PAYSLIP_ID"
 check "作成直後は作成中" "PAYSLIP_STATUS_DRAFT" \
   "$(call "$ADMIN" PayrollService/GetPayslip "{\"payslip_id\":$PAYSLIP_ID}")"
 check "同じ月の作成は AlreadyExists" "AlreadyExists" "$(call "$ADMIN" PayrollService/CreatePayslip "$CREATE")"
@@ -83,7 +100,7 @@ check "二重確定は FailedPrecondition" "FailedPrecondition" \
 check "存在しない給与明細の確定は NotFound" "NotFound" \
   "$(call "$ADMIN" PayrollService/FinalizePayslip "{\"payslip_id\":999999}")"
 # 本人に見えないことを確かめるための、作成中のままの10月分
-DRAFT_ID=$(call "$ADMIN" PayrollService/CreatePayslip "{\"staff_id\":$TARO_ID,\"pay_year\":2026,\"pay_month\":10,\"lines\":$LINES}" | jq -r .payslipId)
+DRAFT_ID=$(call "$ADMIN" PayrollService/CreatePayslip "{\"staff_id\":$TARO_ID,\"pay_year\":2026,\"pay_month\":10,\"lines\":$LINES}" | id_of .payslipId)
 
 # 9600分×1501円/60 = 240,160円、90分×1500円/60 = 2,250円
 check "合計は円未満切り捨て" '"totalYen": "242410"' \

@@ -42,8 +42,11 @@ jobs:
       - run: pnpm --filter e2e exec playwright install --with-deps chromium
       - name: 依存サービス起動・マイグレーション・E2E
         run: mise run e2e
+      # 再試行で通った不安定なテストのトレースも見られるよう、失敗したときに限らず残す
       - uses: actions/upload-artifact@v7.0.1
-        if: failure()
+        if: ${{ !cancelled() }}
         with:
-          name: playwright-report
-          path: e2e/test-results
+          name: playwright-results
+          path: |
+            e2e/test-results
+            e2e/playwright-report
