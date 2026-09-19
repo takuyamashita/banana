@@ -54,6 +54,8 @@
   - 作成中と確定済みを別の型(`DraftPayslip`・`FinalizedPayslip`。共通部分は `PayslipIn<State, Id>` に1回だけ書く)にし、`finalize(self) -> (FinalizedPayslip, PayslipEvent)` は作成中の型にだけ置いた。確定済みに `finalize` を呼ぶとコンパイルエラー(E0599)になることを compile_fail の doc テストで固定し、`AlreadyFinalized` はなくした。
   - DB から読み出した給与明細は状態が実行時にしか分からないので、`enum Payslip { Draft, Finalized }` で包む。`NewPayslip::draft`・`Payslip::reconstruct`・各アクセサの呼び方は変わらず、変更は domain と確定のユースケースとテストだけで済んだ。
   - Rust では `&mut self` の書き換えも所有権で1か所に限られるので、「元を消費して新しいものを返す」こと自体の利点は小さい。消費する形にしたのは、戻り値の型を変える(状態を型で表す)ためだけ。
+  - リポジトリは状態を問わない `Payslip` を返し、状態の確かめは usecase が `match` か `let Payslip::Draft(draft) = payslip else { .. }` で行う。確かめずに `payslip.finalize()` と書くとコンパイルエラー(E0599「no method named `finalize` found for enum `Payslip`」)になり、確かめてから取り出した `draft.finalize()` は通ることを試して確認した。状態が違うときは `FailedPrecondition` を返し、存在しない(`NotFound`)と区別する。
+  - `find_draft(id) -> Option<DraftPayslip>` のような状態ごとの取り出しはリポジトリに置かない。状態が違うのか存在しないのかが区別できず、状態が増えるたびにメソッドも増えるため。同じ確かめ方が複数のユースケースに出てきたら、`Payslip` に `into_draft()` のような取り出しを足す(今は新規作成直後の `finalize` だけなので未実装)。
 - **リポジトリは書き込み先を受け取り、トランザクションを張るかは usecase が決める**: ガイドの「1トランザクションで複数集約を更新しない」は、1つのユースケースで複数の集約を扱う場面が出ると守れない。制約は「コンテキストをまたいで1トランザクションで更新しない」に緩めた。
   - 採用した形:
     - usecase は `Database` から書き込み先を用意する。一緒に確定させたい記録は `transaction()` に書いて `commit()`、1件だけ書くときは `connection()` に書く。
