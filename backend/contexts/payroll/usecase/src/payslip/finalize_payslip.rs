@@ -22,20 +22,20 @@ pub struct FinalizePayslipInput {
 ///
 /// 確定した給与明細は変更できず、支給額が決まったことが振込に伝わる。
 /// 同じ派遣社員・同じ月の給与は1回しか確定できない
-pub struct FinalizePayslipUseCase<T: Transactions> {
-    payslips: Arc<dyn PayslipRepository<T::Tx>>,
-    staff: Arc<dyn StaffRepository<T::Tx>>,
-    outbox: Arc<dyn EventOutbox<T::Tx>>,
-    transactions: Arc<T>,
+pub struct FinalizePayslipUseCase {
+    payslips: Arc<dyn PayslipRepository>,
+    staff: Arc<dyn StaffRepository>,
+    outbox: Arc<dyn EventOutbox>,
+    transactions: Arc<dyn Transactions>,
 }
 
-impl<T: Transactions> FinalizePayslipUseCase<T> {
+impl FinalizePayslipUseCase {
     #[must_use]
     pub fn new(
-        payslips: Arc<dyn PayslipRepository<T::Tx>>,
-        staff: Arc<dyn StaffRepository<T::Tx>>,
-        outbox: Arc<dyn EventOutbox<T::Tx>>,
-        transactions: Arc<T>,
+        payslips: Arc<dyn PayslipRepository>,
+        staff: Arc<dyn StaffRepository>,
+        outbox: Arc<dyn EventOutbox>,
+        transactions: Arc<dyn Transactions>,
     ) -> Self {
         Self { payslips, staff, outbox, transactions }
     }

@@ -6,11 +6,10 @@ use platform_kernel::{AuthenticatedUser, Role};
 
 use crate::UseCaseError;
 use crate::ports::repository::{PayslipRepository, StaffRepository};
-use crate::ports::transaction::Transactions;
 
 /// 給与明細を見てよいのは、管理者と、その給与明細を受け取る派遣社員本人だけ
-async fn can_view<Tx: Send>(
-    staff_repository: &dyn StaffRepository<Tx>,
+async fn can_view(
+    staff_repository: &dyn StaffRepository,
     user: &AuthenticatedUser,
     owner: StaffId,
 ) -> Result<bool, UseCaseError> {
@@ -22,16 +21,16 @@ async fn can_view<Tx: Send>(
 }
 
 /// 給与明細を1件見る。管理者はすべて、派遣社員は自分のものだけ見られる
-pub struct GetPayslipUseCase<T: Transactions> {
-    repository: Arc<dyn PayslipRepository<T::Tx>>,
-    staff_repository: Arc<dyn StaffRepository<T::Tx>>,
+pub struct GetPayslipUseCase {
+    repository: Arc<dyn PayslipRepository>,
+    staff_repository: Arc<dyn StaffRepository>,
 }
 
-impl<T: Transactions> GetPayslipUseCase<T> {
+impl GetPayslipUseCase {
     #[must_use]
     pub fn new(
-        repository: Arc<dyn PayslipRepository<T::Tx>>,
-        staff_repository: Arc<dyn StaffRepository<T::Tx>>,
+        repository: Arc<dyn PayslipRepository>,
+        staff_repository: Arc<dyn StaffRepository>,
     ) -> Self {
         Self { repository, staff_repository }
     }
@@ -55,16 +54,16 @@ impl<T: Transactions> GetPayslipUseCase<T> {
 }
 
 /// 派遣社員の給与明細を一覧する。管理者は誰のものでも、派遣社員は自分のものだけ見られる
-pub struct ListPayslipsUseCase<T: Transactions> {
-    repository: Arc<dyn PayslipRepository<T::Tx>>,
-    staff_repository: Arc<dyn StaffRepository<T::Tx>>,
+pub struct ListPayslipsUseCase {
+    repository: Arc<dyn PayslipRepository>,
+    staff_repository: Arc<dyn StaffRepository>,
 }
 
-impl<T: Transactions> ListPayslipsUseCase<T> {
+impl ListPayslipsUseCase {
     #[must_use]
     pub fn new(
-        repository: Arc<dyn PayslipRepository<T::Tx>>,
-        staff_repository: Arc<dyn StaffRepository<T::Tx>>,
+        repository: Arc<dyn PayslipRepository>,
+        staff_repository: Arc<dyn StaffRepository>,
     ) -> Self {
         Self { repository, staff_repository }
     }

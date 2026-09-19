@@ -1,11 +1,12 @@
 use async_trait::async_trait;
 use payroll_domain::staff::{DisplayName, NewStaff, Staff, StaffId};
 use payroll_usecase::ports::repository::{RepositoryError, StaffRepository};
+use payroll_usecase::ports::transaction::Tx;
 use platform_kernel::{Email, UserId};
 use sqlx::mysql::MySqlPool;
 
 use crate::db::{corrupted, db_err};
-use crate::transaction::MySqlTx;
+use crate::transaction::mysql_tx;
 
 pub struct MySqlStaffRepository {
     pool: MySqlPool,
@@ -39,7 +40,7 @@ impl TryFrom<StaffRow> for Staff {
 }
 
 #[async_trait]
-impl StaffRepository<MySqlTx> for MySqlStaffRepository {
+impl StaffRepository for MySqlStaffRepository {
     async fn find(&self, id: StaffId) -> Result<Option<Staff>, RepositoryError> {
         sqlx::query_as!(
             StaffRow,
@@ -79,7 +80,8 @@ impl StaffRepository<MySqlTx> for MySqlStaffRepository {
         .transpose()
     }
 
-    async fn insert(&self, tx: &mut MySqlTx, new: &NewStaff) -> Result<StaffId, RepositoryError> {
+    async fn insert(&self, tx: &mut Tx, new: &NewStaff) -> Result<StaffId, RepositoryError> {
+        let tx = mysql_tx(tx)?;
         let result = sqlx::query!(
             "insert into staff (user_id, email, display_name) values (?, ?, ?)",
             new.user_id().as_str(),

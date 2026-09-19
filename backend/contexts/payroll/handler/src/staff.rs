@@ -1,6 +1,5 @@
 use payroll_domain::staff::{DisplayName, Staff};
 use payroll_usecase::ports::queries::StaffView;
-use payroll_usecase::ports::transaction::Transactions;
 use payroll_usecase::staff::{
     CreateStaffInput, CreateStaffUseCase, GetMeUseCase, ListStaffUseCase,
 };
@@ -11,25 +10,25 @@ use tonic::{Request, Response, Status};
 use crate::auth::{current_user, require_admin};
 use crate::error::{invalid_argument, to_status};
 
-pub struct StaffServiceHandler<T: Transactions> {
-    create_staff: CreateStaffUseCase<T>,
+pub struct StaffServiceHandler {
+    create_staff: CreateStaffUseCase,
     list_staff: ListStaffUseCase,
-    get_me: GetMeUseCase<T>,
+    get_me: GetMeUseCase,
 }
 
-impl<T: Transactions> StaffServiceHandler<T> {
+impl StaffServiceHandler {
     #[must_use]
     pub fn new(
-        create_staff: CreateStaffUseCase<T>,
+        create_staff: CreateStaffUseCase,
         list_staff: ListStaffUseCase,
-        get_me: GetMeUseCase<T>,
+        get_me: GetMeUseCase,
     ) -> Self {
         Self { create_staff, list_staff, get_me }
     }
 }
 
 #[tonic::async_trait]
-impl<T: Transactions> proto::staff_service_server::StaffService for StaffServiceHandler<T> {
+impl proto::staff_service_server::StaffService for StaffServiceHandler {
     async fn create_staff(
         &self,
         request: Request<proto::CreateStaffRequest>,

@@ -5,11 +5,12 @@ use payroll_domain::payslip::{
 use payroll_domain::project::ProjectId;
 use payroll_domain::staff::StaffId;
 use payroll_usecase::ports::repository::{PayslipRepository, RepositoryError};
+use payroll_usecase::ports::transaction::Tx;
 use platform_kernel::Money;
 use sqlx::mysql::MySqlPool;
 
 use crate::db::{corrupted, db_err};
-use crate::transaction::MySqlTx;
+use crate::transaction::mysql_tx;
 
 pub struct MySqlPayslipRepository {
     pool: MySqlPool,
@@ -35,7 +36,7 @@ struct JoinedRow {
 }
 
 #[async_trait]
-impl PayslipRepository<MySqlTx> for MySqlPayslipRepository {
+impl PayslipRepository for MySqlPayslipRepository {
     async fn find(&self, id: PayslipId) -> Result<Option<Payslip>, RepositoryError> {
         let rows = sqlx::query_as!(
             JoinedRow,
@@ -72,11 +73,8 @@ impl PayslipRepository<MySqlTx> for MySqlPayslipRepository {
         assemble(rows)
     }
 
-    async fn insert(
-        &self,
-        tx: &mut MySqlTx,
-        new: &NewPayslip,
-    ) -> Result<PayslipId, RepositoryError> {
+    async fn insert(&self, tx: &mut Tx, new: &NewPayslip) -> Result<PayslipId, RepositoryError> {
+        let tx = mysql_tx(tx)?;
         let result = sqlx::query!(
             "insert into payslips (staff_id, pay_year, pay_month, status, finalized_at)
              values (?, ?, ?, ?, if(? = 'finalized', current_timestamp(6), null))",
@@ -111,7 +109,8 @@ impl PayslipRepository<MySqlTx> for MySqlPayslipRepository {
         Ok(payslip_id)
     }
 
-    async fn update(&self, tx: &mut MySqlTx, payslip: &Payslip) -> Result<(), RepositoryError> {
+    async fn update(&self, tx: &mut Tx, payslip: &Payslip) -> Result<(), RepositoryError> {
+        let tx = mysql_tx(tx)?;
         sqlx::query!(
             "update payslips
              set status = ?,

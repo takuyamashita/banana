@@ -8,14 +8,17 @@ use crate::ports::repository::ProjectRepository;
 use crate::ports::transaction::Transactions;
 
 /// 管理者が案件を登録する
-pub struct CreateProjectUseCase<T: Transactions> {
-    repository: Arc<dyn ProjectRepository<T::Tx>>,
-    transactions: Arc<T>,
+pub struct CreateProjectUseCase {
+    repository: Arc<dyn ProjectRepository>,
+    transactions: Arc<dyn Transactions>,
 }
 
-impl<T: Transactions> CreateProjectUseCase<T> {
+impl CreateProjectUseCase {
     #[must_use]
-    pub fn new(repository: Arc<dyn ProjectRepository<T::Tx>>, transactions: Arc<T>) -> Self {
+    pub fn new(
+        repository: Arc<dyn ProjectRepository>,
+        transactions: Arc<dyn Transactions>,
+    ) -> Self {
         Self { repository, transactions }
     }
 

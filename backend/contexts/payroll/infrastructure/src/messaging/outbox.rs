@@ -4,11 +4,12 @@ use async_trait::async_trait;
 use payroll_domain::payslip::PayslipEvent;
 use payroll_usecase::ports::events::{EventOutbox, PayrollEvent};
 use payroll_usecase::ports::repository::RepositoryError;
+use payroll_usecase::ports::transaction::Tx;
 use serde_json::Value;
 
 use super::payloads::PayslipFinalizedPayload;
 use crate::db::{corrupted, db_err};
-use crate::transaction::MySqlTx;
+use crate::transaction::mysql_tx;
 
 /// outbox の1行になる形
 struct OutboxRow {
@@ -42,8 +43,9 @@ fn encode(event: &PayrollEvent) -> Result<OutboxRow, serde_json::Error> {
 pub struct MySqlEventOutbox;
 
 #[async_trait]
-impl EventOutbox<MySqlTx> for MySqlEventOutbox {
-    async fn append(&self, tx: &mut MySqlTx, event: PayrollEvent) -> Result<(), RepositoryError> {
+impl EventOutbox for MySqlEventOutbox {
+    async fn append(&self, tx: &mut Tx, event: PayrollEvent) -> Result<(), RepositoryError> {
+        let tx = mysql_tx(tx)?;
         let row = encode(&event).map_err(corrupted)?;
         sqlx::query!(
             "insert into outbox (aggregate_type, aggregate_id, event_type, payload) values (?, ?, ?, ?)",

@@ -12,6 +12,8 @@ use payroll_domain::staff::{NewStaff, Staff, StaffId};
 use platform_kernel::{Email, UserId};
 use thiserror::Error;
 
+use super::transaction::Tx;
+
 /// 記録・取り出しができなかった理由
 #[derive(Debug, Error)]
 pub enum RepositoryError {
@@ -28,7 +30,7 @@ pub enum RepositoryError {
 
 /// 給与明細の記録と取り出し
 #[async_trait]
-pub trait PayslipRepository<Tx: Send>: Send + Sync {
+pub trait PayslipRepository: Send + Sync {
     /// 給与明細番号で給与明細を探す
     async fn find(&self, id: PayslipId) -> Result<Option<Payslip>, RepositoryError>;
     /// 派遣社員の有効な給与明細を、新しい月から順に返す
@@ -41,7 +43,7 @@ pub trait PayslipRepository<Tx: Send>: Send + Sync {
 
 /// 派遣社員の記録と取り出し
 #[async_trait]
-pub trait StaffRepository<Tx: Send>: Send + Sync {
+pub trait StaffRepository: Send + Sync {
     /// 派遣社員番号で派遣社員を探す
     async fn find(&self, id: StaffId) -> Result<Option<Staff>, RepositoryError>;
     /// ログイン用アカウントから、その持ち主の派遣社員を探す
@@ -54,7 +56,7 @@ pub trait StaffRepository<Tx: Send>: Send + Sync {
 
 /// 案件の記録
 #[async_trait]
-pub trait ProjectRepository<Tx: Send>: Send + Sync {
+pub trait ProjectRepository: Send + Sync {
     /// 新しい案件を登録し、振られた案件番号を返す
     async fn insert(&self, tx: &mut Tx, new: &NewProject) -> Result<ProjectId, RepositoryError>;
 }

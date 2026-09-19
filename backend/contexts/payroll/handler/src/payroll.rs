@@ -6,7 +6,6 @@ use payroll_domain::staff::StaffId;
 use payroll_usecase::payslip::{
     FinalizePayslipInput, FinalizePayslipUseCase, GetPayslipUseCase, ListPayslipsUseCase,
 };
-use payroll_usecase::ports::transaction::Transactions;
 use platform_gen::acme::payroll::v1 as proto;
 use platform_kernel::Money;
 use tonic::{Request, Response, Status};
@@ -14,25 +13,25 @@ use tonic::{Request, Response, Status};
 use crate::auth::{current_user, require_admin};
 use crate::error::{invalid_argument, to_status};
 
-pub struct PayrollServiceHandler<T: Transactions> {
-    finalize_payslip: FinalizePayslipUseCase<T>,
-    get_payslip: GetPayslipUseCase<T>,
-    list_payslips: ListPayslipsUseCase<T>,
+pub struct PayrollServiceHandler {
+    finalize_payslip: FinalizePayslipUseCase,
+    get_payslip: GetPayslipUseCase,
+    list_payslips: ListPayslipsUseCase,
 }
 
-impl<T: Transactions> PayrollServiceHandler<T> {
+impl PayrollServiceHandler {
     #[must_use]
     pub fn new(
-        finalize_payslip: FinalizePayslipUseCase<T>,
-        get_payslip: GetPayslipUseCase<T>,
-        list_payslips: ListPayslipsUseCase<T>,
+        finalize_payslip: FinalizePayslipUseCase,
+        get_payslip: GetPayslipUseCase,
+        list_payslips: ListPayslipsUseCase,
     ) -> Self {
         Self { finalize_payslip, get_payslip, list_payslips }
     }
 }
 
 #[tonic::async_trait]
-impl<T: Transactions> proto::payroll_service_server::PayrollService for PayrollServiceHandler<T> {
+impl proto::payroll_service_server::PayrollService for PayrollServiceHandler {
     async fn finalize_payslip(
         &self,
         request: Request<proto::FinalizePayslipRequest>,
