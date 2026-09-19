@@ -130,6 +130,14 @@ depends = ["e2e:prepare"]
 env = { E2E_SLOW_MO = "{{ get_env(name='E2E_SLOW_MO', default='500') }}" }
 run = "pnpm --filter e2e exec playwright test --headed --workers=1"
 
+# 動作確認の動画を撮る(台本は e2e/videos/。mp4 を e2e/videos-out/ に出す)。引数は Playwright に渡る(例: -- -g 管理者)
+[tasks."e2e:video"]
+description = "動作確認の動画を撮り、mp4 にする"
+depends = ["e2e:prepare"]
+# ffmpeg はこのタスクを動かしたときだけ入れる(mise install・CI では入らない)。Playwright 付属のものは webm しか作れない
+tools = { "conda:ffmpeg" = "9.0.2" }
+run = "e2e/scripts/video.sh"
+
 [tasks."e2e:debug"]
 description = "Playwright Inspector で1手順ずつ止めながら実行"
 depends = ["e2e:prepare"]
