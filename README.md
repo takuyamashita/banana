@@ -43,7 +43,7 @@ mise run dev-frontend             # Vite :5173
 | `mise run tf-plan`      | dev 環境の terraform plan                                             |
 
 非同期側(outbox → SQS → Lambda)をローカルで動かすには、server を起動した状態で
-`cargo run -p payout-dispatcher --bin local_poller` を実行する(ElasticMQ をポーリングして Lambda と同じ処理を呼ぶ)。
+`cargo run -p payout-dispatcher --bin local_poller` を実行する(ElasticMQ をポーリングして Lambda と同じ処理を呼ぶ。振込の結果は `payouts` テーブルに残り、5回処理できなかったメッセージは `payroll-events-dlq.fifo` に移る)。
 Lambda 本体は `cargo lambda watch -p payout-dispatcher` と
 `cargo lambda invoke payout-dispatcher --data-file backend/app/lambdas/payout-dispatcher/events/sqs-payslip-finalized.json` で確認できる。
 
@@ -56,7 +56,7 @@ mise run worktree:new -- feature-x     # ../banana-feature-x を作り(ブラン
 cd ../banana-feature-x
 mise run e2e                           # この worktree 専用の依存サービス・server・Vite で動く
 mise run worktree:list                 # worktree ごとのスロットとポート
-mise run worktree:remove -- feature-x  # compose(データも)と worktree を片付ける。ブランチは残す
+mise run worktree:remove -- feature-x  # worktree と compose(データも)を片付ける。ブランチは残す
 ```
 
 - スロットは 1〜9(main は 0)。ポートは「既定値 + スロット × 100」(スロット 1 なら API :50151・画面 :5273・Keycloak :8180・MySQL :3406)。
@@ -65,6 +65,7 @@ mise run worktree:remove -- feature-x  # compose(データも)と worktree を�
 - mise が `.env.worktree` を読み、`COMPOSE_NAME` と各ポート、server の接続先(`DATABASE_URL`・`APP__*`)を環境変数で渡す。
   `docker compose` も mise を有効にしたシェル(または `mise exec --`)から実行する。そうしないと main の compose を操作してしまう。
 - `target/` は worktree ごとに作られるので、初回の cargo ビルドには時間がかかる。
+- `worktree:remove` は、そのディレクトリのブランチが指定の名前と一致し、コミットしていない変更がないときだけ進む(`feature/x` と `feature-x` は同じディレクトリ名になるので、取り違えて消さないため)。
 
 ## 構成
 

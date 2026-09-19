@@ -124,6 +124,21 @@
 - **実態と合わない記述**: 6 の「トレースを X-Ray / Jaeger へ」(スパンを作る箇所がない)、「Conventional Commits を採用」(採っていない)、「kernel の doc(compile_fail)」(kernel に compile_fail はない)、5 の「ローカルは public/config.json」(開発サーバーは環境変数から組み立てる)。トレースとコミットの書式は 7 の未決事項に移した。
 - **この検証ログ自身**: UserDirectory のユニットテスト(ない)、GitHub Actions の確認状況(backend・e2e は成功済み)、Jaeger への OTLP 送信(スパンがないので何も届いていない)、「両タブ」(今は7タブ)を直した。「外側を捨てれば SAVEPOINT ごと消える」を確かめたテストは、別の接続から読んでいたので、ロールバックされなくても通っていた。接続を1本にして同じ接続で読み直す形に直した。
 
+## 観点別レビューで見つかった不具合(2026-09-19)
+
+業務上の事故につながる不具合を直し、壊すと落ちるテストを足した(テストを一時的に元の実装へ戻して落ちることも確かめた)。
+
+- **1件の振込の失敗が、他の振込を巻き込んでいた**: Lambda はバッチの1件目の失敗でバッチ全体を失敗にし、振込先に断られた振込も再試行していた。流量が少ないと同じ組み合わせのバッチが繰り返され、同じ回に届いた他の派遣社員の振込が一度も試されないまま DLQ に落ちうる。DLQ の監視もなかった。
+  - 振込先の答え(受け付けた・断られた)を振込依頼(`payouts`)として給与明細ごとに1件記録し、断られた振込は再試行しない(error ログを出す)。依頼済みかどうかもこの記録で判定するので、`processed_events` はやめた。
+  - Lambda は失敗した件だけを返す(`ReportBatchItemFailures`)。同じグループ(給与明細)の後ろの件も返して順序を守り、別のグループは処理を続ける。`handle_batch` を lib に置き、local_poller も同じ処理を通す。
+  - DLQ に CloudWatch アラームを置いた。振込 API の呼び出しに接続3秒・全体10秒のタイムアウトを付けた。
+  - ローカルの ElasticMQ には DLQ がなく、処理できないメッセージが永久に再配信されていた(実際に古い形のメッセージが溜まっていた)。AWS と同じく5回で DLQ に移す定義を足し、5回受け取った後に DLQ へ移ることを確かめた。
+- **relay を複数インスタンスで動かすと、同じ集約の出来事の順序が保証されない**: ガイドは「SKIP LOCKED なので複数インスタンスでも安全」と「MessageGroupId で順序を保つ」を並べていたが、両立しない(FIFO が守るのは受け取った順)。MySQL の `GET_LOCK` を取れたインスタンスだけが送る形にした。ロックを持たれている間は送らず、失敗してもロックが外れることを DB 結合テストで確かめた。
+- **存在しない案件 ID で給与明細を作れた**: 派遣社員の存在は確かめていたが、明細行の案件は確かめておらず、そのまま確定して振込まで進んだ。作成時に案件が登録済みかを確かめる(usecase のテストとスモークテストに追加)。
+- **管理画面で別の派遣社員の給与明細を確定できた**: 派遣社員を選び直しても新しい一覧が届くまで前の人の一覧と確定ボタンが残り、応答の順序が入れ替わると前の人の一覧で上書きされた。一覧を誰のものかと組にして持ち、選んでいる派遣社員の一覧だけを出す(届くまでは読み込み中)。コンポーネントテストで確かめた。
+- **Cognito でログアウトしても IdP のセッションが残った**: `signoutRedirect` が失敗するとブラウザのセッションだけ消していたので、共用の端末では次の人がパスワードなしで前の人としてログインできた。リフレッシュトークンを失効させてから IdP のセッションも終わらせ、Cognito の宛先(`/logout`・`/oauth2/revoke`・`logout_uri`)は Terraform が config.json に書く。Keycloak ではログアウト後の再ログインでパスワードを聞かれることを E2E で確かめた(Cognito では未確認)。
+- **worktree:remove が別の worktree を消しうる**: `feature/x` と `feature-x`(日本語だけの名前はどれも `---`)が同じディレクトリになり、remove はブランチを確かめずに compose のデータを先に消していた。ブランチの一致とコミットしていない変更がないことを確かめてから、worktree を外して compose を消す。
+
 ## この環境では確かめていないこと
 
 - AWS への `terraform apply` と実際のデプロイ(`deploy` ワークフロー)。Terraform は validate・tflint・trivy まで。
@@ -133,15 +148,15 @@
 
 ## 確認済みの動作
 
-| 対象                                                                                                                                          | 方法                                                                                         | 結果                                                       |
-| --------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| Rust の lint(fmt・clippy pedantic・cargo-deny・依存ルール)                                                                                    | `mise run lint:rust`                                                                         | 通過                                                       |
-| domain・usecase の単体テスト、DB 結合テスト(testcontainers)、API テスト(tonic クライアント)                                                   | `mise run test:rust`                                                                         | 38件通過                                                   |
-| フロントの lint・型・コンポーネントテスト・ビルド                                                                                             | `mise run lint:ts`・`test:ts`・`pnpm --filter web build`                                     | 通過(2件)                                                  |
-| gRPC の主要シナリオ(認証・認可・二重確定・入力検証・金額計算)                                                                                 | `scripts/smoke-test.sh`                                                                      | 23件通過                                                   |
-| outbox → relay → ElasticMQ → consumer(再配信の冪等性を含む)                                                                                   | local_poller・`cargo lambda invoke`                                                          | 期待どおり                                                 |
-| ブラウザの一連の流れ(Keycloak ログイン・初回パスワード変更・給与明細の作成と確定・本人だけが確定済みの明細を見られる・作成中は本人に見えない) | `mise run e2e`(Playwright)                                                                   | 3件通過(3回反復でも安定)                                   |
-| worktree での並行開発(main とスロット 1 の worktree で依存サービス・server・Vite を別に立てる)                                                | `mise run worktree:new`・両方で同時に `mise run e2e`・worktree 側で smoke・`worktree:remove` | 両方 3件通過、smoke 23件通過、コンテナ・ボリュームも片付く |
-| server イメージ(cargo-chef・distroless)                                                                                                       | ビルド・起動・`/health`・SIGTERM・イメージ内 migrate                                         | 62MB、0.05秒でグレースフルに停止                           |
-| Terraform(3環境)                                                                                                                              | validate・tflint・trivy                                                                      | 通過                                                       |
-| ワークフロー                                                                                                                                  | actionlint                                                                                   | 通過                                                       |
+| 対象                                                                                                                                                      | 方法                                                                                         | 結果                                                       |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Rust の lint(fmt・clippy pedantic・cargo-deny・依存ルール)                                                                                                | `mise run lint:rust`                                                                         | 通過                                                       |
+| domain・usecase の単体テスト、DB 結合テスト(testcontainers)、API テスト(tonic クライアント)                                                               | `mise run test:rust`                                                                         | 47件通過                                                   |
+| フロントの lint・型・コンポーネントテスト・ビルド                                                                                                         | `mise run lint:ts`・`test:ts`・`pnpm --filter web build`                                     | 通過(3件)                                                  |
+| gRPC の主要シナリオ(認証・認可・二重確定・入力検証・金額計算)                                                                                             | `scripts/smoke-test.sh`                                                                      | 24件通過                                                   |
+| outbox → relay → ElasticMQ → consumer(再配信の冪等性を含む)                                                                                               | local_poller(振込依頼の記録まで)・ElasticMQ の DLQ(5回で移る)・`cargo lambda invoke`         | 期待どおり                                                 |
+| ブラウザの一連の流れ(Keycloak ログイン・ログアウト・初回パスワード変更・給与明細の作成と確定・本人だけが確定済みの明細を見られる・作成中は本人に見えない) | `mise run e2e`(Playwright)                                                                   | 4件通過(ログアウト後の再ログインを含む)                    |
+| worktree での並行開発(main とスロット 1 の worktree で依存サービス・server・Vite を別に立てる)                                                            | `mise run worktree:new`・両方で同時に `mise run e2e`・worktree 側で smoke・`worktree:remove` | 両方 3件通過、smoke 23件通過、コンテナ・ボリュームも片付く |
+| server イメージ(cargo-chef・distroless)                                                                                                                   | ビルド・起動・`/health`・SIGTERM・イメージ内 migrate                                         | 62MB、0.05秒でグレースフルに停止                           |
+| Terraform(3環境)                                                                                                                                          | validate・tflint・trivy                                                                      | 通過                                                       |
+| ワークフロー                                                                                                                                              | actionlint                                                                                   | 通過                                                       |
