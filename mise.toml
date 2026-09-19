@@ -27,11 +27,22 @@ cargo.binstall = true
 
 [env]
 APP_ENV = "local"
-DATABASE_URL = "mysql://platform:platform@127.0.0.1:3306/platform"
 # query! は既定でコミット済みの .sqlx/ を使う。DATABASE_URL があると live DB を見に行き、
 # 空の DB では migrate 自体がビルドできなくなるため
 SQLX_OFFLINE = "true"
-_.file = [".env"]
+# .env.worktree は mise run worktree:new が書く(worktree ごとのポートと compose のプロジェクト名)。
+# ないとき(main)は下の既定値になり、compose.yaml の既定値とそろう
+_.file = [".env", ".env.worktree"]
+# 以下は worktree ごとのポートから組み立てる。server・migrate・Lambda の設定(APP__…)も上書きする
+DATABASE_URL = "mysql://platform:platform@127.0.0.1:{{ env.MYSQL_PORT | default(value='3306') }}/platform"
+APP__DATABASE__URL = "mysql://platform:platform@127.0.0.1:{{ env.MYSQL_PORT | default(value='3306') }}/platform"
+APP__SERVER__ADDR = "0.0.0.0:{{ env.API_PORT | default(value='50051') }}"
+APP__SERVER__CORS_ALLOWED_ORIGINS = "http://localhost:{{ env.WEB_PORT | default(value='5173') }}"
+APP__AUTH__ISSUER = "http://localhost:{{ env.KEYCLOAK_PORT | default(value='8080') }}/realms/platform"
+APP__AUTH__KEYCLOAK_BASE_URL = "http://localhost:{{ env.KEYCLOAK_PORT | default(value='8080') }}"
+APP__MESSAGING__QUEUE_URL = "http://localhost:{{ env.ELASTICMQ_PORT | default(value='9324') }}/000000000000/payroll-events.fifo"
+APP__MESSAGING__SQS_ENDPOINT = "http://localhost:{{ env.ELASTICMQ_PORT | default(value='9324') }}"
+APP__TELEMETRY__OTLP_ENDPOINT = "http://localhost:{{ env.OTLP_GRPC_PORT | default(value='4317') }}"
 
 [tasks.gen]
 description = "protoからRust・TSを生成(変更がなければスキップ)"
@@ -67,6 +78,22 @@ run = ["cargo nextest run --workspace", "cargo test --doc --workspace --quiet"]
 [tasks."test:ts"]
 # E2E は mise run e2e で別に回す(依存サービスと server が要る)
 run = "pnpm -r --filter '!e2e' --if-present test"
+
+[tasks."worktree:new"]
+description = "worktree を作り、専用の依存サービス(compose)とポートを割り当てる(例: mise run worktree:new -- feature-x)"
+run = "scripts/worktree.sh new"
+
+[tasks."worktree:remove"]
+description = "worktree と、その依存サービス(データも)を片付ける(例: mise run worktree:remove -- feature-x)"
+run = "scripts/worktree.sh remove"
+
+[tasks."worktree:list"]
+description = "worktree ごとのスロットとポートを一覧する"
+run = "scripts/worktree.sh list"
+
+[tasks."deps:stop"]
+description = "この worktree の依存サービス(compose)を止める。データは残る"
+run = "docker compose stop"
 
 [tasks."e2e:prepare"]
 description = "E2E の依存サービスを起動してマイグレーション"

@@ -3,8 +3,8 @@
 # 前提: docker compose の依存サービスと server(mise run dev-backend)が起動済み
 set -euo pipefail
 
-API=${API:-localhost:50051}
-KEYCLOAK=${KEYCLOAK:-http://localhost:8080}
+API=${API:-localhost:${API_PORT:-50051}}
+KEYCLOAK=${KEYCLOAK:-http://localhost:${KEYCLOAK_PORT:-8080}}
 SUFFIX=$(date +%s%N | tail -c 7)
 PASS=0
 FAIL=0

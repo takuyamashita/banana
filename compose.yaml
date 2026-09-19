@@ -1,5 +1,10 @@
 # ローカルの依存サービス。タグは 2026-09-19 に実在を確認して固定した
 # (mysql は RDS/Aurora のバージョンに合わせる)
+#
+# プロジェクト名と公開ポートは環境変数で変えられる(未設定なら下の既定値)。
+# worktree ごとに別の組を立てるときは mise run worktree:new が .env.worktree に書き、mise が読み込む
+name: ${COMPOSE_NAME:-banana}
+
 services:
   mysql:
     image: mysql:8.4
@@ -12,7 +17,7 @@ services:
       # 時刻はUTCで保存し、表示側で変換する
       - --default-time-zone=+00:00
     ports:
-      - "3306:3306"
+      - "${MYSQL_PORT:-3306}:3306"
     volumes:
       - mysql-data:/var/lib/mysql
     healthcheck:
@@ -27,9 +32,9 @@ services:
     image: chrislusf/seaweedfs:4.47
     command: server -dir=/data -s3 -ip.bind=0.0.0.0
     ports:
-      - "8333:8333" # S3 API
-      - "8888:8888" # Filer
-      - "9333:9333" # Master UI
+      - "${S3_PORT:-8333}:8333" # S3 API
+      - "${SEAWEED_FILER_PORT:-8888}:8888" # Filer
+      - "${SEAWEED_MASTER_PORT:-9333}:9333" # Master UI
     volumes:
       - seaweedfs-data:/data
 
@@ -37,7 +42,7 @@ services:
   elasticmq:
     image: softwaremill/elasticmq-native:1.7.1
     ports:
-      - "9324:9324" # SQS API
+      - "${ELASTICMQ_PORT:-9324}:9324" # SQS API
     volumes:
       - ./compose/elasticmq.conf:/opt/elasticmq.conf:ro
 
@@ -49,6 +54,8 @@ services:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
       KC_BOOTSTRAP_ADMIN_PASSWORD: admin
       KC_HEALTH_ENABLED: "true"
+      # realm 定義(keycloak-realm.json)の ${WEB_PORT} に入る。ログイン後に戻る画面のポート
+      WEB_PORT: ${WEB_PORT:-5173}
     # イメージに curl がないので bash の /dev/tcp で管理ポート(9000)の /health/ready を叩く。
     # これで docker compose up --wait が realm import 完了まで待つ
     healthcheck:
@@ -63,7 +70,7 @@ services:
       retries: 30
       start_period: 10s
     ports:
-      - "8080:8080"
+      - "${KEYCLOAK_PORT:-8080}:8080"
     volumes:
       - ./compose/keycloak-realm.json:/opt/keycloak/data/import/realm.json:ro
 
@@ -71,9 +78,9 @@ services:
   jaeger:
     image: jaegertracing/jaeger:2.21.0
     ports:
-      - "4317:4317" # OTLP gRPC
-      - "4318:4318" # OTLP HTTP
-      - "16686:16686" # Jaeger UI
+      - "${OTLP_GRPC_PORT:-4317}:4317" # OTLP gRPC
+      - "${OTLP_HTTP_PORT:-4318}:4318" # OTLP HTTP
+      - "${JAEGER_UI_PORT:-16686}:16686" # Jaeger UI
 
 volumes:
   mysql-data:

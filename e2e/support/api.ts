@@ -2,8 +2,8 @@
 // 値にはランダムな接尾辞を付け、並列実行で衝突しないようにする
 import { createApiClients, type ApiClients } from "@platform/api-client";
 
-const API = process.env["E2E_API_URL"] ?? "http://localhost:50051";
-const KEYCLOAK = process.env["E2E_KEYCLOAK_URL"] ?? "http://localhost:8080";
+const API = process.env["E2E_API_URL"] ?? `http://localhost:${process.env["API_PORT"] ?? 50051}`;
+const KEYCLOAK = process.env["E2E_KEYCLOAK_URL"] ?? `http://localhost:${process.env["KEYCLOAK_PORT"] ?? 8080}`;
 
 export const ADMIN = { email: "admin@example.com", password: "password" };
 
