@@ -46,6 +46,10 @@
   - Vite・Playwright・スモークテストも同じ変数に従い、開発サーバーの `/config.json` は変数から組み立てて返す。
   - Keycloak の realm 定義のリダイレクト先は `${WEB_PORT}` のプレースホルダにした(realm の import 時に置き換わる)。
   - main(スロット 0)は `.env.worktree` を持たず、すべて従来の既定値で動く。
+  - 名前はブランチ名として使い、既にあるブランチならそれを checkout する。ディレクトリ名と compose のプロジェクト名では `/` などを `-` に、大文字を小文字にする(`feature/X` → `banana-feature-x`)。ブランチ名のままだと `/` でディレクトリが入れ子になり、compose もプロジェクト名に使えない文字を受け付けない。
+  - `.env`・`node_modules`・`target/` は git に入らないので、worktree には引き継がれない。`worktree:new` が main の `.env` をコピーし、`mise trust` と `pnpm install` まで行う。`target/` は共有せず、最初のビルドは worktree ごとにやり直しになる。
+  - `docker compose` を mise を通さずに直接打つと `COMPOSE_NAME` が渡らず、既定の `banana` になって main のコンテナを操作してしまう。worktree では mise を有効にしたシェルか `mise exec --` から実行する。
+  - `worktree:remove` の `git worktree remove` は、`.env`・`.env.worktree`・`node_modules` が残っていても止まらない。いずれも `.gitignore` に入っているので、未追跡のファイルとして扱われない。
 - **opentelemetry の版**: `tracing-opentelemetry` の最新(0.33)は `opentelemetry` 0.32 用。各 crate の最新版をそのまま並べると型が合わない。
 - **reqwest 0.13**: `form()` が `form` feature に分かれた。
 
