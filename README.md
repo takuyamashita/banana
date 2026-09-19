@@ -60,6 +60,8 @@ mise run worktree:remove -- feature-x  # compose(データも)と worktree を�
 ```
 
 - スロットは 1〜9(main は 0)。ポートは「既定値 + スロット × 100」(スロット 1 なら API :50151・画面 :5273・Keycloak :8180・MySQL :3406)。
+- 名前はブランチ名。既にあるブランチならそれを checkout し、なければ作る。ディレクトリ名と compose のプロジェクト名では `/` などを `-` にし、小文字にする(`feature/X` → `banana-feature-x`)。
+- 画面はその worktree の `WEB_PORT` で開く(スロット 1 なら http://localhost:5273)。
 - mise が `.env.worktree` を読み、`COMPOSE_NAME` と各ポート、server の接続先(`DATABASE_URL`・`APP__*`)を環境変数で渡す。
   `docker compose` も mise を有効にしたシェル(または `mise exec --`)から実行する。そうしないと main の compose を操作してしまう。
 - `target/` は worktree ごとに作られるので、初回の cargo ビルドには時間がかかる。
