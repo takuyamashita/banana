@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # 動作確認の動画を撮り、mp4 にする(mise run e2e:video)。引数は Playwright に渡る。
-#   mise run e2e:video                                   台本(videos/)をすべて撮る
-#   mise run e2e:video -- videos/<台本>.spec.ts          指定した台本だけ撮る
-#   mise run e2e:video -- --only-changed=origin/main     この PR で足した・変えた台本だけ撮る
+#   mise run e2e:video                          台本(videos/)をすべて撮る
+#   mise run e2e:video -- videos/pr/12/         PR #12 の台本だけ撮る(PR に貼るのは mise run pr:video)
+#   mise run e2e:video -- videos/<台本>.spec.ts 指定した台本だけ撮る
 # ffmpeg は mise のタスクが、このタスクを動かしたときだけ入れる
 set -euo pipefail
 cd "$(dirname "$0")/.."

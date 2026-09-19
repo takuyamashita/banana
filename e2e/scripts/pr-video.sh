@@ -1,22 +1,27 @@
 #!/usr/bin/env bash
-# この PR の台本(e2e/videos/ で main から足した・変えたもの)で動作確認の動画を撮り、今のブランチの PR に貼る
+# 今のブランチの PR の台本(e2e/videos/pr/<PR 番号>/)で動作確認の動画を撮り、その PR に貼る
 # (mise run pr:video)。引数は Playwright に渡る(例: -- -g 管理者)。
-# 初めて貼るときは PR の本文の「動作確認」の節に、撮り直したときはコメントとして足す。
-# 比べる先は PR_VIDEO_BASE で変えられる(既定は origin/main)
+# 初めて貼るときは PR の本文の「動作確認」の節に、撮り直したときはコメントとして足す
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
-base="${PR_VIDEO_BASE:-origin/main}"
 # 貼った印。本文にあれば、撮り直しとしてコメントに足す
 marker="<!-- e2e:video -->"
 
-# 撮る前に、今のブランチの PR があることを確かめる(撮った後に無いと分かると無駄になる)
-if ! body="$(gh pr view --json body --jq .body)"; then
+# 撮る前に、今のブランチの PR と台本があることを確かめる(撮った後に無いと分かると無駄になる)
+if ! number="$(gh pr view --json number --jq .number)"; then
   echo "今のブランチの PR が見つからない。先に gh pr create で PR を作る" >&2
   exit 1
 fi
+scripts="e2e/videos/pr/$number"
+if ! compgen -G "$scripts/*.spec.ts" >/dev/null; then
+  echo "台本がない。$scripts/<見せること>.spec.ts に書く(書き方は e2e/support/video.ts の先頭)" >&2
+  exit 1
+fi
+body="$(gh pr view --json body --jq .body)"
 
-mise run e2e:video -- --only-changed="$base" "$@"
+# ディレクトリの区切りまで含めて指定する(pr/1/ が pr/10/ に当たらないように)
+mise run e2e:video -- "videos/pr/$number/" "$@"
 
 videos=()
 while IFS= read -r video; do videos+=("$video"); done < <(find e2e/videos-out -name '*.mp4' | sort)

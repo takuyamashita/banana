@@ -5,14 +5,18 @@
 //     await caption(page, "① …");           // 画面の下に字幕を出す
 //   });
 //
-// 動画は videos-out/<台本のファイル名>/<テスト名>[-<開いた順>-<record の名前>].webm に保存する(mp4 への変換はタスクが行う)。
+// 動画は videos-out/<videos/ からの台本のパス>/<テスト名>[-<開いた順>-<record の名前>].webm に保存する
+// (例: videos-out/pr/12/staff-registration/…。mp4 への変換はタスクが行う)。
 //
-// 台本は PR ごとに videos/<見せること>.spec.ts に書き、PR と一緒にコミットする(CI では流さない)。
+// PR の台本は videos/pr/<PR 番号>/<見せること>.spec.ts に書き、PR と一緒にコミットする(CI では流さない)。
+// mise run pr:video が、今のブランチの PR の番号のディレクトリの台本だけを撮って PR に貼る。
 // 後で画面が変わって動かなくなったら、直さずに消してよい(動画は PR に残る)
-import { basename, join } from "node:path";
+import { join, relative } from "node:path";
 
 import { test as base, type Page } from "@playwright/test";
 
+/// 台本の置き場所
+const SCRIPT_DIR = join(import.meta.dirname, "..", "videos");
 /// 動画の出力先(git には入れない)
 export const VIDEO_DIR = join(import.meta.dirname, "..", "videos-out");
 export const VIDEO_SIZE = { width: 1280, height: 800 };
@@ -36,7 +40,8 @@ export const test = base.extend<{ record: (label?: string) => Promise<Page> }>({
       return page;
     });
     // テストの終わりにブラウザを閉じ、台本とテストの名前で保存する
-    const dir = join(VIDEO_DIR, fileName(basename(testInfo.file).replace(/\.spec\.ts$/, "")));
+    const script = relative(SCRIPT_DIR, testInfo.file).replace(/\.spec\.ts$/, "");
+    const dir = join(VIDEO_DIR, ...script.split("/").map(fileName));
     for (const [i, { page, label }] of opened.entries()) {
       await page.context().close();
       const video = page.video();
