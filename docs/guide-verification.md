@@ -40,6 +40,12 @@
 - **E2E を画面で見るときの日本語フォント**: `mise run e2e:ui`・`e2e:headed` で表示される Chromium は Linux 側のフォントを使う。素の Ubuntu(WSL2)には日本語フォントがなく、画面の日本語が文字化けした。`fonts-noto-cjk` を入れて解消した(WSLg で Windows 側に表示される)。ヘッドレスで流すだけならテストの結果には影響しないが、トレースのスクリーンショットは同じく文字化けする。
 - **SQS トリガーの Lambda をローカルで動かす方法**: ガイドは EventBridge 系については書いているが、SQS トリガーは書いていない。ElasticMQ をポーリングして同じ処理を呼ぶ `local_poller` を用意した。Lambda 本体も `cargo lambda watch` / `invoke` で動作を確認した。
 - **Lambda の一覧**: 構成ガイドは `lambdas/{payroll-monthly-close,timesheet-import}` を挙げている。一方、実装ガイドの consumer は振込の Lambda(ここでは payout-dispatcher)で、名前と役割が一致しない。業務仕様がない2つは作っていない。
+- **worktree での並行開発**: ガイドは1つの作業ツリーだけを前提にしている。worktree ごとに `docker compose` を立てると、プロジェクト名(ディレクトリ名から決まる)は分かれるが、公開ポートがぶつかる。
+  - compose の `name:` と公開ポートを環境変数にし、`scripts/worktree.sh`(`mise run worktree:new`)が 1〜9 のスロットを割り当て、「既定値 + スロット × 100」のポートを `.env.worktree` に書く。
+  - mise が `_.file` でそれを読み、server の接続先(`APP__DATABASE__URL` など)をポートから組み立てる。
+  - Vite・Playwright・スモークテストも同じ変数に従い、開発サーバーの `/config.json` は変数から組み立てて返す。
+  - Keycloak の realm 定義のリダイレクト先は `${WEB_PORT}` のプレースホルダにした(realm の import 時に置き換わる)。
+  - main(スロット 0)は `.env.worktree` を持たず、すべて従来の既定値で動く。
 - **opentelemetry の版**: `tracing-opentelemetry` の最新(0.33)は `opentelemetry` 0.32 用。各 crate の最新版をそのまま並べると型が合わない。
 - **reqwest 0.13**: `form()` が `form` feature に分かれた。
 
@@ -107,14 +113,15 @@
 
 ## 確認済みの動作
 
-| 対象                                                                                                                                          | 方法                                                     | 結果                             |
-| --------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- | -------------------------------- |
-| Rust の lint(fmt・clippy pedantic・cargo-deny・依存ルール)                                                                                    | `mise run lint:rust`                                     | 通過                             |
-| domain・usecase の単体テスト、DB 結合テスト(testcontainers)、API テスト(tonic クライアント)                                                   | `mise run test:rust`                                     | 38件通過                         |
-| フロントの lint・型・コンポーネントテスト・ビルド                                                                                             | `mise run lint:ts`・`test:ts`・`pnpm --filter web build` | 通過(2件)                        |
-| gRPC の主要シナリオ(認証・認可・二重確定・入力検証・金額計算)                                                                                 | `scripts/smoke-test.sh`                                  | 23件通過                         |
-| outbox → relay → ElasticMQ → consumer(再配信の冪等性を含む)                                                                                   | local_poller・`cargo lambda invoke`                      | 期待どおり                       |
-| ブラウザの一連の流れ(Keycloak ログイン・初回パスワード変更・給与明細の作成と確定・本人だけが確定済みの明細を見られる・作成中は本人に見えない) | `mise run e2e`(Playwright)                               | 3件通過(3回反復でも安定)         |
-| server イメージ(cargo-chef・distroless)                                                                                                       | ビルド・起動・`/health`・SIGTERM・イメージ内 migrate     | 62MB、0.05秒でグレースフルに停止 |
-| Terraform(3環境)                                                                                                                              | validate・tflint・trivy                                  | 通過                             |
-| ワークフロー                                                                                                                                  | actionlint                                               | 通過                             |
+| 対象                                                                                                                                          | 方法                                                                                         | 結果                                                       |
+| --------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Rust の lint(fmt・clippy pedantic・cargo-deny・依存ルール)                                                                                    | `mise run lint:rust`                                                                         | 通過                                                       |
+| domain・usecase の単体テスト、DB 結合テスト(testcontainers)、API テスト(tonic クライアント)                                                   | `mise run test:rust`                                                                         | 38件通過                                                   |
+| フロントの lint・型・コンポーネントテスト・ビルド                                                                                             | `mise run lint:ts`・`test:ts`・`pnpm --filter web build`                                     | 通過(2件)                                                  |
+| gRPC の主要シナリオ(認証・認可・二重確定・入力検証・金額計算)                                                                                 | `scripts/smoke-test.sh`                                                                      | 23件通過                                                   |
+| outbox → relay → ElasticMQ → consumer(再配信の冪等性を含む)                                                                                   | local_poller・`cargo lambda invoke`                                                          | 期待どおり                                                 |
+| ブラウザの一連の流れ(Keycloak ログイン・初回パスワード変更・給与明細の作成と確定・本人だけが確定済みの明細を見られる・作成中は本人に見えない) | `mise run e2e`(Playwright)                                                                   | 3件通過(3回反復でも安定)                                   |
+| worktree での並行開発(main とスロット 1 の worktree で依存サービス・server・Vite を別に立てる)                                                | `mise run worktree:new`・両方で同時に `mise run e2e`・worktree 側で smoke・`worktree:remove` | 両方 3件通過、smoke 23件通過、コンテナ・ボリュームも片付く |
+| server イメージ(cargo-chef・distroless)                                                                                                       | ビルド・起動・`/health`・SIGTERM・イメージ内 migrate                                         | 62MB、0.05秒でグレースフルに停止                           |
+| Terraform(3環境)                                                                                                                              | validate・tflint・trivy                                                                      | 通過                                                       |
+| ワークフロー                                                                                                                                  | actionlint                                                                                   | 通過                                                       |

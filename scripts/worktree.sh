@@ -89,10 +89,10 @@ cmd_remove() {
 
 cmd_list() {
   local d
-  printf '%-40s %-5s %-6s %-6s %-6s %s\n' WORKTREE SLOT API WEB MYSQL KEYCLOAK
+  printf '%-50s %-5s %-6s %-6s %-6s %s\n' WORKTREE SLOT API WEB MYSQL KEYCLOAK
   for d in $(worktree_dirs); do
     local slot; slot=$(slot_of "$d")
-    printf '%-40s %-5s %-6s %-6s %-6s %s\n' "$d" "$slot" \
+    printf '%-50s %-5s %-6s %-6s %-6s %s\n' "$d" "$slot" \
       $((50051 + slot * 100)) $((5173 + slot * 100)) $((3306 + slot * 100)) $((8080 + slot * 100))
   done
 }

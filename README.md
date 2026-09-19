@@ -35,6 +35,7 @@ mise run dev-frontend             # Vite :5173
 | ----------------------- | --------------------------------------------------------------------- |
 | `mise run lint`         | 全言語の lint(Rust・TS・proto・Terraform・Dockerfile・シークレット)   |
 | `mise run test`         | Rust(nextest。DB 結合・API テストは testcontainers)とフロント(Vitest) |
+| `mise run deps:stop`    | 依存サービスを止める(データは残す)                                    |
 | `mise run e2e`          | 依存サービス起動・マイグレーション・server/Vite 起動・Playwright      |
 | `mise run sqlx-prepare` | `query!` を変えたら .sqlx/ を更新する                                 |
 | `scripts/smoke-test.sh` | 起動中の server に grpcurl で主要シナリオを流す                       |
@@ -45,6 +46,23 @@ mise run dev-frontend             # Vite :5173
 `cargo run -p payout-dispatcher --bin local_poller` を実行する(ElasticMQ をポーリングして Lambda と同じ処理を呼ぶ)。
 Lambda 本体は `cargo lambda watch -p payout-dispatcher` と
 `cargo lambda invoke payout-dispatcher --data-file backend/app/lambdas/payout-dispatcher/events/sqs-payslip-finalized.json` で確認できる。
+
+## worktree で並行開発する
+
+worktree ごとに別の compose(DB・Keycloak なども別)と別のポートで動かせる。
+
+```sh
+mise run worktree:new -- feature-x     # ../banana-feature-x を作り(ブランチも)、スロットとポートを .env.worktree に書く
+cd ../banana-feature-x
+mise run e2e                           # この worktree 専用の依存サービス・server・Vite で動く
+mise run worktree:list                 # worktree ごとのスロットとポート
+mise run worktree:remove -- feature-x  # compose(データも)と worktree を片付ける。ブランチは残す
+```
+
+- スロットは 1〜9(main は 0)。ポートは「既定値 + スロット × 100」(スロット 1 なら API :50151・画面 :5273・Keycloak :8180・MySQL :3406)。
+- mise が `.env.worktree` を読み、`COMPOSE_NAME` と各ポート、server の接続先(`DATABASE_URL`・`APP__*`)を環境変数で渡す。
+  `docker compose` も mise を有効にしたシェル(または `mise exec --`)から実行する。そうしないと main の compose を操作してしまう。
+- `target/` は worktree ごとに作られるので、初回の cargo ビルドには時間がかかる。
 
 ## 構成
 
