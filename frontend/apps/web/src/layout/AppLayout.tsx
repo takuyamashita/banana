@@ -7,6 +7,7 @@ const adminMenu = [
   { to: "/payslips", label: "給与明細" },
   { to: "/staff", label: "派遣社員" },
   { to: "/projects", label: "案件" },
+  { to: "/admins", label: "管理者" },
 ] as const;
 
 /// ログインした人の画面の枠。管理者にはメニューを出す

@@ -208,5 +208,19 @@ pub struct Staff {
     #[prost(string, tag="3")]
     pub display_name: ::prost::alloc::string::String,
 }
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CreateAdminUserRequest {
+    #[prost(string, tag="1")]
+    pub email: ::prost::alloc::string::String,
+    /// 初回ログインで変更を求める仮パスワード
+    #[prost(string, tag="2")]
+    pub temporary_password: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CreateAdminUserResponse {
+    /// 認証基盤が振った利用者ID
+    #[prost(string, tag="1")]
+    pub user_id: ::prost::alloc::string::String,
+}
 include!("acme.payroll.v1.tonic.rs");
 // @@protoc_insertion_point(module)

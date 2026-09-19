@@ -14,6 +14,7 @@ use payroll_handler::authenticate;
 use platform_gen::acme::payroll::v1::payroll_service_server::PayrollServiceServer;
 use platform_gen::acme::payroll::v1::project_service_server::ProjectServiceServer;
 use platform_gen::acme::payroll::v1::staff_service_server::StaffServiceServer;
+use platform_gen::acme::payroll::v1::user_service_server::UserServiceServer;
 use sqlx::MySqlPool;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
@@ -139,6 +140,7 @@ async fn start(config: &AppConfig) -> anyhow::Result<Started> {
     .add_service(
         ProjectServiceServer::new(handlers.project).max_decoding_message_size(MAX_MESSAGE_BYTES),
     )
+    .add_service(UserServiceServer::new(handlers.user).max_decoding_message_size(MAX_MESSAGE_BYTES))
     .into_axum_router()
     .layer(axum::middleware::from_fn_with_state(verifier, authenticate))
     .layer(axum::middleware::from_fn(request_timeout))

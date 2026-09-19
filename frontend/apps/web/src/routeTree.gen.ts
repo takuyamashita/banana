@@ -14,6 +14,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppAdminRouteImport } from './routes/_app/_admin'
 import { Route as AppMeRouteImport } from './routes/_app/me'
+import { Route as AppAdminAdminsRouteImport } from './routes/_app/_admin/admins'
 import { Route as AppAdminPayslipsRouteImport } from './routes/_app/_admin/payslips'
 import { Route as AppAdminProjectsRouteImport } from './routes/_app/_admin/projects'
 import { Route as AppAdminStaffRouteImport } from './routes/_app/_admin/staff'
@@ -41,6 +42,11 @@ const AppMeRoute = AppMeRouteImport.update({
   path: '/me',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAdminAdminsRoute = AppAdminAdminsRouteImport.update({
+  id: '/admins',
+  path: '/admins',
+  getParentRoute: () => AppAdminRoute,
+} as any)
 const AppAdminPayslipsRoute = AppAdminPayslipsRouteImport.update({
   id: '/payslips',
   path: '/payslips',
@@ -61,6 +67,7 @@ export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/login': typeof LoginRoute
   '/me': typeof AppMeRoute
+  '/admins': typeof AppAdminAdminsRoute
   '/payslips': typeof AppAdminPayslipsRoute
   '/projects': typeof AppAdminProjectsRoute
   '/staff': typeof AppAdminStaffRoute
@@ -69,6 +76,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/': typeof AppIndexRoute
   '/me': typeof AppMeRoute
+  '/admins': typeof AppAdminAdminsRoute
   '/payslips': typeof AppAdminPayslipsRoute
   '/projects': typeof AppAdminProjectsRoute
   '/staff': typeof AppAdminStaffRoute
@@ -80,15 +88,17 @@ export interface FileRoutesById {
   '/_app/_admin': typeof AppAdminRouteWithChildren
   '/_app/me': typeof AppMeRoute
   '/_app/': typeof AppIndexRoute
+  '/_app/_admin/admins': typeof AppAdminAdminsRoute
   '/_app/_admin/payslips': typeof AppAdminPayslipsRoute
   '/_app/_admin/projects': typeof AppAdminProjectsRoute
   '/_app/_admin/staff': typeof AppAdminStaffRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/me' | '/payslips' | '/projects' | '/staff'
+  fullPaths:
+    '/' | '/login' | '/me' | '/admins' | '/payslips' | '/projects' | '/staff'
   fileRoutesByTo: FileRoutesByTo
-  to: '/login' | '/' | '/me' | '/payslips' | '/projects' | '/staff'
+  to: '/login' | '/' | '/me' | '/admins' | '/payslips' | '/projects' | '/staff'
   id:
     | '__root__'
     | '/_app'
@@ -96,6 +106,7 @@ export interface FileRouteTypes {
     | '/_app/_admin'
     | '/_app/me'
     | '/_app/'
+    | '/_app/_admin/admins'
     | '/_app/_admin/payslips'
     | '/_app/_admin/projects'
     | '/_app/_admin/staff'
@@ -143,6 +154,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppMeRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/_admin/admins': {
+      id: '/_app/_admin/admins'
+      path: '/admins'
+      fullPath: '/admins'
+      preLoaderRoute: typeof AppAdminAdminsRouteImport
+      parentRoute: typeof AppAdminRoute
+    }
     '/_app/_admin/payslips': {
       id: '/_app/_admin/payslips'
       path: '/payslips'
@@ -168,12 +186,14 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppAdminRouteChildren {
+  AppAdminAdminsRoute: typeof AppAdminAdminsRoute
   AppAdminPayslipsRoute: typeof AppAdminPayslipsRoute
   AppAdminProjectsRoute: typeof AppAdminProjectsRoute
   AppAdminStaffRoute: typeof AppAdminStaffRoute
 }
 
 const AppAdminRouteChildren: AppAdminRouteChildren = {
+  AppAdminAdminsRoute: AppAdminAdminsRoute,
   AppAdminPayslipsRoute: AppAdminPayslipsRoute,
   AppAdminProjectsRoute: AppAdminProjectsRoute,
   AppAdminStaffRoute: AppAdminStaffRoute,

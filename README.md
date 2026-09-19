@@ -29,6 +29,10 @@ mise run dev-frontend             # Vite :5173
 
 ブラウザで http://localhost:5173 を開き、`admin@example.com` / `password` でログインする。
 
+Claude Code on the web では、この手順を `.claude/hooks/session-start.sh`(SessionStart フック)が
+セッションの開始前に済ませる。手元の CLI では走らない(`CLAUDE_CODE_REMOTE` で見分ける)。
+ツールの版は mise.toml と compose.yaml から読むので、ピンを上げたらフックもそれに従う。
+
 ## よく使うコマンド
 
 | コマンド                | 内容                                                                                                                        |

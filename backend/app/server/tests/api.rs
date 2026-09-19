@@ -4,7 +4,7 @@
 // allow-unwrap-in-tests は #[test] 関数の中にしか効かず、補助関数は対象外
 #![allow(clippy::unwrap_used)]
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use axum::extract::Request;
@@ -15,6 +15,7 @@ use platform_gen::acme::payroll::v1 as proto;
 use platform_gen::acme::payroll::v1::payroll_service_client::PayrollServiceClient;
 use platform_gen::acme::payroll::v1::project_service_client::ProjectServiceClient;
 use platform_gen::acme::payroll::v1::staff_service_client::StaffServiceClient;
+use platform_gen::acme::payroll::v1::user_service_client::UserServiceClient;
 use platform_kernel::{AuthenticatedUser, Email, Role, UserId};
 use testcontainers_modules::mysql::Mysql;
 use testcontainers_modules::testcontainers::runners::AsyncRunner;
@@ -22,12 +23,22 @@ use testcontainers_modules::testcontainers::{ContainerAsync, ImageExt};
 use tonic::transport::Channel;
 use tonic::{Code, Request as GrpcRequest, Status};
 
-/// 作ったユーザーの sub をメールアドレスから決める認証基盤のフェイク
-struct FakeDirectory;
+/// 作ったユーザーの sub をメールアドレスから決める認証基盤のフェイク。
+/// 何にどのロールを付けたかを覚えておき、テストから確かめられるようにする
+#[derive(Default)]
+struct FakeDirectory {
+    created: Mutex<Vec<(String, Role)>>,
+}
 
 #[async_trait]
 impl UserDirectory for FakeDirectory {
-    async fn create_user(&self, email: &Email, _pw: &str) -> Result<UserId, UserDirectoryError> {
+    async fn create_user(
+        &self,
+        email: &Email,
+        _pw: &str,
+        role: Role,
+    ) -> Result<UserId, UserDirectoryError> {
+        self.created.lock().unwrap().push((email.as_str().to_owned(), role));
         Ok(UserId::parse(format!("sub-{}", email.as_str())).unwrap())
     }
 
@@ -56,6 +67,7 @@ async fn test_auth(mut request: Request, next: Next) -> Response {
 
 struct Api {
     channel: Channel,
+    directory: Arc<FakeDirectory>,
     _container: ContainerAsync<Mysql>,
 }
 
@@ -76,12 +88,14 @@ async fn api() -> Api {
         .unwrap();
     payroll_infrastructure::MIGRATOR.run(&pool).await.unwrap();
 
-    let handlers = bootstrap::build_handlers(&pool, Arc::new(FakeDirectory));
+    let directory = Arc::new(FakeDirectory::default());
+    let handlers = bootstrap::build_handlers(&pool, directory.clone());
     let router = tonic::service::Routes::new(
         proto::payroll_service_server::PayrollServiceServer::new(handlers.payroll),
     )
     .add_service(proto::staff_service_server::StaffServiceServer::new(handlers.staff))
     .add_service(proto::project_service_server::ProjectServiceServer::new(handlers.project))
+    .add_service(proto::user_service_server::UserServiceServer::new(handlers.user))
     .into_axum_router()
     .layer(axum::middleware::from_fn(test_auth));
 
@@ -90,7 +104,7 @@ async fn api() -> Api {
     tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
 
     let channel = Channel::from_shared(format!("http://{addr}")).unwrap().connect().await.unwrap();
-    Api { channel, _container: container }
+    Api { channel, directory, _container: container }
 }
 
 fn as_user<T>(message: T, sub: &str, roles: &str) -> GrpcRequest<T> {
@@ -219,6 +233,46 @@ async fn payslip_is_visible_only_to_admin_and_owner() {
     assert_eq!(list.code(), Code::NotFound);
 }
 
+#[tokio::test]
+async fn admin_user_is_created_with_the_admin_role() {
+    let api = api().await;
+    let mut users = UserServiceClient::new(api.channel.clone());
+
+    let created = users
+        .create_admin_user(admin(proto::CreateAdminUserRequest {
+            email: "new-admin@example.com".into(),
+            temporary_password: "Temp-pass-1".into(),
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+
+    // 認証基盤のアカウントだけを作る。管理者は派遣社員ではないので、こちらの記録は増えない
+    assert_eq!(created.user_id, "sub-new-admin@example.com");
+    assert_eq!(
+        api.directory.created.lock().unwrap().as_slice(),
+        [("new-admin@example.com".to_owned(), Role::Admin)]
+    );
+}
+
+#[tokio::test]
+async fn admin_user_with_a_malformed_email_is_invalid_argument() {
+    let api = api().await;
+    let mut users = UserServiceClient::new(api.channel.clone());
+
+    let err = users
+        .create_admin_user(admin(proto::CreateAdminUserRequest {
+            email: "not-an-email".into(),
+            temporary_password: "Temp-pass-1".into(),
+        }))
+        .await
+        .unwrap_err();
+
+    // 認証基盤に届く前に断る
+    assert_eq!(err.code(), Code::InvalidArgument);
+    assert!(api.directory.created.lock().unwrap().is_empty());
+}
+
 /// RPC ごとに、誰が呼べるか。RPC を足したらここにも足す(足し忘れると、未認証で呼べる RPC ができうる)
 #[tokio::test]
 #[allow(clippy::too_many_lines, reason = "全 RPC を1つの表に並べて、抜けを見つけやすくする")]
@@ -227,6 +281,7 @@ async fn every_rpc_requires_login_and_admin_only_rpcs_reject_staff() {
     let mut payroll = PayrollServiceClient::new(api.channel.clone());
     let mut staff = StaffServiceClient::new(api.channel.clone());
     let mut project = ProjectServiceClient::new(api.channel.clone());
+    let mut user = UserServiceClient::new(api.channel.clone());
 
     // 呼び出し方(利用者なし・派遣社員)ごとに、全 RPC の結果のコードを集める
     macro_rules! codes {
@@ -314,6 +369,15 @@ async fn every_rpc_requires_login_and_admin_only_rpcs_reject_staff() {
                     code(
                         project
                             .list_projects($wrap(proto::ListProjectsRequest::default()))
+                            .await
+                            .map(|_| ()),
+                    ),
+                ),
+                (
+                    "CreateAdminUser",
+                    true,
+                    code(
+                        user.create_admin_user($wrap(proto::CreateAdminUserRequest::default()))
                             .await
                             .map(|_| ()),
                     ),

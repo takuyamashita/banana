@@ -3,7 +3,7 @@ use aws_sdk_cognitoidentityprovider::Client;
 use aws_sdk_cognitoidentityprovider::operation::admin_delete_user::AdminDeleteUserError;
 use aws_sdk_cognitoidentityprovider::types::AttributeType;
 use payroll_usecase::ports::user_directory::{UserDirectory, UserDirectoryError};
-use platform_kernel::{Email, UserId};
+use platform_kernel::{Email, Role, UserId};
 
 /// stg/prd 用
 pub struct CognitoUserDirectory {
@@ -30,6 +30,7 @@ impl UserDirectory for CognitoUserDirectory {
         &self,
         email: &Email,
         temporary_password: &str,
+        role: Role,
     ) -> Result<UserId, UserDirectoryError> {
         let email_attr = AttributeType::builder()
             .name("email")
@@ -76,13 +77,13 @@ impl UserDirectory for CognitoUserDirectory {
         let user_id =
             UserId::parse(sub).map_err(|e| UserDirectoryError::Unavailable(e.to_string()))?;
 
-        // 派遣社員のロール(グループ staff)に入れる
+        // 求められたロール(グループ admin・staff)に入れる
         let added = self
             .client
             .admin_add_user_to_group()
             .user_pool_id(&self.user_pool_id)
             .username(user_id.as_str())
-            .group_name("staff")
+            .group_name(role.as_str())
             .send()
             .await;
         if let Err(err) = added {

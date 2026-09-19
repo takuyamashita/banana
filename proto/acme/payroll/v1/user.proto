@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package acme.payroll.v1;
+
+// 管理者のログイン用アカウントの発行
+service UserService {
+  // 管理者のアカウントを認証基盤に作る。管理者のみ
+  rpc CreateAdminUser(CreateAdminUserRequest) returns (CreateAdminUserResponse);
+}
+
+message CreateAdminUserRequest {
+  string email = 1;
+  // 初回ログインで変更を求める仮パスワード
+  string temporary_password = 2;
+}
+
+message CreateAdminUserResponse {
+  // 認証基盤が振った利用者ID
+  string user_id = 1;
+}
