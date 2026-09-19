@@ -5,6 +5,7 @@ import { TimesheetApprovalPage } from "../../../features/timesheet/TimesheetAppr
 import { ensure } from "../../../lib/loaders";
 
 export const Route = createFileRoute("/_app/_admin/timesheets")({
+  staticData: { system: "timesheet" },
   loader: ({ context, location }) =>
     ensure(context, timesheet.TimesheetService.method.listSubmittedTimesheets, {}, location.href),
   component: TimesheetApprovalPage,

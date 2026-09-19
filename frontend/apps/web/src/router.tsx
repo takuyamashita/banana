@@ -1,5 +1,6 @@
 import { createRouter } from "@tanstack/react-router";
 
+import type { System } from "./layout/AppLayout";
 import { RouteError, RoutePending } from "./layout/RouteStatus";
 import type { RouterContext } from "./lib/context";
 import { routeTree } from "./routeTree.gen";
@@ -31,5 +32,9 @@ export type AppRouter = ReturnType<typeof createAppRouter>;
 declare module "@tanstack/react-router" {
   interface Register {
     router: AppRouter;
+  }
+  /// 画面ごとに決めておく値。system はその画面がどのシステムのものか(画面の枠の名前と色になる)
+  interface StaticDataRouteOption {
+    system?: System;
   }
 }

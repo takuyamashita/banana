@@ -8,6 +8,7 @@ import { ensure } from "../../lib/loaders";
 
 /// 派遣社員の勤怠。対象月は URL の引数で選ぶ(指定がなければ今月)
 export const Route = createFileRoute("/_app/timesheet")({
+  staticData: { system: "timesheet" },
   validateSearch: monthSearch,
   loaderDeps: ({ search }) => search,
   loader: async ({ context, deps, location }) => {

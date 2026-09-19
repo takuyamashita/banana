@@ -1,6 +1,6 @@
 import { StaffService } from "@platform/api-client";
 import { useMutation } from "@tanstack/react-query";
-import { createFileRoute, Outlet } from "@tanstack/react-router";
+import { createFileRoute, Outlet, useMatches } from "@tanstack/react-router";
 import { useSyncExternalStore } from "react";
 
 import { AppLayout } from "../layout/AppLayout";
@@ -20,8 +20,11 @@ function AppRoute() {
   const { auth, me } = Route.useRouteContext();
   const { user } = useSyncExternalStore(auth.subscribe, auth.getSnapshot);
   const signOut = useMutation({ mutationFn: auth.signOut });
+  // 開いている画面(いちばん内側のルート)が決めたシステム
+  const system = useMatches({ select: (matches) => matches.findLast((m) => m.staticData.system)?.staticData.system });
   return (
     <AppLayout
+      system={system ?? "payroll"}
       email={user?.profile.email ?? ""}
       menu={isAdmin(me) ? "admin" : me.staff ? "staff" : "none"}
       onSignOut={() => signOut.mutate()}

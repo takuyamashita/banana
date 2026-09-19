@@ -132,6 +132,10 @@
   background: var(--color-accent);
 }
 
+.bg-accent-tint {
+  background: var(--color-accent-tint);
+}
+
 .bg-transparent {
   background: transparent;
 }

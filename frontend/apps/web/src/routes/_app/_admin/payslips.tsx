@@ -7,6 +7,7 @@ import { payslipSearch } from "../../../features/payroll/search";
 import { ensure } from "../../../lib/loaders";
 
 export const Route = createFileRoute("/_app/_admin/payslips")({
+  staticData: { system: "payroll" },
   validateSearch: payslipSearch,
   loader: async ({ context, location }) => {
     await Promise.all([
