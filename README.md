@@ -7,6 +7,7 @@ Rust(バックエンド)・React(フロントエンド)・Terraform(インフラ
 ## セットアップ
 
 前提: mise・rustup・Docker と、C のビルドツール(Ubuntu なら `sudo apt-get install -y build-essential pkg-config`)。
+E2E を画面で見る(`mise run e2e:ui` など)なら日本語フォントも入れる(Ubuntu なら `sudo apt-get install -y fonts-noto-cjk`。ないとブラウザの日本語が文字化けする)。
 
 ```sh
 # rustup・mise をシェルから使えるようにする(インストーラが設定しなかった場合)

@@ -37,6 +37,7 @@
 - **OIDC と React StrictMode**: 開発モードでは effect が2回走り、認可コードを2回交換して「Code not valid」で失敗する(E2E で確認)。コールバック処理は1回だけ実行するようにした。
 - **フロントの接続先**: ガイドの「バイナリは全環境で同一」をフロントにも当てはめ、接続先はビルド時の環境変数ではなく実行時に読む `config.json` にした。Terraform が環境ごとに生成して S3 に置く。
 - **フロントのテスト**: ガイドは MSW を挙げているが、gRPC-Web のバイナリ応答を MSW で組み立てるのは手間がかかる。Connect の `createRouterTransport`(インメモリでサービスを差し替える)の方が素直だった。
+- **E2E を画面で見るときの日本語フォント**: `mise run e2e:ui`・`e2e:headed` で表示される Chromium は Linux 側のフォントを使う。素の Ubuntu(WSL2)には日本語フォントがなく、画面の日本語が文字化けした。`fonts-noto-cjk` を入れて解消した(WSLg で Windows 側に表示される)。ヘッドレスで流すだけならテストの結果には影響しないが、トレースのスクリーンショットは同じく文字化けする。
 - **SQS トリガーの Lambda をローカルで動かす方法**: ガイドは EventBridge 系については書いているが、SQS トリガーは書いていない。ElasticMQ をポーリングして同じ処理を呼ぶ `local_poller` を用意した。Lambda 本体も `cargo lambda watch` / `invoke` で動作を確認した。
 - **Lambda の一覧**: 構成ガイドは `lambdas/{payroll-monthly-close,timesheet-import}` を挙げている。一方、実装ガイドの consumer は振込の Lambda(ここでは payout-dispatcher)で、名前と役割が一致しない。業務仕様がない2つは作っていない。
 - **opentelemetry の版**: `tracing-opentelemetry` の最新(0.33)は `opentelemetry` 0.32 用。各 crate の最新版をそのまま並べると型が合わない。
