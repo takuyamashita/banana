@@ -3,6 +3,14 @@ use serde::Deserialize;
 
 const DEFAULT_TOML: &str = include_str!("../../../../config/default.toml");
 
+/// 環境ごとの設定もバイナリに埋め込む。Lambda の zip のように、設定ファイルを置けない配り方でも動くようにする
+const ENV_TOMLS: [(&str, &str); 4] = [
+    ("local", include_str!("../../../../config/local.toml")),
+    ("dev", include_str!("../../../../config/dev.toml")),
+    ("stg", include_str!("../../../../config/stg.toml")),
+    ("prd", include_str!("../../../../config/prd.toml")),
+];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AuthProvider {
@@ -72,6 +80,7 @@ pub struct PayoutConfig {
 #[derive(Debug, Deserialize)]
 pub struct SecretsConfig {
     pub database_url_secret_id: String,
+    pub payout_api_key_secret_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -81,19 +90,27 @@ pub struct TelemetryConfig {
     pub log_filter: String,
 }
 
-/// `APP_ENV`(local/dev/stg/prd)を見て、埋め込みの default.toml に
-/// `{APP_CONFIG_DIR}/{env}.toml` と環境変数 `APP__SECTION__KEY` を重ねる
+/// `APP_ENV`(local/dev/stg/prd)を見て、埋め込みの default.toml に `{env}.toml` と
+/// 環境変数 `APP__SECTION__KEY` を重ねる。
+///
+/// `{env}.toml` も埋め込みを使う。`APP_CONFIG_DIR` を指定したときだけ、そのディレクトリのファイルを読む
 pub fn load_config() -> anyhow::Result<AppConfig> {
     let env = std::env::var("APP_ENV").context("APP_ENV is not set (local/dev/stg/prd)")?;
-    anyhow::ensure!(
-        ["local", "dev", "stg", "prd"].contains(&env.as_str()),
-        "unknown APP_ENV: {env}"
-    );
-    let dir = std::env::var("APP_CONFIG_DIR").unwrap_or_else(|_| "config".into());
+    let embedded = ENV_TOMLS
+        .iter()
+        .find(|(name, _)| *name == env)
+        .map(|(_, toml)| *toml)
+        .with_context(|| format!("unknown APP_ENV: {env}"))?;
+    let builder = config::Config::builder()
+        .add_source(config::File::from_str(DEFAULT_TOML, config::FileFormat::Toml));
+    let builder = match std::env::var("APP_CONFIG_DIR") {
+        Ok(dir) => {
+            builder.add_source(config::File::with_name(&format!("{dir}/{env}")).required(true))
+        }
+        Err(_) => builder.add_source(config::File::from_str(embedded, config::FileFormat::Toml)),
+    };
 
-    config::Config::builder()
-        .add_source(config::File::from_str(DEFAULT_TOML, config::FileFormat::Toml))
-        .add_source(config::File::with_name(&format!("{dir}/{env}")).required(true))
+    builder
         .add_source(
             config::Environment::with_prefix("APP")
                 .prefix_separator("__")

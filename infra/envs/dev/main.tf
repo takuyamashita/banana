@@ -47,14 +47,33 @@ module "backend" {
   database_url_secret_arn = module.database.database_url_secret_arn
   queue_arn               = module.messaging.queue_arn
   user_pool_arn           = module.auth.user_pool_arn
+  app_environment         = local.server_environment
   desired_count           = 1
   deletion_protection     = false
+}
+
+# インフラが決める値は config/{env}.toml に書かず、ここから環境変数(APP__SECTION__KEY)で渡す
+locals {
+  server_environment = {
+    APP__AUTH__ISSUER                    = module.auth.issuer
+    APP__AUTH__COGNITO_CLIENT_ID         = module.auth.web_client_id
+    APP__AUTH__COGNITO_USER_POOL_ID      = module.auth.user_pool_id
+    APP__MESSAGING__QUEUE_URL            = module.messaging.queue_url
+    APP__SECRETS__DATABASE_URL_SECRET_ID = module.database.database_url_secret_arn
+    APP__SERVER__CORS_ALLOWED_ORIGINS    = "https://${var.web_domain}"
+  }
+}
+
+# 振込 API のキー。値は Terraform では持たず、作成後にコンソールか CLI で入れる(put-secret-value)
+resource "aws_secretsmanager_secret" "payout_api_key" {
+  name        = "platform/${local.env}/payout-api-key"
+  description = "API key for the bank payout API"
 }
 
 data "aws_iam_policy_document" "payout_dispatcher" {
   statement {
     actions   = ["secretsmanager:GetSecretValue"]
-    resources = [module.database.database_url_secret_arn]
+    resources = [module.database.database_url_secret_arn, aws_secretsmanager_secret.payout_api_key.arn]
   }
 }
 
@@ -70,6 +89,12 @@ module "payout_dispatcher" {
   sqs_queue_arn   = module.messaging.queue_arn
   policy_json     = data.aws_iam_policy_document.payout_dispatcher.json
   adot_layer_arn  = var.adot_layer_arn
+  environment = {
+    APP__SECRETS__DATABASE_URL_SECRET_ID   = module.database.database_url_secret_arn
+    APP__SECRETS__PAYOUT_API_KEY_SECRET_ID = aws_secretsmanager_secret.payout_api_key.arn
+    # 同時実行数(maximum_concurrency)× この接続数が RDS の上限に収まるようにする
+    APP__DATABASE__MAX_CONNECTIONS = "2"
+  }
 }
 
 module "frontend" {

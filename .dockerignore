@@ -6,4 +6,5 @@ infra/
 docs/
 .git/
 .env
+.env.*
 mise.local.toml

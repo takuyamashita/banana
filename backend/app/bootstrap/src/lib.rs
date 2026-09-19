@@ -54,24 +54,39 @@ pub async fn aws_config() -> aws_config::SdkConfig {
     aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await
 }
 
+/// 秘密の値を読む。シークレット ID の指定があれば Secrets Manager から、なければ設定の値をそのまま使う
+async fn secret_or(
+    aws: &aws_config::SdkConfig,
+    secret_id: &str,
+    fallback: &str,
+    what: &str,
+) -> anyhow::Result<String> {
+    if secret_id.is_empty() {
+        return Ok(fallback.to_owned());
+    }
+    Ok(aws_sdk_secretsmanager::Client::new(aws)
+        .get_secret_value()
+        .secret_id(secret_id)
+        .send()
+        .await
+        .with_context(|| format!("failed to read {what} secret"))?
+        .secret_string()
+        .with_context(|| format!("{what} secret is not a string"))?
+        .to_owned())
+}
+
 /// DB 接続。接続文字列は Secrets Manager 指定があればそちらを優先する
 pub async fn connect_db(
     config: &AppConfig,
     aws: &aws_config::SdkConfig,
 ) -> anyhow::Result<MySqlPool> {
-    let url = if config.secrets.database_url_secret_id.is_empty() {
-        config.database.url.clone()
-    } else {
-        aws_sdk_secretsmanager::Client::new(aws)
-            .get_secret_value()
-            .secret_id(&config.secrets.database_url_secret_id)
-            .send()
-            .await
-            .context("failed to read database url secret")?
-            .secret_string()
-            .context("database url secret is not a string")?
-            .to_owned()
-    };
+    let url = secret_or(
+        aws,
+        &config.secrets.database_url_secret_id,
+        &config.database.url,
+        "database url",
+    )
+    .await?;
     anyhow::ensure!(!url.is_empty(), "database.url is not configured");
     payroll_infrastructure::connect(&url, config.database.max_connections)
         .await
@@ -164,22 +179,33 @@ pub fn build_handlers(pool: &MySqlPool, user_directory: Arc<dyn UserDirectory>) 
 const PAYOUT_CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 const PAYOUT_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
-// 振込はSQSのconsumer(Lambda)側で組み立てる
-pub fn build_request_payout(
+// 振込はSQSのconsumer(Lambda)側で組み立てる。振込 API のキーは Secrets Manager 指定があればそちらを使う
+pub async fn build_request_payout(
     config: &AppConfig,
+    aws: &aws_config::SdkConfig,
     pool: &MySqlPool,
 ) -> anyhow::Result<RequestPayoutUseCase> {
     let gateway: Arc<dyn PayoutGateway> = match config.payout.provider {
         PayoutProvider::Logging => Arc::new(LoggingPayoutGateway),
-        PayoutProvider::Bank => Arc::new(BankPayoutGateway::new(
-            reqwest::Client::builder()
-                .connect_timeout(PAYOUT_CONNECT_TIMEOUT)
-                .timeout(PAYOUT_REQUEST_TIMEOUT)
-                .build()
-                .context("failed to build the payout HTTP client")?,
-            config.payout.base_url.clone(),
-            config.payout.api_key.clone(),
-        )),
+        PayoutProvider::Bank => {
+            let api_key = secret_or(
+                aws,
+                &config.secrets.payout_api_key_secret_id,
+                &config.payout.api_key,
+                "payout api key",
+            )
+            .await?;
+            anyhow::ensure!(!api_key.is_empty(), "payout api key is not configured");
+            Arc::new(BankPayoutGateway::new(
+                reqwest::Client::builder()
+                    .connect_timeout(PAYOUT_CONNECT_TIMEOUT)
+                    .timeout(PAYOUT_REQUEST_TIMEOUT)
+                    .build()
+                    .context("failed to build the payout HTTP client")?,
+                config.payout.base_url.clone(),
+                api_key,
+            ))
+        }
     };
     Ok(RequestPayoutUseCase::new(
         Arc::new(MySqlPayoutRepository::new(pool.clone())),

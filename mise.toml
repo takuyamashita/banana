@@ -171,6 +171,9 @@ description = "cargo-lambdaでzipを作成"
 run = "cargo lambda build --release --arm64 --output-format zip -p payout-dispatcher"
 
 [tasks.tf-plan]
-description = "dev環境のterraform plan"
+description = "dev環境のterraform plan(環境ごとの値は terraform.tfvars、版は今のコミット)"
 dir = "infra/envs/dev"
-run = ["terraform init -input=false", "terraform plan -input=false"]
+run = [
+  "terraform init -input=false",
+  "terraform plan -input=false -var=image_tag=$(git rev-parse HEAD) -var=lambda_artifact_key=payout-dispatcher/$(git rev-parse HEAD).zip",
+]

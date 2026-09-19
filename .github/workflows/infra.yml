@@ -44,7 +44,10 @@ jobs:
         working-directory: infra/envs/dev
         run: |
           terraform init -input=false
-          terraform plan -input=false -no-color -var-file=ci.tfvars -var="image_tag=${{ github.sha }}" > plan.txt
+          # 環境ごとの値は terraform.tfvars(自動で読まれる)。デプロイのたびに変わる値だけ渡す
+          terraform plan -input=false -no-color \
+            -var="image_tag=${{ github.sha }}" \
+            -var="lambda_artifact_key=payout-dispatcher/${{ github.sha }}.zip" > plan.txt
       - name: PR にコメント
         env:
           GH_TOKEN: ${{ github.token }}

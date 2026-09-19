@@ -113,4 +113,8 @@ resource "aws_lambda_event_source_mapping" "sqs" {
   batch_size = 10
   # 失敗した件だけを返してキューに戻す。関数は、失敗した件と同じグループの後ろの件も返す(順序を保つ)
   function_response_types = ["ReportBatchItemFailures"]
+  # FIFO では同時実行がメッセージグループの数まで増える。DB の接続数と振込 API の流量を超えないよう抑える
+  scaling_config {
+    maximum_concurrency = var.maximum_concurrency
+  }
 }

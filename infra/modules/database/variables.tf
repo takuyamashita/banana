@@ -40,3 +40,9 @@ variable "deletion_protection" {
   type        = bool
   default     = false
 }
+
+variable "performance_insights_enabled" {
+  description = "Performance Insights。db.t4g.micro・small では使えない(作成時にエラーになる)"
+  type        = bool
+  default     = false
+}

@@ -82,3 +82,9 @@ variable "deletion_protection" {
   type        = bool
   default     = false
 }
+
+variable "app_environment" {
+  description = "アプリに渡す設定(APP__SECTION__KEY)。インフラが決める値(issuer・キュー URL など)を渡す"
+  type        = map(string)
+  default     = {}
+}

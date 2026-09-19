@@ -1,4 +1,4 @@
-# config/{env}.toml に転記する値
+# 確かめ用。アプリには main.tf の locals から環境変数で渡すので、転記は要らない
 output "auth_issuer" {
   value = module.auth.issuer
 }
@@ -46,4 +46,16 @@ output "web_distribution_id" {
 
 output "alb_dns_name" {
   value = module.backend.alb_dns_name
+}
+
+output "migrate_network_configuration" {
+  value = module.backend.migrate_network_configuration
+}
+
+output "lambda_artifact_bucket" {
+  value = var.lambda_artifact_bucket
+}
+
+output "payout_api_key_secret_name" {
+  value = aws_secretsmanager_secret.payout_api_key.name
 }

@@ -68,3 +68,9 @@ variable "adot_layer_arn" {
   type        = string
   default     = null
 }
+
+variable "maximum_concurrency" {
+  description = "SQS トリガーで同時に動かす数の上限(2 以上)。1つあたりの DB 接続数 × この値が RDS の上限に収まるようにする"
+  type        = number
+  default     = 2
+}

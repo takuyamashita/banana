@@ -20,7 +20,7 @@ impl Deps {
         let config = bootstrap::load_config()?;
         let aws = bootstrap::aws_config().await;
         let pool = bootstrap::connect_db(&config, &aws).await?;
-        Ok(Self { usecase: bootstrap::build_request_payout(&config, &pool)? })
+        Ok(Self { usecase: bootstrap::build_request_payout(&config, &aws, &pool).await? })
     }
 }
 

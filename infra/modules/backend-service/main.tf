@@ -185,10 +185,13 @@ resource "aws_lb_listener" "https" {
 # ---- タスク定義 ----
 
 locals {
-  environment = [
-    { name = "APP_ENV", value = var.env },
-    { name = "AWS_REGION", value = data.aws_region.current.region },
-  ]
+  environment = concat(
+    [
+      { name = "APP_ENV", value = var.env },
+      { name = "AWS_REGION", value = data.aws_region.current.region },
+    ],
+    [for name, value in var.app_environment : { name = name, value = value }],
+  )
   log_configuration = {
     logDriver = "awslogs"
     options = {

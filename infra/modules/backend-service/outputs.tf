@@ -21,3 +21,14 @@ output "service_name" {
 output "migrate_task_definition_arn" {
   value = aws_ecs_task_definition.migrate.arn
 }
+
+# deploy ワークフローが migrate を run-task するときの --network-configuration
+output "migrate_network_configuration" {
+  value = jsonencode({
+    awsvpcConfiguration = {
+      subnets        = var.private_subnet_ids
+      securityGroups = [aws_security_group.task.id]
+      assignPublicIp = "DISABLED"
+    }
+  })
+}

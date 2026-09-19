@@ -32,11 +32,13 @@ relay_interval_ms = 500
 # logging | bank
 provider = "bank"
 base_url = ""
+# シークレット。ローカル以外は secrets.payout_api_key_secret_id で与える
 api_key = ""
 
 [secrets]
-# 指定すると起動時に Secrets Manager から DB 接続文字列を取る
+# 指定すると起動時に Secrets Manager から取る(AWS では Terraform が環境変数で渡す)
 database_url_secret_id = ""
+payout_api_key_secret_id = ""
 
 [telemetry]
 otlp_endpoint = ""
