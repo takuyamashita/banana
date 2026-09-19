@@ -4,7 +4,7 @@
 #![allow(clippy::unwrap_used)]
 
 use payroll_domain::payslip::{
-    DraftPayslip, NewPayslip, PayPeriod, PayslipId, PayslipLine, PayslipStatus, WorkMinutes,
+    DraftPayslip, PayPeriod, Payslip, PayslipId, PayslipLine, PayslipStatus, WorkMinutes,
 };
 use payroll_domain::project::{NewProject, ProjectId, ProjectName};
 use payroll_domain::staff::{DisplayName, NewStaff, StaffId};
@@ -72,7 +72,7 @@ fn draft(staff: StaffId, project: ProjectId, month: u8) -> DraftPayslip<Unsaved>
             Money::from_yen(1_001).unwrap(),
         ),
     ];
-    NewPayslip::draft(staff, PayPeriod::new(2026, month).unwrap(), lines).unwrap()
+    Payslip::draft(staff, PayPeriod::new(2026, month).unwrap(), lines).unwrap()
 }
 
 /// 給与確定のユースケースと同じく、給与明細とその出来事を1つのトランザクションで記録する

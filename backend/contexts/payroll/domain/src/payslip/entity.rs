@@ -195,16 +195,13 @@ mod tests {
     #[test]
     fn empty_lines_are_rejected() {
         let period = PayPeriod::new(2026, 9).unwrap();
-        assert_eq!(
-            NewPayslip::draft(staff(), period, vec![]).unwrap_err(),
-            PayslipError::EmptyLines
-        );
+        assert_eq!(Payslip::draft(staff(), period, vec![]).unwrap_err(), PayslipError::EmptyLines);
     }
 
     #[test]
     fn finalize_returns_the_finalized_payslip_and_the_event() {
         let period = PayPeriod::new(2026, 9).unwrap();
-        let draft = NewPayslip::draft(staff(), period, vec![line(600, 1_500)]).unwrap();
+        let draft = Payslip::draft(staff(), period, vec![line(600, 1_500)]).unwrap();
 
         let (finalized, event) = draft.finalize();
 

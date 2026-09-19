@@ -21,7 +21,7 @@ struct UnsavedHasNoId;
 /// 確定済みの給与明細は、もう一度確定できない。
 ///
 /// ```compile_fail
-/// use payroll_domain::payslip::{NewPayslip, PayPeriod, PayslipLine, WorkMinutes};
+/// use payroll_domain::payslip::{PayPeriod, Payslip, PayslipLine, WorkMinutes};
 /// use payroll_domain::project::ProjectId;
 /// use payroll_domain::staff::StaffId;
 /// use platform_kernel::Money;
@@ -32,13 +32,13 @@ struct UnsavedHasNoId;
 ///     Money::from_yen(1_500).unwrap(),
 /// );
 /// let period = PayPeriod::new(2026, 9).unwrap();
-/// let draft = NewPayslip::draft(StaffId::from_i64(1).unwrap(), period, vec![line]).unwrap();
+/// let draft = Payslip::draft(StaffId::from_i64(1).unwrap(), period, vec![line]).unwrap();
 /// let (finalized, _event) = draft.finalize();
 /// finalized.finalize();
 /// ```
 ///
 /// ```
-/// use payroll_domain::payslip::{NewPayslip, PayPeriod, PayslipLine, WorkMinutes};
+/// use payroll_domain::payslip::{PayPeriod, Payslip, PayslipLine, WorkMinutes};
 /// use payroll_domain::project::ProjectId;
 /// use payroll_domain::staff::StaffId;
 /// use platform_kernel::Money;
@@ -49,7 +49,7 @@ struct UnsavedHasNoId;
 ///     Money::from_yen(1_500).unwrap(),
 /// );
 /// let period = PayPeriod::new(2026, 9).unwrap();
-/// let draft = NewPayslip::draft(StaffId::from_i64(1).unwrap(), period, vec![line]).unwrap();
+/// let draft = Payslip::draft(StaffId::from_i64(1).unwrap(), period, vec![line]).unwrap();
 /// let (_finalized, _event) = draft.finalize();
 /// ```
 struct FinalizedPayslipCannotBeFinalizedAgain;

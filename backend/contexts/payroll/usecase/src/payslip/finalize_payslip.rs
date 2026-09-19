@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use payroll_domain::payslip::{NewPayslip, PayPeriod, PayslipId, PayslipLine};
+use payroll_domain::payslip::{PayPeriod, Payslip, PayslipId, PayslipLine};
 use payroll_domain::staff::StaffId;
 
 use crate::UseCaseError;
@@ -53,7 +53,7 @@ impl FinalizePayslipUseCase {
             return Err(UseCaseError::Conflict("この月の給与明細は既に確定しています".into()));
         }
 
-        let draft = NewPayslip::draft(input.staff_id, input.period, input.lines)?;
+        let draft = Payslip::draft(input.staff_id, input.period, input.lines)?;
         let (payslip, finalized) = draft.finalize();
 
         let mut tx = self.db.transaction().await?;
