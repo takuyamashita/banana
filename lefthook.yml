@@ -12,6 +12,9 @@ pre-commit:
     - name: oxlint
       glob: "*.{ts,tsx}"
       run: pnpm oxlint {staged_files}
+    - name: stylelint
+      glob: "*.css"
+      run: pnpm stylelint {staged_files}
     - name: gitleaks
       run: gitleaks git --pre-commit --staged --config .gitleaks.toml --no-banner
 

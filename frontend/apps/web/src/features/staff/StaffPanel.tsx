@@ -1,4 +1,4 @@
-import { Alert, Button, Card, Field } from "@platform/ui";
+import { Alert, Button, Card, Field, numberClass } from "@platform/ui";
 
 import { useStaffPanel, type StaffPanelModel } from "./useStaffPanel";
 
@@ -52,7 +52,7 @@ export function StaffPanelView({ staff, draft, busy, error, createdId, onEdit, o
       <table aria-label="登録済みの派遣社員">
         <thead>
           <tr>
-            <th scope="col" className="num">
+            <th scope="col" className={numberClass()}>
               ID
             </th>
             <th scope="col">表示名</th>
@@ -62,7 +62,7 @@ export function StaffPanelView({ staff, draft, busy, error, createdId, onEdit, o
         <tbody>
           {staff.map((s) => (
             <tr key={String(s.staffId)}>
-              <td className="num">{String(s.staffId)}</td>
+              <td className={numberClass()}>{String(s.staffId)}</td>
               <td>{s.displayName}</td>
               <td>{s.email}</td>
             </tr>

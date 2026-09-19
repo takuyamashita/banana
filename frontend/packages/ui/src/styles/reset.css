@@ -1,0 +1,10 @@
+body {
+  margin: 0;
+}
+
+/* フォーム部品は既定で親の文字を受け継がない */
+button,
+input,
+select {
+  font: inherit;
+}

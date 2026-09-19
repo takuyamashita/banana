@@ -1,17 +1,8 @@
-import type { Transport } from "@platform/api-client";
-import type { QueryClient } from "@tanstack/react-query";
 import { createRouter } from "@tanstack/react-router";
 
 import { RouteError, RoutePending } from "./layout/RouteStatus";
-import type { Auth } from "./lib/auth";
+import type { RouterContext } from "./lib/context";
 import { routeTree } from "./routeTree.gen";
-
-/// どのルートからも使えるもの。loader と beforeLoad は、これを通して API とログインの状態に触れる
-export interface RouterContext {
-  auth: Auth;
-  queryClient: QueryClient;
-  transport: Transport;
-}
 
 export function createAppRouter(context: RouterContext) {
   return createRouter({

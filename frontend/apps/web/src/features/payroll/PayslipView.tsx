@@ -1,4 +1,5 @@
 import type { Payslip } from "@platform/api-client";
+import { numberClass } from "@platform/ui";
 
 import { formatWorkMinutes, statusLabel, yen } from "./format";
 
@@ -6,7 +7,7 @@ import { formatWorkMinutes, statusLabel, yen } from "./format";
 export function PayslipView({ payslip }: { payslip: Payslip }) {
   const title = `${payslip.payYear}年${payslip.payMonth}月分の給与明細`;
   return (
-    <section className="payslip" aria-label={title}>
+    <section aria-label={title}>
       <p>
         {payslip.payYear}年{payslip.payMonth}月分 ・ {statusLabel(payslip.status)} ・ 合計{" "}
         <strong data-testid="payslip-total">{yen.format(payslip.totalYen)}</strong>
@@ -15,13 +16,13 @@ export function PayslipView({ payslip }: { payslip: Payslip }) {
         <thead>
           <tr>
             <th scope="col">案件</th>
-            <th scope="col" className="num">
+            <th scope="col" className={numberClass()}>
               稼働
             </th>
-            <th scope="col" className="num">
+            <th scope="col" className={numberClass()}>
               時給
             </th>
-            <th scope="col" className="num">
+            <th scope="col" className={numberClass()}>
               金額
             </th>
           </tr>
@@ -31,9 +32,9 @@ export function PayslipView({ payslip }: { payslip: Payslip }) {
             // 明細行に番号はなく、並びは作ったときのまま変わらないので、位置で見分ける
             <tr key={i}>
               <td>{line.projectName}</td>
-              <td className="num">{formatWorkMinutes(line.workMinutes)}</td>
-              <td className="num">{yen.format(line.hourlyRate)}</td>
-              <td className="num">{yen.format(line.amountYen)}</td>
+              <td className={numberClass()}>{formatWorkMinutes(line.workMinutes)}</td>
+              <td className={numberClass()}>{yen.format(line.hourlyRate)}</td>
+              <td className={numberClass()}>{yen.format(line.amountYen)}</td>
             </tr>
           ))}
         </tbody>

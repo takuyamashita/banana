@@ -1,4 +1,4 @@
-import { Alert, Button, Card, Field } from "@platform/ui";
+import { Alert, Button, Card, Field, rowClass } from "@platform/ui";
 
 import { useProjectPanel, type ProjectPanelModel } from "./useProjectPanel";
 
@@ -11,7 +11,7 @@ export function ProjectPanelView({ projects, draft, busy, error, onEdit, onCreat
   return (
     <Card title="案件">
       <form
-        className="row"
+        className={rowClass()}
         aria-label="案件の登録"
         onSubmit={(event) => {
           event.preventDefault();

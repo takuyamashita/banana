@@ -1,7 +1,7 @@
 import { createRootRouteWithContext, Outlet, redirect } from "@tanstack/react-router";
 
 import { NotFound } from "../layout/RouteStatus";
-import type { RouterContext } from "../router";
+import type { RouterContext } from "../lib/context";
 
 /// どの画面を開くときも、先にログインの状態を確かめる。ログインしていなければログイン画面へ
 /// (開こうとしていた画面を戻り先として持っていく)

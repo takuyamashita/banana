@@ -2,3 +2,6 @@ packages:
   - frontend/apps/*
   - frontend/packages/*
   - e2e
+allowBuilds:
+  # dependency-cruiser が TS を読むのに使う。配布済みのバイナリを使うので、インストール時のビルドは要らない
+  "@swc/core": false

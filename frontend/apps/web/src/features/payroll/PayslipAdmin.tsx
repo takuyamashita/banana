@@ -1,5 +1,5 @@
 import { PayslipStatus } from "@platform/api-client";
-import { Alert, Button, Card, Field } from "@platform/ui";
+import { Alert, Button, Card, clusterClass, cx, Field, rowClass, SelectField } from "@platform/ui";
 
 import { labels } from "./payslipInput";
 import { PayslipView } from "./PayslipView";
@@ -23,24 +23,21 @@ export function PayslipAdminView(model: PayslipAdminModel) {
           model.onCreate();
         }}
       >
-        <div className="ui-field">
-          <label htmlFor="payslip-staff">派遣社員</label>
-          <select
-            id="payslip-staff"
-            value={model.staffId ?? ""}
-            onChange={(e) => model.onSelectStaff(e.target.value || undefined)}
-            required
-          >
-            <option value="">選択してください</option>
-            {model.staff.map((s) => (
-              <option key={String(s.staffId)} value={String(s.staffId)}>
-                {s.displayName}({s.email})
-              </option>
-            ))}
-          </select>
-        </div>
+        <SelectField
+          label="派遣社員"
+          value={model.staffId ?? ""}
+          onChange={(e) => model.onSelectStaff(e.target.value || undefined)}
+          required
+        >
+          <option value="">選択してください</option>
+          {model.staff.map((s) => (
+            <option key={String(s.staffId)} value={String(s.staffId)}>
+              {s.displayName}({s.email})
+            </option>
+          ))}
+        </SelectField>
 
-        <div className="row">
+        <div className={rowClass()}>
           {(["payYear", "payMonth"] as const).map((field) => (
             <Field
               key={field}
@@ -54,25 +51,22 @@ export function PayslipAdminView(model: PayslipAdminModel) {
         </div>
 
         {draft.lines.map((line, i) => (
-          <fieldset key={line.key} className="line">
+          <fieldset key={line.key} className={cx("border", "radius-1", "m-y-3")}>
             <legend>明細 {i + 1}</legend>
-            <div className="ui-field">
-              <label htmlFor={`line-project-${line.key}`}>{labels.projectId}</label>
-              <select
-                id={`line-project-${line.key}`}
-                value={line.projectId}
-                onChange={(e) => onEdit({ type: "setLine", key: line.key, field: "projectId", value: e.target.value })}
-                required
-              >
-                <option value="">選択してください</option>
-                {model.projects.map((p) => (
-                  <option key={String(p.projectId)} value={String(p.projectId)}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="row">
+            <SelectField
+              label={labels.projectId}
+              value={line.projectId}
+              onChange={(e) => onEdit({ type: "setLine", key: line.key, field: "projectId", value: e.target.value })}
+              required
+            >
+              <option value="">選択してください</option>
+              {model.projects.map((p) => (
+                <option key={String(p.projectId)} value={String(p.projectId)}>
+                  {p.name}
+                </option>
+              ))}
+            </SelectField>
+            <div className={rowClass()}>
               <Field
                 label={labels.workMinutes}
                 inputMode="numeric"
@@ -103,7 +97,7 @@ export function PayslipAdminView(model: PayslipAdminModel) {
           </fieldset>
         ))}
 
-        <div className="actions">
+        <div className={clusterClass()}>
           <Button variant="secondary" onClick={() => onEdit({ type: "addLine" })}>
             明細を追加
           </Button>
@@ -118,7 +112,7 @@ export function PayslipAdminView(model: PayslipAdminModel) {
 
       {model.loading && <output>読み込み中…</output>}
       {model.payslips?.map((p) => (
-        <section key={String(p.payslipId)} className="payslip-item">
+        <section key={String(p.payslipId)}>
           <PayslipView payslip={p} />
           {p.status === PayslipStatus.DRAFT && (
             <Button disabled={model.busy} onClick={() => model.onFinalize(p)}>

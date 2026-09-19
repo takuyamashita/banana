@@ -4,10 +4,13 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./styles.css": "./src/styles.css"
+    "./testing": "./src/testing.ts",
+    "./styles.css": "./src/styles/index.css"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "gen:styles": "node scripts/styles.ts --gen",
+    "check:styles": "node scripts/styles.ts"
   },
   "devDependencies": {
     "@types/react": "19.3.0",

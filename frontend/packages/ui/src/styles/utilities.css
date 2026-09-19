@@ -1,0 +1,170 @@
+/*
+ * 1つのことだけをするクラス。名前は「プロパティ-方向-段階」(p-t-1 = padding-top: var(--space-1))。
+ * 値はトークンだけを使い、トークンにない値のクラスは作らない。
+ * 1つのクラスに1つのルール。状態(:hover など)や子孫を狙うクラスは作らない(状態は base に置く)。
+ * 同じプロパティを別の書き方で持つクラス(m-0 と m-t-4 など)は作らない(どちらが勝つかが並び順で決まってしまう)。
+ * クラスを足したら mise run gen:styles で型(utilities.gen.ts)を作り直す。
+ */
+
+/* 並べ方 */
+.flex {
+  display: flex;
+}
+
+.grid {
+  display: grid;
+}
+
+.wrap {
+  flex-wrap: wrap;
+}
+
+.items-center {
+  align-items: center;
+}
+
+.items-end {
+  align-items: end;
+}
+
+/* 入力欄の幅で折り返して並べる */
+.grid-fit {
+  grid-template-columns: repeat(auto-fit, minmax(var(--size-field), 1fr));
+}
+
+.gap-1 {
+  gap: var(--space-1);
+}
+
+.gap-3 {
+  gap: var(--space-3);
+}
+
+.gap-4 {
+  gap: var(--space-4);
+}
+
+/* 大きさと位置 */
+.max-w-page {
+  max-width: var(--size-page);
+}
+
+.m-x-auto {
+  margin-inline: auto;
+}
+
+.m-r-auto {
+  margin-right: auto;
+}
+
+/* 余白 */
+.p-5 {
+  padding: var(--space-5);
+}
+
+.p-x-4 {
+  padding-inline: var(--space-4);
+}
+
+.p-x-5 {
+  padding-inline: var(--space-5);
+}
+
+.p-x-6 {
+  padding-inline: var(--space-6);
+}
+
+.p-y-2 {
+  padding-block: var(--space-2);
+}
+
+.p-y-3 {
+  padding-block: var(--space-3);
+}
+
+.p-y-5 {
+  padding-block: var(--space-5);
+}
+
+.m-t-0 {
+  margin-top: 0;
+}
+
+.m-b-4 {
+  margin-bottom: var(--space-4);
+}
+
+.m-y-3 {
+  margin-block: var(--space-3);
+}
+
+.m-y-5 {
+  margin-block: var(--space-5);
+}
+
+/* 枠 */
+.border {
+  border: var(--border-width) solid var(--color-border);
+}
+
+.border-accent {
+  border: var(--border-width) solid var(--color-accent);
+}
+
+.border-current {
+  border: var(--border-width) solid currentcolor;
+}
+
+.radius-1 {
+  border-radius: var(--radius-1);
+}
+
+.radius-2 {
+  border-radius: var(--radius-2);
+}
+
+/* 色 */
+.bg-surface {
+  background: var(--color-surface);
+}
+
+.bg-accent {
+  background: var(--color-accent);
+}
+
+.bg-transparent {
+  background: transparent;
+}
+
+.fg-muted {
+  color: var(--color-muted);
+}
+
+.fg-accent {
+  color: var(--color-accent);
+}
+
+.fg-on-accent {
+  color: var(--color-on-accent);
+}
+
+.fg-error {
+  color: var(--color-error);
+}
+
+.fg-success {
+  color: var(--color-success);
+}
+
+/* 文字 */
+.fs-title {
+  font-size: var(--font-size-title);
+}
+
+.text-right {
+  text-align: right;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}

@@ -1,0 +1,17 @@
+/*
+ * 画面の CSS の入口。アプリはこれだけを読み込む(main.tsx)。
+ * 後ろの層ほど強い。勝ち負けはセレクタの詳細度ではなく層の順で決まるので、!important は使わない。
+ * 層に入らない CSS はどの層にも勝ってしまうので、CSS はすべてここから層を付けて読み込む。
+ *
+ * vendor    外部ライブラリの CSS(使うときは @import "…" layer(vendor) で足す)
+ * reset     ブラウザごとの差をならす。値を持たない
+ * tokens    色・余白などの値。見た目の値はここにだけ書く
+ * base      要素ごとの既定の見た目と、状態(:disabled など)の見た目
+ * utilities 1つのことだけをするクラス。見た目の組み合わせは React の部品で使い回す
+ */
+@layer vendor, reset, tokens, base, utilities;
+
+@import "./reset.css" layer(reset);
+@import "./tokens.css" layer(tokens);
+@import "./base.css" layer(base);
+@import "./utilities.css" layer(utilities);

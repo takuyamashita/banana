@@ -7,9 +7,13 @@
     "oxfmt": "oxfmt"
   },
   "devDependencies": {
+    "@swc/core": "1.16.2",
+    "dependency-cruiser": "18.3.1",
     "oxfmt": "0.68.0",
     "oxlint": "1.83.0",
     "oxlint-tsgolint": "7.0.2001",
+    "stylelint": "17.15.0",
+    "stylelint-config-standard": "40.0.0",
     "typescript": "7.0.2"
   },
   "packageManager": "pnpm@12.4.2"

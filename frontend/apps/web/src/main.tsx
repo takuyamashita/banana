@@ -1,7 +1,6 @@
 import "@platform/ui/styles.css";
-import "./app.css";
 
-import { Alert } from "@platform/ui";
+import { Alert, pageClass } from "@platform/ui";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -22,7 +21,7 @@ try {
   );
 } catch (err) {
   createRoot(root).render(
-    <main className="layout">
+    <main className={pageClass()}>
       <h1>給与管理</h1>
       <Alert>画面を開けませんでした。{err instanceof Error ? err.message : ""}管理者に連絡してください。</Alert>
     </main>,

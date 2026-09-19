@@ -3,7 +3,7 @@ import { createQueryOptions } from "@connectrpc/connect-query";
 import { Code, ConnectError } from "@platform/api-client";
 import { redirect } from "@tanstack/react-router";
 
-import type { RouterContext } from "../router";
+import type { RouterContext } from "./context";
 
 /// loader・beforeLoad で、画面が使うデータを先に取っておく。画面は同じメソッドと入力の
 /// useSuspenseQuery で、取っておいたものを受け取る。

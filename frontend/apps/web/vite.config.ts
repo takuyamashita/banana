@@ -38,5 +38,7 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test-setup.ts"],
+    // 片付けは test-setup.ts で、クラスの取り合いを確かめてから行う
+    env: { RTL_SKIP_AUTO_CLEANUP: "true" },
   },
 });

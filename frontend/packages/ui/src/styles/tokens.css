@@ -1,0 +1,55 @@
+/* 見た目の値はここにだけ書く。ほかの層は var(--…) で読む */
+:root {
+  color-scheme: light;
+
+  /* 色 */
+  --color-fg: #1d2330;
+  --color-muted: #5b6475;
+  --color-bg: #f6f7f9;
+  --color-surface: #fff;
+  --color-border: #d9dde4;
+  --color-accent: #2455c3;
+  --color-on-accent: #fff;
+  --color-error: #b3261e;
+  --color-success: #1e6b3a;
+
+  /* 余白の段階。utilities の p-t-1 の「1」はこの段階 */
+  --space-1: 4px;
+  --space-2: 6px;
+  --space-3: 8px;
+  --space-4: 12px;
+  --space-5: 16px;
+  --space-6: 20px;
+
+  /* 角丸・枠 */
+  --radius-1: 6px;
+  --radius-2: 8px;
+  --border-width: 1px;
+
+  /* 文字 */
+  --font-sans: system-ui, "Hiragino Sans", "Noto Sans JP", sans-serif;
+  --font-size-title: 1.05rem;
+
+  /* 大きさ */
+  --size-page: 880px;
+  --size-field: 160px;
+
+  /* 状態 */
+  --opacity-disabled: 0.5;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+
+    --color-fg: #e6e8ec;
+    --color-muted: #a3aab8;
+    --color-bg: #14171d;
+    --color-surface: #1d2129;
+    --color-border: #333a46;
+    --color-accent: #7ea2f2;
+    --color-on-accent: #0e1320;
+    --color-error: #f2b8b5;
+    --color-success: #8fd4a5;
+  }
+}

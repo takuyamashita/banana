@@ -1,4 +1,4 @@
-import { Alert, Button } from "@platform/ui";
+import { Alert, Button, buttonClass, clusterClass, cx, pageClass } from "@platform/ui";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
@@ -24,23 +24,24 @@ export function AppLayout({
   children: ReactNode;
 }) {
   return (
-    <main className="layout">
-      <header className="header">
-        <h1>給与管理</h1>
-        <span className="who">{email}</span>
+    <main className={pageClass()}>
+      <header className={cx("flex", "items-center", "gap-4", "wrap")}>
+        <h1 className={cx("m-r-auto")}>給与管理</h1>
+        <span className={cx("fg-muted")}>{email}</span>
         <Button variant="secondary" onClick={onSignOut}>
           ログアウト
         </Button>
       </header>
       {signOutError && <Alert>{signOutError}</Alert>}
       {isAdmin && (
-        <nav className="tabs" aria-label="管理メニュー">
+        <nav className={clusterClass()} aria-label="管理メニュー">
           {adminMenu.map(({ to, label }) => (
             <Link
               key={to}
               to={to}
-              className="ui-button ui-button--secondary"
-              activeProps={{ className: "ui-button ui-button--primary", "aria-current": "page" }}
+              // 選んでいるときのクラスは className に足される(置き換わらない)ので、見た目は両方とも状態ごとに渡す
+              inactiveProps={{ className: buttonClass("secondary") }}
+              activeProps={{ className: buttonClass("primary"), "aria-current": "page" }}
             >
               {label}
             </Link>

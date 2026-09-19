@@ -1,0 +1,36 @@
+/* 要素ごとの既定の見た目。クラスは使わない。状態(:disabled など)の見た目も要素ごとにここで1つに決める */
+body {
+  font-family: var(--font-sans);
+  color: var(--color-fg);
+  background: var(--color-bg);
+}
+
+input,
+select {
+  padding: var(--space-2) var(--space-3);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-1);
+  background: var(--color-surface);
+  color: var(--color-fg);
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: var(--opacity-disabled);
+  cursor: default;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+th,
+td {
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: var(--border-width) solid var(--color-border);
+}

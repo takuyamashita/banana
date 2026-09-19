@@ -5,7 +5,7 @@
     "correctness": "error",
     "suspicious": "warn"
   },
-  "ignorePatterns": ["**/gen/**", "**/routeTree.gen.ts", "**/dist/**", "target/**", "e2e/playwright-report/**"],
+  "ignorePatterns": ["**/gen/**", "**/*.gen.ts", "**/dist/**", "target/**", "e2e/playwright-report/**"],
   "rules": {
     "react/react-in-jsx-scope": "off",
     "import/no-unassigned-import": [
@@ -14,98 +14,5 @@
         "allow": ["**/*.css", "@testing-library/jest-dom/vitest"]
       }
     ]
-  },
-  "overrides": [
-    {
-      "files": ["frontend/apps/web/src/features/payroll/**"],
-      "rules": {
-        "no-restricted-imports": [
-          "error",
-          {
-            "patterns": [
-              {
-                "group": [
-                  "**/features/staff",
-                  "**/features/staff/**",
-                  "../staff",
-                  "../staff/**",
-                  "**/features/project",
-                  "**/features/project/**",
-                  "../project",
-                  "../project/**"
-                ],
-                "message": "features/ 間の直接 import は禁止。共有するものは lib/ か packages/ に置く"
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "files": ["frontend/apps/web/src/features/staff/**"],
-      "rules": {
-        "no-restricted-imports": [
-          "error",
-          {
-            "patterns": [
-              {
-                "group": [
-                  "**/features/payroll",
-                  "**/features/payroll/**",
-                  "../payroll",
-                  "../payroll/**",
-                  "**/features/project",
-                  "**/features/project/**",
-                  "../project",
-                  "../project/**"
-                ],
-                "message": "features/ 間の直接 import は禁止。共有するものは lib/ か packages/ に置く"
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "files": ["frontend/apps/web/src/features/project/**"],
-      "rules": {
-        "no-restricted-imports": [
-          "error",
-          {
-            "patterns": [
-              {
-                "group": [
-                  "**/features/payroll",
-                  "**/features/payroll/**",
-                  "../payroll",
-                  "../payroll/**",
-                  "**/features/staff",
-                  "**/features/staff/**",
-                  "../staff",
-                  "../staff/**"
-                ],
-                "message": "features/ 間の直接 import は禁止。共有するものは lib/ か packages/ に置く"
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "files": ["frontend/apps/web/src/lib/**"],
-      "rules": {
-        "no-restricted-imports": [
-          "error",
-          {
-            "patterns": [
-              {
-                "group": ["**/features", "**/features/**"],
-                "message": "lib/ から features/ は import しない。lib/ は features/ から使われる側"
-              }
-            ]
-          }
-        ]
-      }
-    }
-  ]
+  }
 }

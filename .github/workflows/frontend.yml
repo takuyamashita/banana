@@ -12,6 +12,8 @@ name: frontend
 #         "pnpm-lock.yaml",
 #         ".oxlintrc.json",
 #         ".oxfmtrc.json",
+#         "stylelint.config.mjs",
+#         ".dependency-cruiser.cjs",
 #         "mise.toml",
 #         ".github/workflows/frontend.yml",
 #       ]
@@ -37,6 +39,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: lint(oxfmt・oxlint・tsc)
         run: mise run lint:ts
+      - name: lint(CSS の層・stylelint)
+        run: mise run lint:css
+      - name: lint(依存の向き)
+        run: mise run lint:deps
       - name: test(Vitest)
         run: mise run test:ts
       - name: build
