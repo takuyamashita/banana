@@ -55,11 +55,14 @@ impl EventOutbox for MySqlEventOutbox {
         let conn = mysql(db)?;
         let row = encode(&event)?;
         sqlx::query!(
-            "insert into outbox (aggregate_type, aggregate_id, event_type, payload) values (?, ?, ?, ?)",
+            "insert into outbox (aggregate_type, aggregate_id, event_type, payload, traceparent)
+             values (?, ?, ?, ?, ?)",
             row.aggregate_type,
             row.aggregate_id,
             row.event_type,
             sqlx::types::Json(&row.payload),
+            // 出来事を記録したリクエストのトレース。受け手(振込など)のトレースをこの続きにする
+            platform_telemetry::current_traceparent(),
         )
         .execute(&mut *conn)
         .await

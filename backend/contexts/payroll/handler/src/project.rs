@@ -20,6 +20,7 @@ impl ProjectServiceHandler {
 
 #[tonic::async_trait]
 impl proto::project_service_server::ProjectService for ProjectServiceHandler {
+    #[tracing::instrument(skip_all)]
     async fn create_project(
         &self,
         request: Request<proto::CreateProjectRequest>,
@@ -30,6 +31,7 @@ impl proto::project_service_server::ProjectService for ProjectServiceHandler {
         Ok(Response::new(proto::CreateProjectResponse { project_id: id.as_i64() }))
     }
 
+    #[tracing::instrument(skip_all)]
     async fn list_projects(
         &self,
         request: Request<proto::ListProjectsRequest>,

@@ -29,6 +29,7 @@ impl StaffServiceHandler {
 
 #[tonic::async_trait]
 impl proto::staff_service_server::StaffService for StaffServiceHandler {
+    #[tracing::instrument(skip_all)]
     async fn create_staff(
         &self,
         request: Request<proto::CreateStaffRequest>,
@@ -46,6 +47,7 @@ impl proto::staff_service_server::StaffService for StaffServiceHandler {
         Ok(Response::new(proto::CreateStaffResponse { staff_id: staff_id.as_i64() }))
     }
 
+    #[tracing::instrument(skip_all)]
     async fn list_staff(
         &self,
         request: Request<proto::ListStaffRequest>,
@@ -59,6 +61,7 @@ impl proto::staff_service_server::StaffService for StaffServiceHandler {
         }))
     }
 
+    #[tracing::instrument(skip_all)]
     async fn get_me(
         &self,
         request: Request<proto::GetMeRequest>,

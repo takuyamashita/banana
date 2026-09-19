@@ -14,3 +14,12 @@ pre-commit:
       run: pnpm oxlint {staged_files}
     - name: gitleaks
       run: gitleaks git --pre-commit --staged --config .gitleaks.toml --no-banner
+
+# CI を手動実行にしている間は、push の前に Rust の lint と proto の互換だけは確かめる(十数秒)
+pre-push:
+  parallel: true
+  jobs:
+    - name: lint-rust
+      run: mise run lint:rust
+    - name: lint-proto
+      run: mise run lint:proto

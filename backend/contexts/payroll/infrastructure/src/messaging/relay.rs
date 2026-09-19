@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::time::Duration;
 
 use aws_sdk_sqs::Client as SqsClient;
+use aws_sdk_sqs::types::MessageAttributeValue;
 use sqlx::mysql::{MySqlConnection, MySqlPool};
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
@@ -60,7 +61,7 @@ async fn send_unpublished(
     queue_url: &str,
 ) -> Result<usize, RelayError> {
     let rows = sqlx::query!(
-        r#"select id, aggregate_type, aggregate_id, event_type, attempts,
+        r#"select id, aggregate_type, aggregate_id, event_type, attempts, traceparent,
                   payload as "payload: sqlx::types::JsonValue"
            from outbox
            where published_at is null and attempts < ?
@@ -87,15 +88,23 @@ async fn send_unpublished(
             aggregate_id: row.aggregate_id,
             payload: &row.payload,
         })?;
-        let result = sqs
+        let mut request = sqs
             .send_message()
             .queue_url(queue_url)
             .message_body(body)
             .message_group_id(&group)
             // relay が二重に送っても SQS 側で除去される(重複排除の窓は5分)
-            .message_deduplication_id(row.id.to_string())
-            .send()
-            .await;
+            .message_deduplication_id(row.id.to_string());
+        // 出来事を記録したリクエストのトレースを、受け手に引き継ぐ
+        if let Some(traceparent) = &row.traceparent
+            && let Ok(attribute) = MessageAttributeValue::builder()
+                .data_type("String")
+                .string_value(traceparent)
+                .build()
+        {
+            request = request.message_attributes("traceparent", attribute);
+        }
+        let result = request.send().await;
 
         match result {
             // 送れた行はすぐに送信済みにする。後の行で失敗しても送り直さない

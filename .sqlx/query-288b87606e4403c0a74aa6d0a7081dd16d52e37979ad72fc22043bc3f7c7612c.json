@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "select id, aggregate_type, aggregate_id, event_type, attempts,\n                  payload as \"payload: sqlx::types::JsonValue\"\n           from outbox\n           where published_at is null and attempts < ?\n           order by id\n           limit 100",
+  "query": "select id, aggregate_type, aggregate_id, event_type, attempts, traceparent,\n                  payload as \"payload: sqlx::types::JsonValue\"\n           from outbox\n           where published_at is null and attempts < ?\n           order by id\n           limit 100",
   "describe": {
     "columns": [
       {
@@ -85,6 +85,22 @@
       },
       {
         "ordinal": 5,
+        "name": "traceparent",
+        "type_info": {
+          "type": "VarString",
+          "flags": "",
+          "collation": 255,
+          "max_size": 256
+        },
+        "origin": {
+          "Table": {
+            "table": "platform.outbox",
+            "name": "traceparent"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
         "name": "payload: sqlx::types::JsonValue",
         "type_info": {
           "type": "Json",
@@ -109,8 +125,9 @@
       false,
       false,
       false,
+      true,
       false
     ]
   },
-  "hash": "df8b02e2f2518213e4a30884ee1973484b23375366d09d2fc3d2689f671c45eb"
+  "hash": "288b87606e4403c0a74aa6d0a7081dd16d52e37979ad72fc22043bc3f7c7612c"
 }

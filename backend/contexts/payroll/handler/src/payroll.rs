@@ -35,6 +35,7 @@ impl PayrollServiceHandler {
 
 #[tonic::async_trait]
 impl proto::payroll_service_server::PayrollService for PayrollServiceHandler {
+    #[tracing::instrument(skip_all)]
     async fn create_payslip(
         &self,
         request: Request<proto::CreatePayslipRequest>,
@@ -73,6 +74,7 @@ impl proto::payroll_service_server::PayrollService for PayrollServiceHandler {
         Ok(Response::new(proto::CreatePayslipResponse { payslip_id: payslip_id.as_i64() }))
     }
 
+    #[tracing::instrument(skip_all)]
     async fn finalize_payslip(
         &self,
         request: Request<proto::FinalizePayslipRequest>,
@@ -86,6 +88,7 @@ impl proto::payroll_service_server::PayrollService for PayrollServiceHandler {
         Ok(Response::new(proto::FinalizePayslipResponse {}))
     }
 
+    #[tracing::instrument(skip_all)]
     async fn get_payslip(
         &self,
         request: Request<proto::GetPayslipRequest>,
@@ -98,6 +101,7 @@ impl proto::payroll_service_server::PayrollService for PayrollServiceHandler {
         Ok(Response::new(proto::GetPayslipResponse { payslip: Some(to_proto(&payslip)) }))
     }
 
+    #[tracing::instrument(skip_all)]
     async fn list_payslips(
         &self,
         request: Request<proto::ListPayslipsRequest>,

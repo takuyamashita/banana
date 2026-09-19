@@ -12,6 +12,7 @@ aws-sdk-sqs.workspace = true
 payroll-domain.workspace = true
 payroll-usecase.workspace = true
 platform-kernel.workspace = true
+platform-telemetry.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true

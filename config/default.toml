@@ -44,3 +44,5 @@ payout_api_key_secret_id = ""
 otlp_endpoint = ""
 json_logs = true
 log_filter = "info"
+# 新しく始まるトレースのうち送る割合(0.0〜1.0)。量が増えたら prd で下げる
+sample_ratio = 1.0

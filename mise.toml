@@ -1,7 +1,7 @@
 # ツール版数・環境変数・タスクをここに集約する。Rust 本体は rust-toolchain.toml に任せる
 [tools]
-node = "24"
-pnpm = "12"
+node = "24.21.0"
+pnpm = "12.4.2"
 terraform = "1.16.3"
 buf = "1.73.0"
 tflint = "0.64.0"
@@ -9,11 +9,11 @@ trivy = "0.74.0"
 lefthook = "2.1.14"
 gitleaks = "8.30.1"
 hadolint = "2.15.1"
-"github:reteps/dockerfmt" = "latest"
-actionlint = "latest"
-grpcurl = "latest"
-jq = "latest"
-cargo-binstall = "latest"
+"github:reteps/dockerfmt" = "0.5.4"
+actionlint = "1.7.12"
+grpcurl = "1.9.4"
+jq = "1.8.2"
+cargo-binstall = "1.23.0"
 "cargo:cargo-lambda" = "1.9.2"
 # 既定機能は native-tls(libssl-dev が要る)なので、MySQL + rustls に絞ってビルドする
 "cargo:sqlx-cli" = { version = "0.9.0", default-features = false, features = "mysql,rustls,completions" }
@@ -30,19 +30,11 @@ APP_ENV = "local"
 # query! は既定でコミット済みの .sqlx/ を使う。DATABASE_URL があると live DB を見に行き、
 # 空の DB では migrate 自体がビルドできなくなるため
 SQLX_OFFLINE = "true"
-# .env.worktree は mise run worktree:new が書く(worktree ごとのポートと compose のプロジェクト名)。
-# ないとき(main)は下の既定値になり、compose.yaml の既定値とそろう
-_.file = [".env", ".env.worktree"]
-# 以下は worktree ごとのポートから組み立てる。server・migrate・Lambda の設定(APP__…)も上書きする
-DATABASE_URL = "mysql://platform:platform@127.0.0.1:{{ env.MYSQL_PORT | default(value='3306') }}/platform"
-APP__DATABASE__URL = "mysql://platform:platform@127.0.0.1:{{ env.MYSQL_PORT | default(value='3306') }}/platform"
-APP__SERVER__ADDR = "0.0.0.0:{{ env.API_PORT | default(value='50051') }}"
-APP__SERVER__CORS_ALLOWED_ORIGINS = "http://localhost:{{ env.WEB_PORT | default(value='5173') }}"
-APP__AUTH__ISSUER = "http://localhost:{{ env.KEYCLOAK_PORT | default(value='8080') }}/realms/platform"
-APP__AUTH__KEYCLOAK_BASE_URL = "http://localhost:{{ env.KEYCLOAK_PORT | default(value='8080') }}"
-APP__MESSAGING__QUEUE_URL = "http://localhost:{{ env.ELASTICMQ_PORT | default(value='9324') }}/000000000000/payroll-events.fifo"
-APP__MESSAGING__SQS_ENDPOINT = "http://localhost:{{ env.ELASTICMQ_PORT | default(value='9324') }}"
-APP__TELEMETRY__OTLP_ENDPOINT = "http://localhost:{{ env.OTLP_GRPC_PORT | default(value='4317') }}"
+# sqlx-cli・migrate の接続先。worktree では .env の値が上書きする
+DATABASE_URL = "mysql://platform:platform@127.0.0.1:3306/platform"
+# ローカル用のダミー認証情報。worktree では、worktree:new がその worktree のポートと接続先(APP__…)を追記する。
+# main では APP__… を渡さないので、server の接続先は config/local.toml の値になる
+_.file = ".env"
 
 [tasks.gen]
 description = "protoからRust・TSを生成(変更がなければスキップ)"
@@ -99,9 +91,21 @@ run = "scripts/worktree.sh remove"
 description = "worktree ごとのスロットとポートを一覧する"
 run = "scripts/worktree.sh list"
 
+[tasks."deps:up"]
+description = "この worktree の依存サービス(compose)を起動し、使えるようになるまで待つ"
+run = "docker compose up -d --wait"
+
 [tasks."deps:stop"]
 description = "この worktree の依存サービス(compose)を止める。データは残る"
 run = "docker compose stop"
+
+[tasks."deps:logs"]
+description = "依存サービスのログを追う(例: mise run deps:logs -- keycloak)"
+run = "docker compose logs -f"
+
+[tasks."db:reset"]
+description = "DB と Keycloak を空にして作り直し、マイグレーションを流す(Keycloak はボリュームがないので必ず一緒に消す)"
+run = ["docker compose down --volumes", "docker compose up -d --wait", "cargo run -p migrate"]
 
 [tasks."e2e:prepare"]
 description = "E2E の依存サービスを起動してマイグレーション"

@@ -13,6 +13,7 @@ http.workspace = true
 payroll-handler.workspace = true
 payroll-infrastructure.workspace = true
 platform-gen.workspace = true
+platform-telemetry.workspace = true
 sqlx.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true

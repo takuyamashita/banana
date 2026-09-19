@@ -45,7 +45,7 @@ allowed_workspace_deps() {
   case "$1" in
     *-domain) echo '^platform-kernel$' ;;
     *-usecase) echo "^(${1%-usecase}-domain|platform-kernel)$" ;;
-    *-infrastructure) echo "^(${1%-infrastructure}-(domain|usecase)|platform-kernel)$" ;;
+    *-infrastructure) echo "^(${1%-infrastructure}-(domain|usecase)|platform-(kernel|telemetry))$" ;;
     *-handler) echo "^(${1%-handler}-(domain|usecase)|platform-(kernel|auth|gen))$" ;;
     platform-kernel | platform-gen) echo '^$' ;;
     platform-auth | platform-telemetry) echo '^platform-kernel$' ;;

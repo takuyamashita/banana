@@ -43,6 +43,9 @@ pub fn init_telemetry(config: &AppConfig, service_name: &str) -> anyhow::Result<
     let otlp = Some(config.telemetry.otlp_endpoint.as_str()).filter(|s| !s.is_empty());
     platform_telemetry::init(&platform_telemetry::TelemetryConfig {
         service_name,
+        environment: &config.env,
+        service_version: env!("CARGO_PKG_VERSION"),
+        sample_ratio: config.telemetry.sample_ratio,
         otlp_endpoint: otlp,
         json_logs: config.telemetry.json_logs,
         default_filter: &config.telemetry.log_filter,
@@ -83,7 +86,7 @@ pub async fn connect_db(
     let url = secret_or(
         aws,
         &config.secrets.database_url_secret_id,
-        &config.database.url,
+        config.database.url.expose(),
         "database url",
     )
     .await?;
@@ -93,8 +96,15 @@ pub async fn connect_db(
         .context("failed to connect to database")
 }
 
+/// SQS のクライアント。呼び出しにタイムアウトを付ける(SDK の既定は接続のタイムアウトだけで、
+/// 応答が返らないと relay がトランザクションと接続を持ったまま待ち続ける)
 pub fn sqs_client(config: &AppConfig, aws: &aws_config::SdkConfig) -> aws_sdk_sqs::Client {
-    let mut builder = aws_sdk_sqs::config::Builder::from(aws);
+    let timeouts = aws_sdk_sqs::config::timeout::TimeoutConfig::builder()
+        .connect_timeout(Duration::from_secs(2))
+        .operation_attempt_timeout(Duration::from_secs(5))
+        .operation_timeout(Duration::from_secs(10))
+        .build();
+    let mut builder = aws_sdk_sqs::config::Builder::from(aws).timeout_config(timeouts);
     if !config.messaging.sqs_endpoint.is_empty() {
         builder = builder.endpoint_url(&config.messaging.sqs_endpoint);
     }
@@ -117,7 +127,7 @@ pub fn build_user_directory(
             auth.keycloak_base_url.clone(),
             auth.keycloak_realm.clone(),
             auth.keycloak_admin_client_id.clone(),
-            auth.keycloak_admin_client_secret.clone(),
+            auth.keycloak_admin_client_secret.expose().to_owned(),
         )),
     }
 }
@@ -202,7 +212,7 @@ pub async fn build_request_payout(
             let api_key = secret_or(
                 aws,
                 &config.secrets.payout_api_key_secret_id,
-                &config.payout.api_key,
+                config.payout.api_key.expose(),
                 "payout api key",
             )
             .await?;

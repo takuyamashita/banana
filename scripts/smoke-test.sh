@@ -62,6 +62,7 @@ call() { # call <token> <method> <json> → 標準出力に結果(エラー時�
 }
 
 check "health" "ok" "$(curl -s "http://$API/health")"
+check "ready(DB にも届く)" "ok" "$(curl -s "http://$API/ready")"
 check "未認証は Unauthenticated" "Unauthenticated" "$(g -d '{}' "$API" acme.payroll.v1.ProjectService/ListProjects 2>&1 || true)"
 
 ADMIN=$(token admin@example.com)

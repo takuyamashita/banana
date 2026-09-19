@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "insert into outbox (aggregate_type, aggregate_id, event_type, payload, traceparent)\n             values (?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "d810092124151df3a9db8f38ebb65702beacc55a9f0770c170f0bbb58f56bd80"
+}

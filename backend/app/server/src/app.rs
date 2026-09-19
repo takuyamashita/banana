@@ -1,3 +1,4 @@
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use anyhow::Context as _;
@@ -14,12 +15,15 @@ use platform_gen::acme::payroll::v1::payroll_service_server::PayrollServiceServe
 use platform_gen::acme::payroll::v1::project_service_server::ProjectServiceServer;
 use platform_gen::acme::payroll::v1::staff_service_server::StaffServiceServer;
 use sqlx::MySqlPool;
+use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 use tonic::Status;
 use tonic::service::Routes;
 use tonic_web::GrpcWebLayer;
 use tower::limit::GlobalConcurrencyLimitLayer;
 use tower_http::cors::{AllowOrigin, CorsLayer};
+use tower_http::trace::{DefaultOnFailure, DefaultOnResponse, TraceLayer};
+use tracing::{Level, Span};
 
 /// 1リクエストの処理時間の上限。DB のロック待ちの上限(10秒)より長く、ALB のアイドルタイムアウト(60秒)より短くする
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
@@ -27,6 +31,20 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_CONCURRENT_REQUESTS: usize = 256;
 /// 受け取るメッセージの上限。給与明細(明細行100件まで)でも十分に収まる
 const MAX_MESSAGE_BYTES: usize = 1024 * 1024;
+
+/// リクエストのスパン。呼び出し元(ブラウザ・他のサービス)の traceparent があれば、その続きにする。
+/// ログにもトレース ID を載せ、利用者からの問い合わせとトレースを結びつけられるようにする
+fn request_span<B>(request: &http::Request<B>) -> Span {
+    let span =
+        tracing::info_span!("grpc", rpc = %request.uri().path(), trace_id = tracing::field::Empty);
+    platform_telemetry::set_parent(&span, |key| {
+        request.headers().get(key).and_then(|v| v.to_str().ok()).map(str::to_owned)
+    });
+    if let Some(trace_id) = platform_telemetry::trace_id(&span) {
+        span.record("trace_id", trace_id);
+    }
+    span
+}
 
 /// 処理が時間内に終わらなければ打ち切る。gRPC の DEADLINE_EXCEEDED で返す
 async fn request_timeout(request: Request, next: Next) -> Response {
@@ -39,6 +57,7 @@ async fn request_timeout(request: Request, next: Next) -> Response {
 }
 
 pub async fn run(config: AppConfig) -> anyhow::Result<()> {
+    config.validate_for_server()?;
     let aws = bootstrap::aws_config().await;
     let pool = bootstrap::connect_db(&config, &aws).await?;
     let handlers = bootstrap::build_handlers(&pool, bootstrap::build_user_directory(&config, &aws));
@@ -59,11 +78,21 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
     .layer(axum::middleware::from_fn_with_state(verifier, authenticate))
     .layer(axum::middleware::from_fn(request_timeout))
     .layer(GrpcWebLayer::new())
-    .layer(GlobalConcurrencyLimitLayer::new(MAX_CONCURRENT_REQUESTS));
+    .layer(GlobalConcurrencyLimitLayer::new(MAX_CONCURRENT_REQUESTS))
+    // リクエストごとのスパンと、完了時の1行のログ(RPC・結果・かかった時間)。認証で断ったものも含める
+    .layer(
+        TraceLayer::new_for_grpc()
+            .make_span_with(request_span)
+            .on_response(DefaultOnResponse::new().level(Level::INFO))
+            .on_failure(DefaultOnFailure::new().level(Level::WARN)),
+    );
 
-    // /health は認証の外。ロードバランサーと E2E の起動待ちに使う
+    // /health と /ready は認証の外。/health はプロセスが動いているか(ALB の生死判定)、
+    // /ready は DB にも届くか(E2E の起動待ち)。DB の一時的な不通(RDS のフェイルオーバーなど)で
+    // 全タスクが入れ替えられないよう、ALB には DB を見ない /health を使う
     let app = Router::new()
-        .route("/health", get(health))
+        .route("/health", get(|| async { "ok" }))
+        .route("/ready", get(ready))
         .with_state(pool.clone())
         .merge(grpc)
         .layer(cors(&config.server.cors_allowed_origins)?);
@@ -83,27 +112,48 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
         .with_context(|| format!("failed to bind {}", config.server.addr))?;
     tracing::info!(addr = %config.server.addr, env = %config.env, "server started");
 
-    // SIGTERMを受けたら新規リクエストを止め、処理中のリクエストを終えてから停止する
+    // SIGTERMを受けたら新規リクエストを止め、処理中のリクエストと relay を終えてから停止する。
+    // 待つのはシグナルから shutdown_grace_seconds まで。ECS の stopTimeout(30秒)より短くし、
+    // 強制終了される前に自分で止まる
     let grace = Duration::from_secs(config.server.shutdown_grace_seconds);
-    let shutdown = cancel.clone();
-    axum::serve(listener, app)
-        .with_graceful_shutdown(async move {
+    let deadline = Arc::new(OnceLock::new());
+    let server = axum::serve(listener, app).with_graceful_shutdown({
+        let (cancel, deadline) = (cancel.clone(), deadline.clone());
+        async move {
             shutdown_signal().await;
             tracing::info!("shutdown signal received");
-            shutdown.cancel();
-        })
-        .await?;
-
-    // relay が今のバッチを送り終えるのを待つ(上限あり)
-    if tokio::time::timeout(grace, relay).await.is_err() {
-        tracing::warn!("relay did not stop within grace period");
+            let _ = deadline.set(Instant::now() + grace);
+            cancel.cancel();
+        }
+    });
+    let drain_limit = {
+        let (cancel, deadline) = (cancel.clone(), deadline.clone());
+        async move {
+            cancel.cancelled().await;
+            tokio::time::sleep_until(deadline.get().copied().unwrap_or_else(Instant::now)).await;
+        }
+    };
+    tokio::select! {
+        result = server => result?,
+        () = drain_limit => tracing::warn!("requests did not finish within the grace period"),
     }
-    pool.close().await;
+
+    // relay が今の周を終えるのを待つ。時間内に終わらなければ打ち切る(送れなかった出来事は次の起動で送る)
+    let deadline = deadline.get().copied().unwrap_or_else(|| Instant::now() + grace);
+    let mut relay = relay;
+    if tokio::time::timeout_at(deadline, &mut relay).await.is_err() {
+        tracing::warn!("relay did not stop within the grace period, aborting");
+        relay.abort();
+    }
+    // 貸し出し中の接続が返らないと待ち続けるので、閉じるのにも上限を置く
+    if tokio::time::timeout(Duration::from_secs(2), pool.close()).await.is_err() {
+        tracing::warn!("database pool did not close in time");
+    }
     tracing::info!("server stopped");
     Ok(())
 }
 
-async fn health(State(pool): State<MySqlPool>) -> (StatusCode, &'static str) {
+async fn ready(State(pool): State<MySqlPool>) -> (StatusCode, &'static str) {
     let ping = tokio::time::timeout(Duration::from_secs(2), sqlx::query("select 1").execute(&pool));
     match ping.await {
         Ok(Ok(_)) => (StatusCode::OK, "ok"),

@@ -23,6 +23,7 @@ async fn main() -> anyhow::Result<()> {
             .max_number_of_messages(10)
             .wait_time_seconds(10)
             .message_system_attribute_names(MessageSystemAttributeName::MessageGroupId)
+            .message_attribute_names("traceparent")
             .send()
             .await;
         let out = match received {
@@ -44,6 +45,11 @@ async fn main() -> anyhow::Result<()> {
                     .and_then(|a| a.get(&MessageSystemAttributeName::MessageGroupId))
                     .cloned()
                     .unwrap_or_default(),
+                traceparent: m
+                    .message_attributes()
+                    .and_then(|a| a.get("traceparent"))
+                    .and_then(|a| a.string_value())
+                    .map(str::to_owned),
                 body: m.body().unwrap_or_default().to_owned(),
             })
             .collect();

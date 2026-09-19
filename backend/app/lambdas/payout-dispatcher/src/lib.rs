@@ -9,6 +9,7 @@ use payroll_infrastructure::messaging::envelope::OutboxEnvelope;
 use payroll_infrastructure::messaging::payloads::PayslipFinalizedPayload;
 use payroll_usecase::payslip::{RequestPayoutInput, RequestPayoutResult, RequestPayoutUseCase};
 use platform_kernel::Money;
+use tracing::Instrument as _;
 
 /// Lambda の初期化(run の外)で1回だけ作る
 pub struct Deps {
@@ -98,6 +99,8 @@ pub struct Message {
     /// FIFO のメッセージグループ(給与明細ごと)。同じグループの中では順に処理する
     pub group: String,
     pub body: String,
+    /// 出来事を記録したリクエストのトレース(メッセージ属性 traceparent)。処理をその続きにする
+    pub traceparent: Option<String>,
 }
 
 /// 受け取った順に処理し、失敗した件のメッセージ ID を返す。失敗した件だけがキューに戻る。
@@ -115,7 +118,11 @@ pub async fn handle_batch(
             failed.push(message.id.clone());
             continue;
         }
-        if let Err(err) = process(&message.body).await {
+        let span = tracing::info_span!("message", message_id = %message.id);
+        platform_telemetry::set_parent(&span, |key| {
+            (key == "traceparent").then(|| message.traceparent.clone()).flatten()
+        });
+        if let Err(err) = process(&message.body).instrument(span).await {
             tracing::warn!(message_id = %message.id, error = %err, "processing failed, will retry");
             failed_groups.insert(message.group.clone());
             failed.push(message.id.clone());
@@ -188,7 +195,7 @@ mod tests {
     }
 
     fn message(id: &str, group: &str, body: &str) -> Message {
-        Message { id: id.into(), group: group.into(), body: body.into() }
+        Message { id: id.into(), group: group.into(), body: body.into(), traceparent: None }
     }
 
     #[tokio::test]

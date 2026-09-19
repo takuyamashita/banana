@@ -5,7 +5,8 @@ use payout_dispatcher::{Deps, Message, handle_batch, process};
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     let config = bootstrap::load_config()?;
-    let _telemetry = bootstrap::init_telemetry(&config, "payout-dispatcher")?;
+    let telemetry = bootstrap::init_telemetry(&config, "payout-dispatcher")?;
+    let telemetry = &telemetry;
 
     // DB 接続などは run の外で1回だけ行い、コールドスタートを抑える
     let deps = Deps::build().await?;
@@ -19,6 +20,10 @@ async fn main() -> Result<(), Error> {
             .map(|record| Message {
                 id: record.message_id.unwrap_or_default(),
                 group: record.attributes.get("MessageGroupId").cloned().unwrap_or_default(),
+                traceparent: record
+                    .message_attributes
+                    .get("traceparent")
+                    .and_then(|a| a.string_value.clone()),
                 body: record.body.unwrap_or_default(),
             })
             .collect();
@@ -29,6 +34,8 @@ async fn main() -> Result<(), Error> {
         for id in handle_batch(&messages, async |body: &str| process(deps, body).await).await {
             response.add_failure(id);
         }
+        // Lambda は呼び出しの合間に止まるので、溜まったスパンをここで送り切る
+        telemetry.flush();
         Ok::<_, Error>(response)
     }))
     .await
