@@ -1,6 +1,9 @@
 # ディレクトリごとに担当チームを割り当てる(チーム名は例)
 /backend/                 @acme/backend
 /backend/contexts/payroll/ @acme/payroll
+/backend/services/payroll/ @acme/payroll
+/backend/contexts/timesheet/ @acme/timesheet
+/backend/services/timesheet/ @acme/timesheet
 /proto/                   @acme/backend @acme/frontend
 /frontend/                @acme/frontend
 /infra/                   @acme/platform
