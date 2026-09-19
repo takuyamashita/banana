@@ -333,8 +333,9 @@ impl Clock for FixedClock {
 
 #[derive(Default)]
 struct FakeDirectory {
-    disabled: Mutex<Vec<UserId>>,
+    deleted: Mutex<Vec<UserId>>,
     created: Mutex<HashMap<String, UserId>>,
+    fail_delete: bool,
 }
 
 #[async_trait]
@@ -345,8 +346,11 @@ impl UserDirectory for FakeDirectory {
         Ok(id)
     }
 
-    async fn disable_user(&self, id: &UserId) -> Result<(), UserDirectoryError> {
-        self.disabled.lock().unwrap().push(id.clone());
+    async fn delete_user(&self, id: &UserId) -> Result<(), UserDirectoryError> {
+        if self.fail_delete {
+            return Err(UserDirectoryError::Unavailable("idp down".into()));
+        }
+        self.deleted.lock().unwrap().push(id.clone());
         Ok(())
     }
 }
@@ -557,30 +561,69 @@ async fn staff_cannot_see_draft_payslips() {
     assert_eq!(list.execute(&admin, staff_id).await.unwrap().len(), 2);
 }
 
+fn staff_input(email: &str) -> CreateStaffInput {
+    CreateStaffInput {
+        email: Email::parse(email).unwrap(),
+        display_name: DisplayName::new("新人").unwrap(),
+        temporary_password: "Temp-pass-1".into(),
+    }
+}
+
+fn create_staff_usecase(world: &Arc<World>, directory: &Arc<FakeDirectory>) -> CreateStaffUseCase {
+    CreateStaffUseCase::new(
+        Arc::new(FakeStaff(world.clone())),
+        Arc::new(FakeDatabase(world.clone())),
+        directory.clone(),
+    )
+}
+
 #[tokio::test]
-async fn create_staff_disables_user_when_registration_fails() {
+async fn create_staff_deletes_the_account_when_registration_fails() {
     let world = Arc::new(World { fail_staff_insert: true, ..World::default() });
     let directory = Arc::new(FakeDirectory::default());
-    let usecase = CreateStaffUseCase::new(
-        Arc::new(FakeStaff(world.clone())),
-        Arc::new(FakeDatabase(world)),
-        directory.clone(),
-    );
 
-    let err = usecase
-        .execute(CreateStaffInput {
-            email: Email::parse("new@example.com").unwrap(),
-            display_name: DisplayName::new("新人").unwrap(),
-            temporary_password: "Temp-pass-1".into(),
-        })
+    let err = create_staff_usecase(&world, &directory)
+        .execute(staff_input("new@example.com"))
         .await
         .unwrap_err();
 
+    // 発行したアカウントを消して、同じメールアドレスで登録し直せるようにする
     assert!(matches!(err, UseCaseError::Unavailable(_)));
     assert_eq!(
-        directory.disabled.lock().unwrap().as_slice(),
+        directory.deleted.lock().unwrap().as_slice(),
         [UserId::parse("sub-new@example.com").unwrap()]
     );
+}
+
+#[tokio::test]
+async fn create_staff_reports_an_account_left_behind() {
+    let world = Arc::new(World { fail_staff_insert: true, ..World::default() });
+    let directory = Arc::new(FakeDirectory { fail_delete: true, ..FakeDirectory::default() });
+
+    let err = create_staff_usecase(&world, &directory)
+        .execute(staff_input("new@example.com"))
+        .await
+        .unwrap_err();
+
+    // 消せなかったアカウントは管理者が片付けるので、利用者IDとともに内部の異常として知らせる
+    assert!(
+        matches!(&err, UseCaseError::Internal(msg) if msg.contains("sub-new@example.com")),
+        "{err:?}"
+    );
+}
+
+#[tokio::test]
+async fn create_staff_rejects_the_same_email_without_issuing_an_account() {
+    let world = Arc::new(World::with_staff(&[(1, "taro")]));
+    let directory = Arc::new(FakeDirectory::default());
+
+    let err = create_staff_usecase(&world, &directory)
+        .execute(staff_input("taro@example.com"))
+        .await
+        .unwrap_err();
+
+    assert!(matches!(err, UseCaseError::Conflict(_)));
+    assert!(directory.created.lock().unwrap().is_empty());
 }
 
 #[tokio::test]

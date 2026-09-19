@@ -41,6 +41,8 @@ impl proto::project_service_server::ProjectService for ProjectServiceHandler {
                 .iter()
                 .map(|p| proto::Project { project_id: p.id.as_i64(), name: p.name.clone() })
                 .collect(),
+            // 今は全件を返すので、続きはない
+            next_page_token: String::new(),
         }))
     }
 }

@@ -66,7 +66,7 @@ data "aws_iam_policy_document" "task" {
   }
   # UserDirectory(Cognito)で派遣社員のユーザーを作る・無効化する
   statement {
-    actions   = ["cognito-idp:AdminCreateUser", "cognito-idp:AdminDisableUser"]
+    actions   = ["cognito-idp:AdminCreateUser", "cognito-idp:AdminAddUserToGroup", "cognito-idp:AdminDeleteUser"]
     resources = [var.user_pool_arn]
   }
   # ADOT collector がトレースを X-Ray に送る

@@ -141,7 +141,8 @@ run = [
 run = ["pnpm oxfmt --check", "pnpm oxlint", "pnpm -r --if-present typecheck"]
 
 [tasks."lint:proto"]
-run = ["buf format --diff --exit-code", "buf lint"]
+# breaking は main と比べる(v1 の中でフィールドの番号・型・意味を変えていないか)。main の上では自分と比べるので必ず通る
+run = ["buf format --diff --exit-code", "buf lint", "buf breaking --against '.git#branch=main'"]
 
 [tasks."lint:tf"]
 dir = "infra"

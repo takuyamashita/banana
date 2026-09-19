@@ -18,10 +18,17 @@ message CreateProjectResponse {
   int64 project_id = 1;
 }
 
-message ListProjectsRequest {}
+message ListProjectsRequest {
+  // ページング。今は全件を返すので使わない(後からページングを入れても、古いクライアントが1ページ目だけで
+  // 終わったと誤解しないよう、最初から欄を置いておく)
+  int32 page_size = 1;
+  string page_token = 2;
+}
 
 message ListProjectsResponse {
   repeated Project projects = 1;
+  // 続きがあるときの page_token。空なら最後のページ(今は常に空)
+  string next_page_token = 2;
 }
 
 message Project {

@@ -13,6 +13,10 @@ paths = [
   '''^e2e/''',
 ]
 
+[[allowlists]]
+description = "トークン検証のテスト専用の署名鍵(どの認証基盤にも登録していない)"
+paths = ['''^backend/shared/auth/tests/fixtures/test-signing-key\.pem$''']
+
 # gitleaks dir は .gitignore を見ないので、ビルド成果物と依存を明示的に外す
 [[allowlists]]
 description = "ビルド成果物・依存"

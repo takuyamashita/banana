@@ -80,7 +80,9 @@ impl From<UserDirectoryError> for UseCaseError {
     fn from(err: UserDirectoryError) -> Self {
         match err {
             UserDirectoryError::AlreadyExists => Self::Conflict(err.to_string()),
-            UserDirectoryError::Invalid(msg) => Self::InvalidInput(msg),
+            UserDirectoryError::InvalidPassword | UserDirectoryError::Invalid { .. } => {
+                Self::InvalidInput(err.to_string())
+            }
             UserDirectoryError::Unavailable(msg) => Self::Unavailable(msg),
         }
     }

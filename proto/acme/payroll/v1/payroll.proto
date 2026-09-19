@@ -47,10 +47,16 @@ message GetPayslipResponse {
 
 message ListPayslipsRequest {
   int64 staff_id = 1;
+  // ページング。今は全件を返すので使わない(後からページングを入れても、古いクライアントが1ページ目だけで
+  // 終わったと誤解しないよう、最初から欄を置いておく)
+  int32 page_size = 2;
+  string page_token = 3;
 }
 
 message ListPayslipsResponse {
   repeated Payslip payslips = 1;
+  // 続きがあるときの page_token。空なら最後のページ(今は常に空)
+  string next_page_token = 2;
 }
 
 message Payslip {

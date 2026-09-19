@@ -15,5 +15,10 @@ thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 
+
+[dev-dependencies]
+# テストでトークンに署名するため、PEM の鍵を読めるようにする
+jsonwebtoken = { workspace = true, features = ["use_pem"] }
+
 [lints]
 workspace = true

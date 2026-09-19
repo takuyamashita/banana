@@ -43,15 +43,24 @@ pub struct GetPayslipResponse {
     #[prost(message, optional, tag="1")]
     pub payslip: ::core::option::Option<Payslip>,
 }
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ListPayslipsRequest {
     #[prost(int64, tag="1")]
     pub staff_id: i64,
+    /// ページング。今は全件を返すので使わない(後からページングを入れても、古いクライアントが1ページ目だけで
+    /// 終わったと誤解しないよう、最初から欄を置いておく)
+    #[prost(int32, tag="2")]
+    pub page_size: i32,
+    #[prost(string, tag="3")]
+    pub page_token: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ListPayslipsResponse {
     #[prost(message, repeated, tag="1")]
     pub payslips: ::prost::alloc::vec::Vec<Payslip>,
+    /// 続きがあるときの page_token。空なら最後のページ(今は常に空)
+    #[prost(string, tag="2")]
+    pub next_page_token: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Payslip {
@@ -120,13 +129,22 @@ pub struct CreateProjectResponse {
     #[prost(int64, tag="1")]
     pub project_id: i64,
 }
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ListProjectsRequest {
+    /// ページング。今は全件を返すので使わない(後からページングを入れても、古いクライアントが1ページ目だけで
+    /// 終わったと誤解しないよう、最初から欄を置いておく)
+    #[prost(int32, tag="1")]
+    pub page_size: i32,
+    #[prost(string, tag="2")]
+    pub page_token: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ListProjectsResponse {
     #[prost(message, repeated, tag="1")]
     pub projects: ::prost::alloc::vec::Vec<Project>,
+    /// 続きがあるときの page_token。空なら最後のページ(今は常に空)
+    #[prost(string, tag="2")]
+    pub next_page_token: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct Project {
@@ -150,13 +168,22 @@ pub struct CreateStaffResponse {
     #[prost(int64, tag="1")]
     pub staff_id: i64,
 }
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ListStaffRequest {
+    /// ページング。今は全件を返すので使わない(後からページングを入れても、古いクライアントが1ページ目だけで
+    /// 終わったと誤解しないよう、最初から欄を置いておく)
+    #[prost(int32, tag="1")]
+    pub page_size: i32,
+    #[prost(string, tag="2")]
+    pub page_token: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ListStaffResponse {
     #[prost(message, repeated, tag="1")]
     pub staff: ::prost::alloc::vec::Vec<Staff>,
+    /// 続きがあるときの page_token。空なら最後のページ(今は常に空)
+    #[prost(string, tag="2")]
+    pub next_page_token: ::prost::alloc::string::String,
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct GetMeRequest {

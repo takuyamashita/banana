@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file acme/payroll/v1/project.proto.
  */
 export const file_acme_payroll_v1_project: GenFile = /*@__PURE__*/
-  fileDesc("Ch1hY21lL3BheXJvbGwvdjEvcHJvamVjdC5wcm90bxIPYWNtZS5wYXlyb2xsLnYxIiQKFENyZWF0ZVByb2plY3RSZXF1ZXN0EgwKBG5hbWUYASABKAkiKwoVQ3JlYXRlUHJvamVjdFJlc3BvbnNlEhIKCnByb2plY3RfaWQYASABKAMiFQoTTGlzdFByb2plY3RzUmVxdWVzdCJCChRMaXN0UHJvamVjdHNSZXNwb25zZRIqCghwcm9qZWN0cxgBIAMoCzIYLmFjbWUucGF5cm9sbC52MS5Qcm9qZWN0IisKB1Byb2plY3QSEgoKcHJvamVjdF9pZBgBIAEoAxIMCgRuYW1lGAIgASgJMs0BCg5Qcm9qZWN0U2VydmljZRJeCg1DcmVhdGVQcm9qZWN0EiUuYWNtZS5wYXlyb2xsLnYxLkNyZWF0ZVByb2plY3RSZXF1ZXN0GiYuYWNtZS5wYXlyb2xsLnYxLkNyZWF0ZVByb2plY3RSZXNwb25zZRJbCgxMaXN0UHJvamVjdHMSJC5hY21lLnBheXJvbGwudjEuTGlzdFByb2plY3RzUmVxdWVzdBolLmFjbWUucGF5cm9sbC52MS5MaXN0UHJvamVjdHNSZXNwb25zZWIGcHJvdG8z");
+  fileDesc("Ch1hY21lL3BheXJvbGwvdjEvcHJvamVjdC5wcm90bxIPYWNtZS5wYXlyb2xsLnYxIiQKFENyZWF0ZVByb2plY3RSZXF1ZXN0EgwKBG5hbWUYASABKAkiKwoVQ3JlYXRlUHJvamVjdFJlc3BvbnNlEhIKCnByb2plY3RfaWQYASABKAMiPAoTTGlzdFByb2plY3RzUmVxdWVzdBIRCglwYWdlX3NpemUYASABKAUSEgoKcGFnZV90b2tlbhgCIAEoCSJbChRMaXN0UHJvamVjdHNSZXNwb25zZRIqCghwcm9qZWN0cxgBIAMoCzIYLmFjbWUucGF5cm9sbC52MS5Qcm9qZWN0EhcKD25leHRfcGFnZV90b2tlbhgCIAEoCSIrCgdQcm9qZWN0EhIKCnByb2plY3RfaWQYASABKAMSDAoEbmFtZRgCIAEoCTLNAQoOUHJvamVjdFNlcnZpY2USXgoNQ3JlYXRlUHJvamVjdBIlLmFjbWUucGF5cm9sbC52MS5DcmVhdGVQcm9qZWN0UmVxdWVzdBomLmFjbWUucGF5cm9sbC52MS5DcmVhdGVQcm9qZWN0UmVzcG9uc2USWwoMTGlzdFByb2plY3RzEiQuYWNtZS5wYXlyb2xsLnYxLkxpc3RQcm9qZWN0c1JlcXVlc3QaJS5hY21lLnBheXJvbGwudjEuTGlzdFByb2plY3RzUmVzcG9uc2ViBnByb3RvMw");
 
 /**
  * @generated from message acme.payroll.v1.CreateProjectRequest
@@ -50,6 +50,18 @@ export const CreateProjectResponseSchema: GenMessage<CreateProjectResponse> = /*
  * @generated from message acme.payroll.v1.ListProjectsRequest
  */
 export type ListProjectsRequest = Message<"acme.payroll.v1.ListProjectsRequest"> & {
+  /**
+   * ページング。今は全件を返すので使わない(後からページングを入れても、古いクライアントが1ページ目だけで
+   * 終わったと誤解しないよう、最初から欄を置いておく)
+   *
+   * @generated from field: int32 page_size = 1;
+   */
+  pageSize: number;
+
+  /**
+   * @generated from field: string page_token = 2;
+   */
+  pageToken: string;
 };
 
 /**
@@ -67,6 +79,13 @@ export type ListProjectsResponse = Message<"acme.payroll.v1.ListProjectsResponse
    * @generated from field: repeated acme.payroll.v1.Project projects = 1;
    */
   projects: Project[];
+
+  /**
+   * 続きがあるときの page_token。空なら最後のページ(今は常に空)
+   *
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
 };
 
 /**

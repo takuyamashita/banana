@@ -15,10 +15,18 @@ pub enum ClaimMapper {
 }
 
 impl ClaimMapper {
+    /// 検証するクレームを決める。jsonwebtoken の既定では exp しか必須でなく、
+    /// iss や aud はトークンに無ければ検証されずに通ってしまうので、必須にする
     pub(crate) fn configure(&self, validation: &mut Validation) {
         match self {
-            Self::Keycloak { audience } => validation.set_audience(&[audience]),
-            Self::Cognito { .. } => validation.validate_aud = false,
+            Self::Keycloak { audience } => {
+                validation.set_audience(&[audience]);
+                validation.set_required_spec_claims(&["exp", "iss", "aud"]);
+            }
+            Self::Cognito { .. } => {
+                validation.validate_aud = false;
+                validation.set_required_spec_claims(&["exp", "iss"]);
+            }
         }
     }
 
@@ -32,7 +40,13 @@ impl ClaimMapper {
             })?;
 
         let role_names = match self {
-            Self::Keycloak { .. } => claims.pointer("/realm_access/roles"),
+            Self::Keycloak { .. } => {
+                // ID トークン(typ: ID)などは受け付けない
+                if claims.get("typ").and_then(Value::as_str) != Some("Bearer") {
+                    return Err(AuthError::InvalidToken("not an access token".into()));
+                }
+                claims.pointer("/realm_access/roles")
+            }
             Self::Cognito { client_id } => {
                 if claims.get("token_use").and_then(Value::as_str) != Some("access") {
                     return Err(AuthError::InvalidToken("not an access token".into()));
@@ -64,7 +78,7 @@ mod tests {
     fn keycloak_roles_come_from_realm_access() {
         let mapper = ClaimMapper::Keycloak { audience: "platform-api".into() };
         let user = mapper
-            .map(&json!({ "sub": "u1", "realm_access": { "roles": ["admin", "offline_access"] } }))
+            .map(&json!({ "sub": "u1", "typ": "Bearer", "realm_access": { "roles": ["admin", "offline_access"] } }))
             .unwrap();
         assert_eq!(user.roles, vec![Role::Admin]);
     }

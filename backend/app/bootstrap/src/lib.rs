@@ -113,7 +113,7 @@ pub fn build_user_directory(
             auth.cognito_user_pool_id.clone(),
         )),
         AuthProvider::Keycloak => Arc::new(KeycloakUserDirectory::new(
-            reqwest::Client::new(),
+            http_client(),
             auth.keycloak_base_url.clone(),
             auth.keycloak_realm.clone(),
             auth.keycloak_admin_client_id.clone(),
@@ -128,7 +128,7 @@ pub fn build_verifier(config: &AppConfig) -> Arc<OidcVerifier> {
         AuthProvider::Keycloak => ClaimMapper::Keycloak { audience: auth.audience.clone() },
         AuthProvider::Cognito => ClaimMapper::Cognito { client_id: auth.cognito_client_id.clone() },
     };
-    Arc::new(OidcVerifier::new(reqwest::Client::new(), auth.issuer.clone(), mapper))
+    Arc::new(OidcVerifier::new(http_client(), auth.issuer.clone(), mapper))
 }
 
 pub struct Handlers {
@@ -173,6 +173,17 @@ pub fn build_handlers(pool: &MySqlPool, user_directory: Arc<dyn UserDirectory>) 
             ListProjectsUseCase::new(project_query),
         ),
     }
+}
+
+/// 認証基盤(JWKS・Keycloak の管理 API)への HTTP クライアント。
+/// タイムアウトがないと、認証基盤が応答しないときにリクエストが待ち続ける
+fn http_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(2))
+        .timeout(Duration::from_secs(5))
+        .build()
+        // 失敗するのは TLS の初期化に失敗したときだけ。そのときは既定のクライアントで続ける
+        .unwrap_or_default()
 }
 
 /// 振込先の応答を待つ上限。1件あたりの上限 × バッチの件数が Lambda のタイムアウトに収まるようにする

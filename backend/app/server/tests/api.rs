@@ -1,4 +1,4 @@
-//! API テスト。プロセス内でサーバーを立て、生成された tonic クライアントで直接呼ぶ。
+//! API テスト。本番と同じ組み立てでプロセス内に server を立て、生成された tonic クライアントで直接呼ぶ。
 //! 認証だけはテスト用ミドルウェアに差し替え、ヘッダの値から AuthenticatedUser を載せる
 
 // allow-unwrap-in-tests は #[test] 関数の中にしか効かず、補助関数は対象外
@@ -10,31 +10,17 @@ use async_trait::async_trait;
 use axum::extract::Request;
 use axum::middleware::Next;
 use axum::response::Response;
-use payroll_handler::{PayrollServiceHandler, ProjectServiceHandler, StaffServiceHandler};
-use payroll_infrastructure::clock::SystemClock;
-use payroll_infrastructure::database::MySqlDatabase;
-use payroll_infrastructure::messaging::outbox::MySqlEventOutbox;
-use payroll_infrastructure::query::{MySqlProjectQuery, MySqlStaffQuery};
-use payroll_infrastructure::repository::{
-    MySqlPayslipRepository, MySqlProjectRepository, MySqlStaffRepository,
-};
-use payroll_usecase::payslip::{
-    CreatePayslipUseCase, FinalizePayslipUseCase, GetPayslipUseCase, ListPayslipsUseCase,
-};
 use payroll_usecase::ports::user_directory::{UserDirectory, UserDirectoryError};
-use payroll_usecase::project::{CreateProjectUseCase, ListProjectsUseCase};
-use payroll_usecase::staff::{CreateStaffUseCase, GetMeUseCase, ListStaffUseCase};
 use platform_gen::acme::payroll::v1 as proto;
 use platform_gen::acme::payroll::v1::payroll_service_client::PayrollServiceClient;
 use platform_gen::acme::payroll::v1::project_service_client::ProjectServiceClient;
 use platform_gen::acme::payroll::v1::staff_service_client::StaffServiceClient;
-use platform_kernel::{AuthenticatedUser, Role};
-use platform_kernel::{Email, UserId};
+use platform_kernel::{AuthenticatedUser, Email, Role, UserId};
 use testcontainers_modules::mysql::Mysql;
 use testcontainers_modules::testcontainers::runners::AsyncRunner;
 use testcontainers_modules::testcontainers::{ContainerAsync, ImageExt};
 use tonic::transport::Channel;
-use tonic::{Code, Request as GrpcRequest};
+use tonic::{Code, Request as GrpcRequest, Status};
 
 /// 作ったユーザーの sub をメールアドレスから決める認証基盤のフェイク
 struct FakeDirectory;
@@ -45,7 +31,7 @@ impl UserDirectory for FakeDirectory {
         Ok(UserId::parse(format!("sub-{}", email.as_str())).unwrap())
     }
 
-    async fn disable_user(&self, _id: &UserId) -> Result<(), UserDirectoryError> {
+    async fn delete_user(&self, _id: &UserId) -> Result<(), UserDirectoryError> {
         Ok(())
     }
 }
@@ -73,6 +59,8 @@ struct Api {
     _container: ContainerAsync<Mysql>,
 }
 
+/// 本番と同じ組み立て(bootstrap::build_handlers)で server を立てる。
+/// 差し替えるのは認証基盤(FakeDirectory)と、トークン検証の代わりのテスト用ミドルウェアだけ
 async fn api() -> Api {
     // テストごとに MySQL を立てるので、同時に多数が起動するとカーネルの非同期 I/O の上限
     // (fs.aio-max-nr)を使い切って起動に失敗する。非同期 I/O を使わない設定で立てる
@@ -88,40 +76,12 @@ async fn api() -> Api {
         .unwrap();
     payroll_infrastructure::MIGRATOR.run(&pool).await.unwrap();
 
-    let payslips = Arc::new(MySqlPayslipRepository::new(pool.clone()));
-    let staff = Arc::new(MySqlStaffRepository::new(pool.clone()));
-    let projects = Arc::new(MySqlProjectRepository::new(pool.clone()));
-    let db = Arc::new(MySqlDatabase::new(pool.clone()));
-
+    let handlers = bootstrap::build_handlers(&pool, Arc::new(FakeDirectory));
     let router = tonic::service::Routes::new(
-        proto::payroll_service_server::PayrollServiceServer::new(PayrollServiceHandler::new(
-            CreatePayslipUseCase::new(
-                payslips.clone(),
-                staff.clone(),
-                projects.clone(),
-                db.clone(),
-            ),
-            FinalizePayslipUseCase::new(
-                payslips.clone(),
-                Arc::new(MySqlEventOutbox),
-                db.clone(),
-                Arc::new(SystemClock),
-            ),
-            GetPayslipUseCase::new(payslips.clone(), staff.clone()),
-            ListPayslipsUseCase::new(payslips, staff.clone()),
-        )),
+        proto::payroll_service_server::PayrollServiceServer::new(handlers.payroll),
     )
-    .add_service(proto::staff_service_server::StaffServiceServer::new(StaffServiceHandler::new(
-        CreateStaffUseCase::new(staff.clone(), db.clone(), Arc::new(FakeDirectory)),
-        ListStaffUseCase::new(Arc::new(MySqlStaffQuery::new(pool.clone()))),
-        GetMeUseCase::new(staff),
-    )))
-    .add_service(proto::project_service_server::ProjectServiceServer::new(
-        ProjectServiceHandler::new(
-            CreateProjectUseCase::new(projects, db),
-            ListProjectsUseCase::new(Arc::new(MySqlProjectQuery::new(pool.clone()))),
-        ),
-    ))
+    .add_service(proto::staff_service_server::StaffServiceServer::new(handlers.staff))
+    .add_service(proto::project_service_server::ProjectServiceServer::new(handlers.project))
     .into_axum_router()
     .layer(axum::middleware::from_fn(test_auth));
 
@@ -138,6 +98,10 @@ fn as_user<T>(message: T, sub: &str, roles: &str) -> GrpcRequest<T> {
     request.metadata_mut().insert("x-test-sub", sub.parse().unwrap());
     request.metadata_mut().insert("x-test-roles", roles.parse().unwrap());
     request
+}
+
+fn as_staff<T>(message: T) -> GrpcRequest<T> {
+    as_user(message, "sub-staff@example.com", "staff")
 }
 
 fn admin<T>(message: T) -> GrpcRequest<T> {
@@ -246,11 +210,127 @@ async fn payslip_is_visible_only_to_admin_and_owner() {
 
     let list = client
         .list_payslips(as_user(
-            proto::ListPayslipsRequest { staff_id: taro },
+            proto::ListPayslipsRequest { staff_id: taro, ..Default::default() },
             "sub-hanako@example.com",
             "staff",
         ))
         .await
         .unwrap_err();
     assert_eq!(list.code(), Code::NotFound);
+}
+
+/// RPC ごとに、誰が呼べるか。RPC を足したらここにも足す(足し忘れると、未認証で呼べる RPC ができうる)
+#[tokio::test]
+#[allow(clippy::too_many_lines, reason = "全 RPC を1つの表に並べて、抜けを見つけやすくする")]
+async fn every_rpc_requires_login_and_admin_only_rpcs_reject_staff() {
+    let api = api().await;
+    let mut payroll = PayrollServiceClient::new(api.channel.clone());
+    let mut staff = StaffServiceClient::new(api.channel.clone());
+    let mut project = ProjectServiceClient::new(api.channel.clone());
+
+    // 呼び出し方(利用者なし・派遣社員)ごとに、全 RPC の結果のコードを集める
+    macro_rules! codes {
+        ($wrap:expr) => {{
+            let code = |r: Result<(), Status>| r.err().map(|s| s.code());
+            vec![
+                (
+                    "CreatePayslip",
+                    true,
+                    code(
+                        payroll
+                            .create_payslip($wrap(proto::CreatePayslipRequest::default()))
+                            .await
+                            .map(|_| ()),
+                    ),
+                ),
+                (
+                    "FinalizePayslip",
+                    true,
+                    code(
+                        payroll
+                            .finalize_payslip($wrap(proto::FinalizePayslipRequest::default()))
+                            .await
+                            .map(|_| ()),
+                    ),
+                ),
+                (
+                    "GetPayslip",
+                    false,
+                    code(
+                        payroll
+                            .get_payslip($wrap(proto::GetPayslipRequest::default()))
+                            .await
+                            .map(|_| ()),
+                    ),
+                ),
+                (
+                    "ListPayslips",
+                    false,
+                    code(
+                        payroll
+                            .list_payslips($wrap(proto::ListPayslipsRequest::default()))
+                            .await
+                            .map(|_| ()),
+                    ),
+                ),
+                (
+                    "CreateStaff",
+                    true,
+                    code(
+                        staff
+                            .create_staff($wrap(proto::CreateStaffRequest::default()))
+                            .await
+                            .map(|_| ()),
+                    ),
+                ),
+                (
+                    "ListStaff",
+                    true,
+                    code(
+                        staff
+                            .list_staff($wrap(proto::ListStaffRequest::default()))
+                            .await
+                            .map(|_| ()),
+                    ),
+                ),
+                (
+                    "GetMe",
+                    false,
+                    code(staff.get_me($wrap(proto::GetMeRequest::default())).await.map(|_| ())),
+                ),
+                (
+                    "CreateProject",
+                    true,
+                    code(
+                        project
+                            .create_project($wrap(proto::CreateProjectRequest::default()))
+                            .await
+                            .map(|_| ()),
+                    ),
+                ),
+                (
+                    "ListProjects",
+                    true,
+                    code(
+                        project
+                            .list_projects($wrap(proto::ListProjectsRequest::default()))
+                            .await
+                            .map(|_| ()),
+                    ),
+                ),
+            ]
+        }};
+    }
+
+    for (rpc, _, code) in codes!(GrpcRequest::new) {
+        assert_eq!(code, Some(Code::Unauthenticated), "{rpc} はログインしていなければ呼べない");
+    }
+    for (rpc, admin_only, code) in codes!(as_staff) {
+        if admin_only {
+            assert_eq!(code, Some(Code::PermissionDenied), "{rpc} は管理者だけが呼べる");
+        } else {
+            assert_ne!(code, Some(Code::PermissionDenied), "{rpc} は派遣社員も呼べる");
+            assert_ne!(code, Some(Code::Unauthenticated), "{rpc} は派遣社員も呼べる");
+        }
+    }
 }

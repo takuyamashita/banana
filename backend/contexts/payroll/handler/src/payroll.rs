@@ -1,5 +1,6 @@
 use payroll_domain::payslip::{
-    HourlyRate, PayPeriod, Payslip, PayslipId, PayslipLine, PayslipStatus, WorkMinutes,
+    HourlyRate, PayPeriod, Payslip, PayslipError, PayslipId, PayslipLine, PayslipStatus,
+    WorkMinutes,
 };
 use payroll_domain::project::ProjectId;
 use payroll_domain::staff::StaffId;
@@ -47,8 +48,8 @@ impl proto::payroll_service_server::PayrollService for PayrollServiceHandler {
         // protoのint64からdomainの型へ変換する。検証に失敗したらInvalidArgumentで返す
         let staff_id = StaffId::from_i64(req.staff_id).map_err(invalid_argument)?;
         // as キャストは範囲外の値を黙って丸めるので、try_from で検証する
-        let pay_year = u16::try_from(req.pay_year).map_err(invalid_argument)?;
-        let pay_month = u8::try_from(req.pay_month).map_err(invalid_argument)?;
+        let pay_year = u16::try_from(req.pay_year).map_err(|_| invalid_period())?;
+        let pay_month = u8::try_from(req.pay_month).map_err(|_| invalid_period())?;
         let period = PayPeriod::new(pay_year, pay_month).map_err(invalid_argument)?;
 
         let lines = req
@@ -108,6 +109,8 @@ impl proto::payroll_service_server::PayrollService for PayrollServiceHandler {
 
         Ok(Response::new(proto::ListPayslipsResponse {
             payslips: payslips.iter().map(to_proto).collect(),
+            // 今は全件を返すので、続きはない
+            next_page_token: String::new(),
         }))
     }
 }
@@ -136,4 +139,9 @@ fn to_proto(p: &Payslip) -> proto::Payslip {
             })
             .collect(),
     }
+}
+
+/// 数値の型に収まらない年月。domain の文言とそろえる(変換エラーの英語をそのまま出さない)
+fn invalid_period() -> Status {
+    Status::invalid_argument(PayslipError::InvalidPeriod.to_string())
 }

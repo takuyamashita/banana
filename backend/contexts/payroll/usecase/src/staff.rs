@@ -45,7 +45,7 @@ impl CreateStaffUseCase {
     /// 派遣社員を登録し、振られた派遣社員番号を返す。
     ///
     /// 同じメールアドレスの派遣社員がいれば `Conflict` になる。アカウントを発行した後で登録に
-    /// 失敗したときは、発行したアカウントを使えないようにしてから失敗を返す
+    /// 失敗したときは、発行したアカウントを消してから失敗を返す(登録し直せるようにする)
     pub async fn execute(&self, input: CreateStaffInput) -> Result<StaffId, UseCaseError> {
         if self.staff_repository.find_by_email(&input.email).await?.is_some() {
             return Err(UseCaseError::Conflict("同じメールアドレスの派遣社員がいます".into()));
@@ -57,11 +57,14 @@ impl CreateStaffUseCase {
         let new = NewStaff::new(user_id.clone(), input.email, input.display_name);
         match self.register(&new).await {
             Ok(id) => Ok(id),
-            Err(err) => {
-                // アカウントの停止にも失敗したときは、登録の失敗のほうを返す
-                let _ = self.user_directory.disable_user(&user_id).await;
-                Err(err)
-            }
+            Err(err) => match self.user_directory.delete_user(&user_id).await {
+                Ok(()) => Err(err),
+                // 消せなかったアカウントは誰の派遣社員とも結びつかずに残るので、管理者が消す必要がある
+                Err(cleanup) => Err(UseCaseError::Internal(format!(
+                    "派遣社員の登録に失敗し({err})、発行したアカウント {} の削除にも失敗しました({cleanup})",
+                    user_id.as_str()
+                ))),
+            },
         }
     }
 

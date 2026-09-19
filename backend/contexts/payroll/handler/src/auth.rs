@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::extract::{Request, State};
 use axum::middleware::Next;
 use axum::response::Response;
-use platform_auth::OidcVerifier;
+use platform_auth::{AuthError, OidcVerifier};
 use platform_kernel::{AuthenticatedUser, Role};
 use tonic::Status;
 
@@ -25,6 +25,11 @@ pub async fn authenticate(
             Ok(user) => {
                 request.extensions_mut().insert(user);
             }
+            // 認証基盤に届かないのはトークンの問題ではない。再ログインを促さず、時間をおいてもらう
+            Err(AuthError::KeyUnavailable(err)) => {
+                tracing::warn!(error = %err, "cannot verify tokens: signing keys unavailable");
+                return Status::unavailable("一時的に利用できません").into_http();
+            }
             Err(err) => tracing::info!(error = %err, "token rejected"),
         }
     }
@@ -36,13 +41,13 @@ pub(crate) fn current_user<T>(request: &tonic::Request<T>) -> Result<Authenticat
         .extensions()
         .get::<AuthenticatedUser>()
         .cloned()
-        .ok_or_else(|| Status::unauthenticated("no principal"))
+        .ok_or_else(|| Status::unauthenticated("ログインしてください"))
 }
 
 pub(crate) fn require_admin<T>(request: &tonic::Request<T>) -> Result<AuthenticatedUser, Status> {
     let user = current_user(request)?;
     if !user.has_role(Role::Admin) {
-        return Err(Status::permission_denied("admin only"));
+        return Err(Status::permission_denied("この操作は管理者だけができます"));
     }
     Ok(user)
 }

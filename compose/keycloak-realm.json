@@ -113,7 +113,7 @@
       "enabled": true,
       "serviceAccountClientId": "platform-backend",
       "clientRoles": {
-        "realm-management": ["manage-users", "view-users"]
+        "realm-management": ["manage-users", "view-users", "view-realm"]
       }
     }
   ],

@@ -54,6 +54,8 @@ impl proto::staff_service_server::StaffService for StaffServiceHandler {
         let staff = self.list_staff.execute().await.map_err(to_status)?;
         Ok(Response::new(proto::ListStaffResponse {
             staff: staff.iter().map(view_to_proto).collect(),
+            // 今は全件を返すので、続きはない
+            next_page_token: String::new(),
         }))
     }
 

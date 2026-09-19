@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file acme/payroll/v1/staff.proto.
  */
 export const file_acme_payroll_v1_staff: GenFile = /*@__PURE__*/
-  fileDesc("ChthY21lL3BheXJvbGwvdjEvc3RhZmYucHJvdG8SD2FjbWUucGF5cm9sbC52MSJVChJDcmVhdGVTdGFmZlJlcXVlc3QSDQoFZW1haWwYASABKAkSFAoMZGlzcGxheV9uYW1lGAIgASgJEhoKEnRlbXBvcmFyeV9wYXNzd29yZBgDIAEoCSInChNDcmVhdGVTdGFmZlJlc3BvbnNlEhAKCHN0YWZmX2lkGAEgASgDIhIKEExpc3RTdGFmZlJlcXVlc3QiOgoRTGlzdFN0YWZmUmVzcG9uc2USJQoFc3RhZmYYASADKAsyFi5hY21lLnBheXJvbGwudjEuU3RhZmYiDgoMR2V0TWVSZXF1ZXN0IlQKDUdldE1lUmVzcG9uc2USKgoFc3RhZmYYASABKAsyFi5hY21lLnBheXJvbGwudjEuU3RhZmZIAIgBARINCgVyb2xlcxgCIAMoCUIICgZfc3RhZmYiPgoFU3RhZmYSEAoIc3RhZmZfaWQYASABKAMSDQoFZW1haWwYAiABKAkSFAoMZGlzcGxheV9uYW1lGAMgASgJMoQCCgxTdGFmZlNlcnZpY2USWAoLQ3JlYXRlU3RhZmYSIy5hY21lLnBheXJvbGwudjEuQ3JlYXRlU3RhZmZSZXF1ZXN0GiQuYWNtZS5wYXlyb2xsLnYxLkNyZWF0ZVN0YWZmUmVzcG9uc2USUgoJTGlzdFN0YWZmEiEuYWNtZS5wYXlyb2xsLnYxLkxpc3RTdGFmZlJlcXVlc3QaIi5hY21lLnBheXJvbGwudjEuTGlzdFN0YWZmUmVzcG9uc2USRgoFR2V0TWUSHS5hY21lLnBheXJvbGwudjEuR2V0TWVSZXF1ZXN0Gh4uYWNtZS5wYXlyb2xsLnYxLkdldE1lUmVzcG9uc2ViBnByb3RvMw");
+  fileDesc("ChthY21lL3BheXJvbGwvdjEvc3RhZmYucHJvdG8SD2FjbWUucGF5cm9sbC52MSJVChJDcmVhdGVTdGFmZlJlcXVlc3QSDQoFZW1haWwYASABKAkSFAoMZGlzcGxheV9uYW1lGAIgASgJEhoKEnRlbXBvcmFyeV9wYXNzd29yZBgDIAEoCSInChNDcmVhdGVTdGFmZlJlc3BvbnNlEhAKCHN0YWZmX2lkGAEgASgDIjkKEExpc3RTdGFmZlJlcXVlc3QSEQoJcGFnZV9zaXplGAEgASgFEhIKCnBhZ2VfdG9rZW4YAiABKAkiUwoRTGlzdFN0YWZmUmVzcG9uc2USJQoFc3RhZmYYASADKAsyFi5hY21lLnBheXJvbGwudjEuU3RhZmYSFwoPbmV4dF9wYWdlX3Rva2VuGAIgASgJIg4KDEdldE1lUmVxdWVzdCJUCg1HZXRNZVJlc3BvbnNlEioKBXN0YWZmGAEgASgLMhYuYWNtZS5wYXlyb2xsLnYxLlN0YWZmSACIAQESDQoFcm9sZXMYAiADKAlCCAoGX3N0YWZmIj4KBVN0YWZmEhAKCHN0YWZmX2lkGAEgASgDEg0KBWVtYWlsGAIgASgJEhQKDGRpc3BsYXlfbmFtZRgDIAEoCTKEAgoMU3RhZmZTZXJ2aWNlElgKC0NyZWF0ZVN0YWZmEiMuYWNtZS5wYXlyb2xsLnYxLkNyZWF0ZVN0YWZmUmVxdWVzdBokLmFjbWUucGF5cm9sbC52MS5DcmVhdGVTdGFmZlJlc3BvbnNlElIKCUxpc3RTdGFmZhIhLmFjbWUucGF5cm9sbC52MS5MaXN0U3RhZmZSZXF1ZXN0GiIuYWNtZS5wYXlyb2xsLnYxLkxpc3RTdGFmZlJlc3BvbnNlEkYKBUdldE1lEh0uYWNtZS5wYXlyb2xsLnYxLkdldE1lUmVxdWVzdBoeLmFjbWUucGF5cm9sbC52MS5HZXRNZVJlc3BvbnNlYgZwcm90bzM");
 
 /**
  * @generated from message acme.payroll.v1.CreateStaffRequest
@@ -62,6 +62,18 @@ export const CreateStaffResponseSchema: GenMessage<CreateStaffResponse> = /*@__P
  * @generated from message acme.payroll.v1.ListStaffRequest
  */
 export type ListStaffRequest = Message<"acme.payroll.v1.ListStaffRequest"> & {
+  /**
+   * ページング。今は全件を返すので使わない(後からページングを入れても、古いクライアントが1ページ目だけで
+   * 終わったと誤解しないよう、最初から欄を置いておく)
+   *
+   * @generated from field: int32 page_size = 1;
+   */
+  pageSize: number;
+
+  /**
+   * @generated from field: string page_token = 2;
+   */
+  pageToken: string;
 };
 
 /**
@@ -79,6 +91,13 @@ export type ListStaffResponse = Message<"acme.payroll.v1.ListStaffResponse"> & {
    * @generated from field: repeated acme.payroll.v1.Staff staff = 1;
    */
   staff: Staff[];
+
+  /**
+   * 続きがあるときの page_token。空なら最後のページ(今は常に空)
+   *
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
 };
 
 /**

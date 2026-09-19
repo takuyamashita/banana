@@ -2,8 +2,10 @@ use std::time::Duration;
 
 use anyhow::Context as _;
 use axum::Router;
-use axum::extract::State;
+use axum::extract::{Request, State};
 use axum::http::StatusCode;
+use axum::middleware::Next;
+use axum::response::Response;
 use axum::routing::get;
 use bootstrap::AppConfig;
 use http::{HeaderName, HeaderValue, Method};
@@ -13,9 +15,28 @@ use platform_gen::acme::payroll::v1::project_service_server::ProjectServiceServe
 use platform_gen::acme::payroll::v1::staff_service_server::StaffServiceServer;
 use sqlx::MySqlPool;
 use tokio_util::sync::CancellationToken;
+use tonic::Status;
 use tonic::service::Routes;
 use tonic_web::GrpcWebLayer;
+use tower::limit::GlobalConcurrencyLimitLayer;
 use tower_http::cors::{AllowOrigin, CorsLayer};
+
+/// 1リクエストの処理時間の上限。DB のロック待ちの上限(10秒)より長く、ALB のアイドルタイムアウト(60秒)より短くする
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+/// 同時に処理するリクエストの上限。これを超えた分は、空くまで待たせる
+const MAX_CONCURRENT_REQUESTS: usize = 256;
+/// 受け取るメッセージの上限。給与明細(明細行100件まで)でも十分に収まる
+const MAX_MESSAGE_BYTES: usize = 1024 * 1024;
+
+/// 処理が時間内に終わらなければ打ち切る。gRPC の DEADLINE_EXCEEDED で返す
+async fn request_timeout(request: Request, next: Next) -> Response {
+    if let Ok(response) = tokio::time::timeout(REQUEST_TIMEOUT, next.run(request)).await {
+        response
+    } else {
+        tracing::warn!("request timed out");
+        Status::deadline_exceeded("時間内に処理できませんでした").into_http()
+    }
+}
 
 pub async fn run(config: AppConfig) -> anyhow::Result<()> {
     let aws = bootstrap::aws_config().await;
@@ -25,12 +46,20 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
 
     // gRPC-Webを有効にしてブラウザ(Connect-ES)から直接叩けるようにする。
     // 認証ミドルウェアがJWTを検証し、AuthenticatedUser を extensions に載せる
-    let grpc = Routes::new(PayrollServiceServer::new(handlers.payroll))
-        .add_service(StaffServiceServer::new(handlers.staff))
-        .add_service(ProjectServiceServer::new(handlers.project))
-        .into_axum_router()
-        .layer(axum::middleware::from_fn_with_state(verifier, authenticate))
-        .layer(GrpcWebLayer::new());
+    let grpc = Routes::new(
+        PayrollServiceServer::new(handlers.payroll).max_decoding_message_size(MAX_MESSAGE_BYTES),
+    )
+    .add_service(
+        StaffServiceServer::new(handlers.staff).max_decoding_message_size(MAX_MESSAGE_BYTES),
+    )
+    .add_service(
+        ProjectServiceServer::new(handlers.project).max_decoding_message_size(MAX_MESSAGE_BYTES),
+    )
+    .into_axum_router()
+    .layer(axum::middleware::from_fn_with_state(verifier, authenticate))
+    .layer(axum::middleware::from_fn(request_timeout))
+    .layer(GrpcWebLayer::new())
+    .layer(GlobalConcurrencyLimitLayer::new(MAX_CONCURRENT_REQUESTS));
 
     // /health は認証の外。ロードバランサーと E2E の起動待ちに使う
     let app = Router::new()
@@ -39,7 +68,7 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
         .merge(grpc)
         .layer(cors(&config.server.cors_allowed_origins)?);
 
-    // outbox relay を常駐タスクとして動かす。SKIP LOCKED なので複数インスタンスでも安全
+    // outbox relay を常駐タスクとして動かす。複数インスタンスでも、送るのはロックを取れた1つだけ
     let cancel = CancellationToken::new();
     let relay = tokio::spawn(payroll_infrastructure::messaging::relay::run(
         pool.clone(),

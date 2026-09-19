@@ -76,6 +76,33 @@ impl KeycloakUserDirectory {
     fn users_url(&self) -> String {
         format!("{}/admin/realms/{}/users", self.base_url, self.realm)
     }
+
+    /// realm ロール staff を付ける。ロールの表現(id と name)を取ってから割り当てる
+    async fn grant_staff_role(&self, id: &UserId) -> Result<(), UserDirectoryError> {
+        let token = self.admin_token().await?;
+        let role: serde_json::Value = self
+            .client
+            .get(format!("{}/admin/realms/{}/roles/staff", self.base_url, self.realm))
+            .bearer_auth(&token)
+            .send()
+            .await
+            .map_err(unavailable)?
+            .error_for_status()
+            .map_err(unavailable)?
+            .json()
+            .await
+            .map_err(unavailable)?;
+        self.client
+            .post(format!("{}/{}/role-mappings/realm", self.users_url(), id.as_str()))
+            .bearer_auth(&token)
+            .json(&[role])
+            .send()
+            .await
+            .map_err(unavailable)?
+            .error_for_status()
+            .map_err(unavailable)?;
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -106,7 +133,12 @@ impl UserDirectory for KeycloakUserDirectory {
             StatusCode::CONFLICT => return Err(UserDirectoryError::AlreadyExists),
             StatusCode::BAD_REQUEST => {
                 let body = res.text().await.unwrap_or_default();
-                return Err(UserDirectoryError::Invalid(body));
+                // パスワードポリシーに合わないときは errorMessage が invalidPassword… になる
+                if body.contains("invalidPassword") {
+                    return Err(UserDirectoryError::InvalidPassword);
+                }
+                tracing::info!(detail = body, "keycloak rejected the new user");
+                return Err(UserDirectoryError::Invalid { detail: body });
             }
             other => return Err(UserDirectoryError::Unavailable(other.to_string())),
         }
@@ -118,20 +150,31 @@ impl UserDirectory for KeycloakUserDirectory {
             .and_then(|v| v.to_str().ok())
             .and_then(|loc| loc.rsplit('/').next())
             .ok_or_else(|| UserDirectoryError::Unavailable("Location header missing".into()))?;
-        UserId::parse(id).map_err(|e| UserDirectoryError::Invalid(e.to_string()))
+        let user_id =
+            UserId::parse(id).map_err(|e| UserDirectoryError::Unavailable(e.to_string()))?;
+
+        // 派遣社員のロール(realm ロール staff)を付ける
+        if let Err(err) = self.grant_staff_role(&user_id).await {
+            let _ = self.delete_user(&user_id).await;
+            return Err(err);
+        }
+        Ok(user_id)
     }
 
-    async fn disable_user(&self, id: &UserId) -> Result<(), UserDirectoryError> {
-        // PUT /admin/realms/{realm}/users/{id} で enabled=false
-        self.client
-            .put(format!("{}/{}", self.users_url(), id.as_str()))
+    async fn delete_user(&self, id: &UserId) -> Result<(), UserDirectoryError> {
+        // DELETE /admin/realms/{realm}/users/{id}
+        let res = self
+            .client
+            .delete(format!("{}/{}", self.users_url(), id.as_str()))
             .bearer_auth(self.admin_token().await?)
-            .json(&serde_json::json!({ "enabled": false }))
             .send()
             .await
-            .map_err(unavailable)?
-            .error_for_status()
             .map_err(unavailable)?;
+        // 既にないなら、消したのと同じ
+        if res.status() == StatusCode::NOT_FOUND {
+            return Ok(());
+        }
+        res.error_for_status().map_err(unavailable)?;
         Ok(())
     }
 }

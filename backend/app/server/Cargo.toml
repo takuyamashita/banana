@@ -18,8 +18,15 @@ tokio.workspace = true
 tokio-util.workspace = true
 tonic.workspace = true
 tonic-web.workspace = true
+tower = { workspace = true, features = ["limit"] }
 tower-http.workspace = true
 tracing.workspace = true
+
+[dev-dependencies]
+async-trait.workspace = true
+payroll-usecase.workspace = true
+platform-kernel.workspace = true
+testcontainers-modules.workspace = true
 
 [lints]
 workspace = true
