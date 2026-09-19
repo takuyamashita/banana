@@ -1,9 +1,15 @@
-// SQSに流すメッセージの封筒。event_id は outbox.id で、振込先に渡す冪等キーに使う。
-// キューの形はinfrastructureの関心事なので、domainには置かない
+// SQS に流すメッセージの封筒。キューの形は infrastructure の関心事なので、domain には置かない。
+// 受け手は event_type でペイロードの形を選ぶ。ペイロードの互換のない変更は、新しい event_type で出す
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OutboxEnvelope<P> {
+    /// outbox.id。同じ出来事が2回以上届いたときの見分けに使う
     pub event_id: i64,
+    /// 出来事の種類(payslip.finalized など)
+    pub event_type: String,
+    /// 出来事が起きた集約の種類と番号
+    pub aggregate_type: String,
+    pub aggregate_id: i64,
     pub payload: P,
 }

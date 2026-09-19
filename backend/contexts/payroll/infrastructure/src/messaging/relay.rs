@@ -1,7 +1,7 @@
+use std::collections::HashSet;
 use std::time::Duration;
 
 use aws_sdk_sqs::Client as SqsClient;
-use sqlx::Connection as _;
 use sqlx::mysql::{MySqlConnection, MySqlPool};
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
@@ -12,11 +12,15 @@ use super::envelope::OutboxEnvelope;
 pub enum RelayError {
     #[error("DB: {0}")]
     Db(#[from] sqlx::Error),
-    #[error("SQS: {0}")]
-    Sqs(String),
     #[error("JSON: {0}")]
     Json(#[from] serde_json::Error),
 }
+
+/// 送れなかった出来事を諦めるまでの回数。諦めた出来事は error ログに出し、同じ集約の後ろの出来事を先に進める
+const MAX_ATTEMPTS: i32 = 10;
+
+/// 送れていない出来事がこれより長く残っていたら warn ログを出す(秒)
+const BACKLOG_WARN_SECONDS: i64 = 300;
 
 /// relay を1つのインスタンスだけで動かすためのロック名(MySQL の `GET_LOCK`)。
 /// 複数のインスタンスが並んで送ると、同じ集約の出来事が outbox の順と違う順で SQS に届きうる
@@ -55,40 +59,102 @@ async fn send_unpublished(
     sqs: &SqsClient,
     queue_url: &str,
 ) -> Result<usize, RelayError> {
-    let mut tx = conn.begin().await?;
-
     let rows = sqlx::query!(
-        r#"select id, aggregate_id, payload as "payload: sqlx::types::JsonValue" from outbox
-         where published_at is null
-         order by id
-         limit 100"#
+        r#"select id, aggregate_type, aggregate_id, event_type, attempts,
+                  payload as "payload: sqlx::types::JsonValue"
+           from outbox
+           where published_at is null and attempts < ?
+           order by id
+           limit 100"#,
+        MAX_ATTEMPTS,
     )
-    .fetch_all(&mut *tx)
+    .fetch_all(&mut *conn)
     .await?;
 
+    let mut sent = 0;
+    // 送れなかった出来事の集約。同じ集約の後ろの出来事は、それを送れるまで送らない(順序を保つ)
+    let mut held_back = HashSet::new();
     for row in &rows {
-        sqs.send_message()
+        // 同じ集約の出来事は同じグループに入れ、キューの中でも順序を保つ
+        let group = format!("{}-{}", row.aggregate_type, row.aggregate_id);
+        if held_back.contains(&group) {
+            continue;
+        }
+        let body = serde_json::to_string(&OutboxEnvelope {
+            event_id: row.id,
+            event_type: row.event_type.clone(),
+            aggregate_type: row.aggregate_type.clone(),
+            aggregate_id: row.aggregate_id,
+            payload: &row.payload,
+        })?;
+        let result = sqs
+            .send_message()
             .queue_url(queue_url)
-            // outbox の id をイベントIDとして封筒に載せ、consumerの二重処理判定に使う
-            .message_body(serde_json::to_string(&OutboxEnvelope {
-                event_id: row.id,
-                payload: &row.payload,
-            })?)
-            // 同じ集約のイベント順序を保つ
-            .message_group_id(row.aggregate_id.to_string())
-            // relayが二重に送ってもSQS側で除去される(重複排除の窓は5分)
+            .message_body(body)
+            .message_group_id(&group)
+            // relay が二重に送っても SQS 側で除去される(重複排除の窓は5分)
             .message_deduplication_id(row.id.to_string())
             .send()
-            .await
-            .map_err(|e| RelayError::Sqs(aws_sdk_sqs::error::DisplayErrorContext(e).to_string()))?;
+            .await;
 
-        sqlx::query!("update outbox set published_at = current_timestamp(6) where id = ?", row.id)
-            .execute(&mut *tx)
-            .await?;
+        match result {
+            // 送れた行はすぐに送信済みにする。後の行で失敗しても送り直さない
+            Ok(_) => {
+                sqlx::query!(
+                    "update outbox set published_at = current_timestamp(6) where id = ?",
+                    row.id
+                )
+                .execute(&mut *conn)
+                .await?;
+                sent += 1;
+            }
+            Err(err) => {
+                let error = aws_sdk_sqs::error::DisplayErrorContext(err).to_string();
+                held_back.insert(group);
+                let last_error: String = error.chars().take(1000).collect();
+                sqlx::query!(
+                    "update outbox set attempts = attempts + 1, last_error = ? where id = ?",
+                    last_error,
+                    row.id
+                )
+                .execute(&mut *conn)
+                .await?;
+                if row.attempts + 1 >= MAX_ATTEMPTS {
+                    tracing::error!(outbox_id = row.id, error, "gave up sending an outbox row");
+                } else {
+                    tracing::warn!(
+                        outbox_id = row.id,
+                        error,
+                        "failed to send an outbox row, will retry"
+                    );
+                }
+            }
+        }
     }
 
-    tx.commit().await?;
-    Ok(rows.len())
+    warn_if_backlogged(conn).await?;
+    // 送信済みで保持期間を過ぎた行を消す(1回に消す数は抑える)
+    sqlx::query!(
+        "delete from outbox where published_at < current_timestamp(6) - interval 30 day limit 1000"
+    )
+    .execute(&mut *conn)
+    .await?;
+    Ok(sent)
+}
+
+/// 送れていない出来事が長く残っていたら知らせる(送信先の設定の誤りなどで、送れない状態が続いている)
+async fn warn_if_backlogged(conn: &mut MySqlConnection) -> Result<(), RelayError> {
+    let oldest: Option<i64> = sqlx::query_scalar(
+        "select timestampdiff(second, min(created_at), current_timestamp(6)) from outbox
+         where published_at is null and attempts < ?",
+    )
+    .bind(MAX_ATTEMPTS)
+    .fetch_one(&mut *conn)
+    .await?;
+    if let Some(seconds) = oldest.filter(|s| *s > BACKLOG_WARN_SECONDS) {
+        tracing::warn!(oldest_unpublished_seconds = seconds, "outbox is backlogged");
+    }
+    Ok(())
 }
 
 /// server プロセス内の常駐タスクとして relay を回す。キャンセルされたら抜ける

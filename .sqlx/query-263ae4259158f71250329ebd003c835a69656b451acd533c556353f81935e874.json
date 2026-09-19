@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "update outbox set attempts = attempts + 1, last_error = ? where id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "263ae4259158f71250329ebd003c835a69656b451acd533c556353f81935e874"
+}

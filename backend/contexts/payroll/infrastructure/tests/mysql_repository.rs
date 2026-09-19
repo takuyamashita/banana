@@ -13,7 +13,7 @@ use payroll_domain::project::{NewProject, ProjectId, ProjectName};
 use payroll_domain::staff::{DisplayName, NewStaff, StaffId};
 use payroll_infrastructure::database::MySqlDatabase;
 use payroll_infrastructure::messaging::outbox::MySqlEventOutbox;
-use payroll_infrastructure::messaging::relay::{RelayError, relay_once};
+use payroll_infrastructure::messaging::relay::relay_once;
 use payroll_infrastructure::repository::{
     MySqlPayoutRepository, MySqlPayslipRepository, MySqlProjectRepository, MySqlStaffRepository,
 };
@@ -420,10 +420,15 @@ async fn relay_sends_only_while_it_holds_the_lock() {
     sqlx::query("select release_lock('payroll_outbox_relay')").execute(&mut *other).await.unwrap();
     drop(other);
 
-    // ロックが空けば送ろうとする。送れなかった出来事は未送信のまま残る
-    let err = relay_once(&db.pool, &sqs, "queue").await.unwrap_err();
-    assert!(matches!(err, RelayError::Sqs(_)));
+    // ロックが空けば送ろうとする。送れなかった出来事は、試行回数とエラーを残して未送信のまま残る
+    assert_eq!(relay_once(&db.pool, &sqs, "queue").await.unwrap(), 0);
     assert_eq!(unpublished_count(&db.pool).await, 1);
+    let (attempts, has_error): (i32, bool) =
+        sqlx::query_as("select attempts, last_error is not null from outbox")
+            .fetch_one(&db.pool)
+            .await
+            .unwrap();
+    assert_eq!((attempts, has_error), (1, true));
 
     // 失敗しても、ロックは外れている
     let mut next = db.pool.acquire().await.unwrap();

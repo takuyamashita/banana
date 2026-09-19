@@ -15,7 +15,9 @@ resource "aws_sqs_queue" "this" {
   fifo_throughput_limit = "perMessageGroupId"
   # Lambda のタイムアウトの6倍以上にする(AWS の推奨)
   visibility_timeout_seconds = var.visibility_timeout_seconds
-  sqs_managed_sse_enabled    = true
+  # 既定の4日だと、受け手を止めたまま連休をまたぐと消える(outbox は送信済みなので戻せない)。最大の14日にする
+  message_retention_seconds = 1209600
+  sqs_managed_sse_enabled   = true
   redrive_policy = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.dlq.arn
     maxReceiveCount     = 5
