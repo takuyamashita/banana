@@ -24,7 +24,16 @@
           {
             "patterns": [
               {
-                "group": ["**/features/staff/**", "**/features/project/**", "../staff/*", "../project/*"],
+                "group": [
+                  "**/features/staff",
+                  "**/features/staff/**",
+                  "../staff",
+                  "../staff/**",
+                  "**/features/project",
+                  "**/features/project/**",
+                  "../project",
+                  "../project/**"
+                ],
                 "message": "features/ 間の直接 import は禁止。共有するものは lib/ か packages/ に置く"
               }
             ]
@@ -40,7 +49,16 @@
           {
             "patterns": [
               {
-                "group": ["**/features/payroll/**", "**/features/project/**", "../payroll/*", "../project/*"],
+                "group": [
+                  "**/features/payroll",
+                  "**/features/payroll/**",
+                  "../payroll",
+                  "../payroll/**",
+                  "**/features/project",
+                  "**/features/project/**",
+                  "../project",
+                  "../project/**"
+                ],
                 "message": "features/ 間の直接 import は禁止。共有するものは lib/ か packages/ に置く"
               }
             ]
@@ -56,8 +74,33 @@
           {
             "patterns": [
               {
-                "group": ["**/features/payroll/**", "**/features/staff/**", "../payroll/*", "../staff/*"],
+                "group": [
+                  "**/features/payroll",
+                  "**/features/payroll/**",
+                  "../payroll",
+                  "../payroll/**",
+                  "**/features/staff",
+                  "**/features/staff/**",
+                  "../staff",
+                  "../staff/**"
+                ],
                 "message": "features/ 間の直接 import は禁止。共有するものは lib/ か packages/ に置く"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["frontend/apps/web/src/lib/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["**/features", "**/features/**"],
+                "message": "lib/ から features/ は import しない。lib/ は features/ から使われる側"
               }
             ]
           }

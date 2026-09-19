@@ -3,7 +3,7 @@ name = "payroll-domain"
 version = "0.1.0"
 edition.workspace = true
 publish.workspace = true
-description = "payroll コンテキストの集約・値オブジェクト・リポジトリtrait。I/O 系 crate にも async にも依存しない"
+description = "payroll コンテキストの集約・値オブジェクト・出来事"
 
 [dependencies]
 platform-kernel.workspace = true

@@ -22,10 +22,10 @@ pub async fn connect(url: &str, max_connections: u32) -> Result<MySqlPool, sqlx:
         .await
 }
 
-/// sqlx のエラーを domain の `RepositoryError` に翻訳する。
+/// sqlx のエラーを usecase の `RepositoryError` に翻訳する。
 ///
 /// `impl From<sqlx::Error> for RepositoryError` は書けない。両方とも infrastructure から見て
-/// 外部の型なので、孤児ルール(E0117)に触れる。domain 側に書けば domain が sqlx に依存してしまう
+/// 外部の型なので、孤児ルール(E0117)に触れる。usecase 側に書けば usecase が sqlx に依存してしまう
 #[allow(clippy::needless_pass_by_value, reason = "map_err(db_err) で渡すため値で受ける")]
 pub(crate) fn db_err(err: sqlx::Error) -> RepositoryError {
     if let Some(db) = err.as_database_error()

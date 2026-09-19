@@ -1,3 +1,5 @@
+//! 給与明細の作成・確定・閲覧と、確定を受けた振込の依頼
+
 mod create_payslip;
 mod finalize_payslip;
 mod query_payslips;

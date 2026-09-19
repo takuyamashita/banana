@@ -87,7 +87,7 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
 # lint は workspace で一元管理し、各crateは [lints] workspace = true で継承する(gen は継承しない)
 [workspace.lints.rust]
 unsafe_code = "forbid"
-# 出来事(#[must_use] のイベント)を記録せずに捨てたらビルドを止める
+# #[must_use] の値(出来事など)を文として捨てたらビルドを止める。_ で受けたものは止まらない
 unused_must_use = "deny"
 
 [workspace.lints.clippy]

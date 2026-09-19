@@ -28,6 +28,7 @@ use time::macros::datetime;
 
 struct TestDb {
     pool: MySqlPool,
+    url: String,
     _container: ContainerAsync<Mysql>,
 }
 
@@ -38,7 +39,7 @@ async fn db() -> TestDb {
     let url = format!("mysql://root@127.0.0.1:{port}/test");
     let pool = payroll_infrastructure::connect(&url, 5).await.unwrap();
     payroll_infrastructure::MIGRATOR.run(&pool).await.unwrap();
-    TestDb { pool, _container: container }
+    TestDb { pool, url, _container: container }
 }
 
 async fn seed(db: &TestDb) -> (StaffId, ProjectId) {
@@ -77,10 +78,11 @@ fn draft(staff: StaffId, project: ProjectId, month: u8) -> DraftPayslip<Unsaved>
     Payslip::draft(staff, PayPeriod::new(2026, month).unwrap(), lines).unwrap()
 }
 
-/// 給与確定のユースケースと同じく、給与明細とその出来事を1つのトランザクションで記録する
 /// 確定した日時。DB の datetime(6) はマイクロ秒まで持つ
 const FINALIZED_AT: OffsetDateTime = datetime!(2026-09-30 10:00:00.123456 UTC);
 
+/// 確定済みの給与明細とその出来事を、1つのトランザクションで記録する。
+/// 記録の組み合わせを確かめるための近道で、ユースケースは作成してから確定する
 async fn finalize(db: &TestDb, draft: DraftPayslip<Unsaved>) -> Result<PayslipId, RepositoryError> {
     let (payslip, finalized) = draft.finalize(FINALIZED_AT);
     let mut tx = MySqlDatabase::new(db.pool.clone()).transaction().await?;
@@ -124,12 +126,15 @@ async fn payslip_and_its_event_are_committed_together() {
 async fn records_are_discarded_when_the_transaction_is_not_committed() {
     let db = db().await;
     let (staff, project) = seed(&db).await;
-    let repo = MySqlPayslipRepository::new(db.pool.clone());
+    // 接続を1本にして、捨てたトランザクションと同じ接続で読み直す。
+    // 取り消されずに開いたままなら、自分が書いた行が見えてしまう
+    let pool = payroll_infrastructure::connect(&db.url, 1).await.unwrap();
+    let repo = MySqlPayslipRepository::new(pool.clone());
 
     let (payslip, finalized) = draft(staff, project, 9).finalize(FINALIZED_AT);
     let payslip = payslip.into();
     {
-        let mut tx = MySqlDatabase::new(db.pool.clone()).transaction().await.unwrap();
+        let mut tx = MySqlDatabase::new(pool.clone()).transaction().await.unwrap();
         // 給与明細の insert は内側で SAVEPOINT を張って確定する。外側を捨てればそれも消える
         let id = repo.insert(&mut tx, &payslip).await.unwrap();
         MySqlEventOutbox
@@ -140,7 +145,7 @@ async fn records_are_discarded_when_the_transaction_is_not_committed() {
     }
 
     assert!(repo.list_by_staff(staff).await.unwrap().is_empty());
-    assert_eq!(outbox_count(&db.pool).await, 0);
+    assert_eq!(outbox_count(&pool).await, 0);
 }
 
 #[tokio::test]

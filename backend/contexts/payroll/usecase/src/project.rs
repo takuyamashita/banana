@@ -1,3 +1,5 @@
+//! 案件の登録と一覧
+
 use std::sync::Arc;
 
 use payroll_domain::project::{NewProject, ProjectId, ProjectName};

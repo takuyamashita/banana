@@ -1,3 +1,5 @@
+//! 派遣社員の登録・一覧と、ログインした本人の派遣社員情報
+
 use std::sync::Arc;
 
 use payroll_domain::staff::{DisplayName, NewStaff, Staff, StaffId};
