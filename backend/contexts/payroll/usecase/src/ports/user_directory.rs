@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use platform_kernel::{Email, UserId};
+use platform_kernel::{Email, Role, UserId};
 use thiserror::Error;
 
 /// ログイン用アカウントを発行・削除できなかった理由
@@ -19,15 +19,16 @@ pub enum UserDirectoryError {
     Unavailable(String),
 }
 
-/// 派遣社員のログイン用アカウントを発行・削除する先
+/// ログイン用アカウントを発行・削除する先
 #[async_trait]
 pub trait UserDirectory: Send + Sync {
-    /// メールアドレスでログインする派遣社員のアカウントを発行し、その利用者IDを返す。
-    /// アカウントには派遣社員のロールが付く。仮パスワードは初回ログインで本人が変更する
+    /// メールアドレスでログインするアカウントを発行し、その利用者IDを返す。
+    /// アカウントには渡したロールが付く。仮パスワードは初回ログインで本人が変更する
     async fn create_user(
         &self,
         email: &Email,
         temporary_password: &str,
+        role: Role,
     ) -> Result<UserId, UserDirectoryError>;
 
     /// アカウントを消す。派遣社員の登録に失敗したときに、発行したアカウントを残さないために使う

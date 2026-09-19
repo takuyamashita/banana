@@ -9,7 +9,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Context as _;
-use payroll_handler::{PayrollServiceHandler, ProjectServiceHandler, StaffServiceHandler};
+use payroll_handler::{
+    PayrollServiceHandler, ProjectServiceHandler, StaffServiceHandler, UserServiceHandler,
+};
 use payroll_infrastructure::clock::SystemClock;
 use payroll_infrastructure::database::MySqlDatabase;
 use payroll_infrastructure::external::{
@@ -32,6 +34,7 @@ use payroll_usecase::ports::repository::{PayslipRepository, ProjectRepository, S
 use payroll_usecase::ports::user_directory::UserDirectory;
 use payroll_usecase::project::{CreateProjectUseCase, ListProjectsUseCase};
 use payroll_usecase::staff::{CreateStaffUseCase, GetMeUseCase, ListStaffUseCase};
+use payroll_usecase::user::CreateAdminUserUseCase;
 use platform_auth::{ClaimMapper, OidcVerifier};
 use sqlx::MySqlPool;
 
@@ -164,6 +167,7 @@ pub struct Handlers {
     pub payroll: PayrollServiceHandler,
     pub staff: StaffServiceHandler,
     pub project: ProjectServiceHandler,
+    pub user: UserServiceHandler,
 }
 
 pub fn build_handlers(pool: &MySqlPool, user_directory: Arc<dyn UserDirectory>) -> Handlers {
@@ -193,7 +197,7 @@ pub fn build_handlers(pool: &MySqlPool, user_directory: Arc<dyn UserDirectory>) 
             ListPayslipsUseCase::new(payslips, staff.clone()),
         ),
         staff: StaffServiceHandler::new(
-            CreateStaffUseCase::new(staff.clone(), db.clone(), user_directory),
+            CreateStaffUseCase::new(staff.clone(), db.clone(), user_directory.clone()),
             ListStaffUseCase::new(staff_query),
             GetMeUseCase::new(staff),
         ),
@@ -201,6 +205,7 @@ pub fn build_handlers(pool: &MySqlPool, user_directory: Arc<dyn UserDirectory>) 
             CreateProjectUseCase::new(projects, db),
             ListProjectsUseCase::new(project_query),
         ),
+        user: UserServiceHandler::new(CreateAdminUserUseCase::new(user_directory)),
     }
 }
 

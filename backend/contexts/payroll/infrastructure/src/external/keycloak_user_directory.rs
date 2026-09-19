@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use payroll_usecase::ports::user_directory::{UserDirectory, UserDirectoryError};
-use platform_kernel::{Email, UserId};
+use platform_kernel::{Email, Role, UserId};
 use reqwest::StatusCode;
 use serde::Deserialize;
 use tokio::sync::Mutex;
@@ -77,12 +77,12 @@ impl KeycloakUserDirectory {
         format!("{}/admin/realms/{}/users", self.base_url, self.realm)
     }
 
-    /// realm ロール staff を付ける。ロールの表現(id と name)を取ってから割り当てる
-    async fn grant_staff_role(&self, id: &UserId) -> Result<(), UserDirectoryError> {
+    /// realm ロールを付ける。ロールの表現(id と name)を取ってから割り当てる
+    async fn grant_role(&self, id: &UserId, role: Role) -> Result<(), UserDirectoryError> {
         let token = self.admin_token().await?;
         let role: serde_json::Value = self
             .client
-            .get(format!("{}/admin/realms/{}/roles/staff", self.base_url, self.realm))
+            .get(format!("{}/admin/realms/{}/roles/{}", self.base_url, self.realm, role.as_str()))
             .bearer_auth(&token)
             .send()
             .await
@@ -111,6 +111,7 @@ impl UserDirectory for KeycloakUserDirectory {
         &self,
         email: &Email,
         temporary_password: &str,
+        role: Role,
     ) -> Result<UserId, UserDirectoryError> {
         // Admin REST API: POST /admin/realms/{realm}/users
         let res = self
@@ -153,8 +154,8 @@ impl UserDirectory for KeycloakUserDirectory {
         let user_id =
             UserId::parse(id).map_err(|e| UserDirectoryError::Unavailable(e.to_string()))?;
 
-        // 派遣社員のロール(realm ロール staff)を付ける
-        if let Err(err) = self.grant_staff_role(&user_id).await {
+        // 求められたロール(realm ロール admin・staff)を付ける
+        if let Err(err) = self.grant_role(&user_id, role).await {
             let _ = self.delete_user(&user_id).await;
             return Err(err);
         }

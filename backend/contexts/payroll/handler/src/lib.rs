@@ -8,8 +8,10 @@ mod error;
 mod payroll;
 mod project;
 mod staff;
+mod user;
 
 pub use auth::authenticate;
 pub use payroll::PayrollServiceHandler;
 pub use project::ProjectServiceHandler;
 pub use staff::StaffServiceHandler;
+pub use user::UserServiceHandler;

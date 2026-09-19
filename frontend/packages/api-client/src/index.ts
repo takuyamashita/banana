@@ -5,10 +5,12 @@ import { createGrpcWebTransport } from "@connectrpc/connect-web";
 import { PayrollService } from "./gen/acme/payroll/v1/payroll_pb";
 import { ProjectService } from "./gen/acme/payroll/v1/project_pb";
 import { StaffService } from "./gen/acme/payroll/v1/staff_pb";
+import { UserService } from "./gen/acme/payroll/v1/user_pb";
 
 export * from "./gen/acme/payroll/v1/payroll_pb";
 export * from "./gen/acme/payroll/v1/project_pb";
 export * from "./gen/acme/payroll/v1/staff_pb";
+export * from "./gen/acme/payroll/v1/user_pb";
 export { Code, ConnectError, type Transport } from "@connectrpc/connect";
 
 export interface ApiOptions {
@@ -33,6 +35,7 @@ export interface ApiClients {
   payroll: Client<typeof PayrollService>;
   staff: Client<typeof StaffService>;
   project: Client<typeof ProjectService>;
+  user: Client<typeof UserService>;
 }
 
 /// 画面を通さずに API を呼ぶクライアント(E2E のテストデータ投入など)
@@ -42,5 +45,6 @@ export function createApiClients(options: ApiOptions): ApiClients {
     payroll: createClient(PayrollService, transport),
     staff: createClient(StaffService, transport),
     project: createClient(ProjectService, transport),
+    user: createClient(UserService, transport),
   };
 }

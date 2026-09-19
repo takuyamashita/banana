@@ -19,7 +19,7 @@ function renderAt(path: string) {
       </AppLayout>
     ),
   });
-  const pages = ["/payslips", "/staff", "/projects"].map((page) =>
+  const pages = ["/payslips", "/staff", "/projects", "/admins"].map((page) =>
     createRoute({ getParentRoute: () => root, path: page, component: () => null }),
   );
   const router = createRouter({

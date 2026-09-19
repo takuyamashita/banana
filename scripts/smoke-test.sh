@@ -14,6 +14,7 @@ FAIL=0
 g() {
   grpcurl -plaintext -import-path proto \
     -proto acme/payroll/v1/payroll.proto -proto acme/payroll/v1/staff.proto -proto acme/payroll/v1/project.proto \
+    -proto acme/payroll/v1/user.proto \
     "$@"
 }
 
@@ -77,6 +78,14 @@ check_id "派遣社員登録" "$TARO_ID" "$HANAKO_ID"
 check "同じメールの再登録は AlreadyExists" "AlreadyExists" \
   "$(call "$ADMIN" StaffService/CreateStaff "{\"email\":\"$TARO\",\"display_name\":\"x\",\"temporary_password\":\"Temp-pass-1\"}")"
 
+NEW_ADMIN=admin-$SUFFIX@example.com
+check "管理者の追加(利用者IDが返る)" '"userId"' \
+  "$(call "$ADMIN" UserService/CreateAdminUser "{\"email\":\"$NEW_ADMIN\",\"temporary_password\":\"Temp-pass-1\"}")"
+check "同じメールでの管理者の追加は AlreadyExists" "AlreadyExists" \
+  "$(call "$ADMIN" UserService/CreateAdminUser "{\"email\":\"$NEW_ADMIN\",\"temporary_password\":\"Temp-pass-1\"}")"
+check "派遣社員と同じメールの管理者も作れない" "AlreadyExists" \
+  "$(call "$ADMIN" UserService/CreateAdminUser "{\"email\":\"$TARO\",\"temporary_password\":\"Temp-pass-1\"}")"
+
 LINES="[{\"project_id\":$PROJECT_ID,\"work_minutes\":9600,\"hourly_rate\":1501},{\"project_id\":$PROJECT_ID,\"work_minutes\":90,\"hourly_rate\":1500}]"
 CREATE="{\"staff_id\":$TARO_ID,\"pay_year\":2026,\"pay_month\":9,\"lines\":$LINES}"
 PAYSLIP_ID=$(call "$ADMIN" PayrollService/CreatePayslip "$CREATE" | id_of .payslipId)
@@ -111,8 +120,13 @@ check "合計は円未満切り捨て" '"totalYen": "242410"' \
 
 confirm_password "$TARO"
 confirm_password "$HANAKO"
+confirm_password "$NEW_ADMIN"
 TARO_TOKEN=$(token "$TARO")
 HANAKO_TOKEN=$(token "$HANAKO")
+NEW_ADMIN_TOKEN=$(token "$NEW_ADMIN")
+
+# 追加した管理者に admin ロールが付いているか(管理者だけの RPC が通るかで確かめる)
+check "追加した管理者は管理の操作ができる" '"staff"' "$(call "$NEW_ADMIN_TOKEN" StaffService/ListStaff '{}')"
 
 check "本人は GetMe で自分の staff_id が分かる" "\"staffId\": \"$TARO_ID\"" "$(call "$TARO_TOKEN" StaffService/GetMe '{}')"
 check "本人は自分の明細を見られる" "\"payslipId\": \"$PAYSLIP_ID\"" \
@@ -129,6 +143,8 @@ check "派遣社員は給与明細を作成できない" "PermissionDenied" \
   "$(call "$TARO_TOKEN" PayrollService/CreatePayslip "{\"staff_id\":$TARO_ID,\"pay_year\":2026,\"pay_month\":11,\"lines\":$LINES}")"
 check "派遣社員は給与明細を確定できない" "PermissionDenied" \
   "$(call "$TARO_TOKEN" PayrollService/FinalizePayslip "{\"payslip_id\":$DRAFT_ID}")"
+check "派遣社員は管理者を追加できない" "PermissionDenied" \
+  "$(call "$TARO_TOKEN" UserService/CreateAdminUser "{\"email\":\"x-$SUFFIX@example.com\",\"temporary_password\":\"Temp-pass-1\"}")"
 
 echo
 echo "passed: $PASS, failed: $FAIL"

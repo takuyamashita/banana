@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use payroll_domain::staff::{DisplayName, NewStaff, Staff, StaffId};
 use platform_kernel::AuthenticatedUser;
-use platform_kernel::Email;
+use platform_kernel::{Email, Role};
 
 use crate::UseCaseError;
 use crate::ports::database::Database;
@@ -51,8 +51,10 @@ impl CreateStaffUseCase {
             return Err(UseCaseError::Conflict("同じメールアドレスの派遣社員がいます".into()));
         }
 
-        let user_id =
-            self.user_directory.create_user(&input.email, &input.temporary_password).await?;
+        let user_id = self
+            .user_directory
+            .create_user(&input.email, &input.temporary_password, Role::Staff)
+            .await?;
 
         let new = NewStaff::new(user_id.clone(), input.email, input.display_name);
         match self.register(&new).await {

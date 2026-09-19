@@ -29,6 +29,7 @@ use payroll_usecase::ports::repository::{
 };
 use payroll_usecase::ports::user_directory::{UserDirectory, UserDirectoryError};
 use payroll_usecase::staff::{CreateStaffInput, CreateStaffUseCase};
+use payroll_usecase::user::{CreateAdminUserInput, CreateAdminUserUseCase};
 use platform_kernel::{AuthenticatedUser, Email, Money, Role, UserId};
 use time::OffsetDateTime;
 use time::macros::datetime;
@@ -414,15 +415,26 @@ impl Clock for FixedClock {
 #[derive(Default)]
 struct FakeDirectory {
     deleted: Mutex<Vec<UserId>>,
-    created: Mutex<HashMap<String, UserId>>,
+    /// 発行したアカウント。メールアドレス → 利用者IDと、付けたロール
+    created: Mutex<HashMap<String, (UserId, Role)>>,
     fail_delete: bool,
+    /// 同じメールアドレスのアカウントが既にあるとして断る
+    already_exists: bool,
 }
 
 #[async_trait]
 impl UserDirectory for FakeDirectory {
-    async fn create_user(&self, email: &Email, _pw: &str) -> Result<UserId, UserDirectoryError> {
+    async fn create_user(
+        &self,
+        email: &Email,
+        _pw: &str,
+        role: Role,
+    ) -> Result<UserId, UserDirectoryError> {
+        if self.already_exists {
+            return Err(UserDirectoryError::AlreadyExists);
+        }
         let id = UserId::parse(format!("sub-{}", email.as_str())).unwrap();
-        self.created.lock().unwrap().insert(email.as_str().to_owned(), id.clone());
+        self.created.lock().unwrap().insert(email.as_str().to_owned(), (id.clone(), role));
         Ok(id)
     }
 
@@ -715,6 +727,49 @@ async fn create_staff_rejects_the_same_email_without_issuing_an_account() {
 
     assert!(matches!(err, UseCaseError::Conflict(_)));
     assert!(directory.created.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn create_staff_issues_an_account_with_the_staff_role() {
+    let world = Arc::new(World::default());
+    let directory = Arc::new(FakeDirectory::default());
+
+    create_staff_usecase(&world, &directory).execute(staff_input("new@example.com")).await.unwrap();
+
+    // 派遣社員のアカウントには派遣社員のロールが付く(管理の操作はできない)
+    let created = directory.created.lock().unwrap();
+    assert_eq!(created.get("new@example.com").map(|(_, role)| *role), Some(Role::Staff));
+}
+
+#[tokio::test]
+async fn create_admin_user_issues_an_account_with_the_admin_role() {
+    let directory = Arc::new(FakeDirectory::default());
+    let usecase = CreateAdminUserUseCase::new(directory.clone());
+
+    let user_id = usecase.execute(admin_user_input("new-admin@example.com")).await.unwrap();
+
+    // 管理者は雇用の記録を持たないので、作られるのは認証基盤のアカウントだけ
+    assert_eq!(user_id, UserId::parse("sub-new-admin@example.com").unwrap());
+    let created = directory.created.lock().unwrap();
+    assert_eq!(created.get("new-admin@example.com").map(|(_, role)| *role), Some(Role::Admin));
+}
+
+#[tokio::test]
+async fn create_admin_user_rejects_an_email_already_in_use() {
+    // 派遣社員もメールアドレスでログインするので、その分も認証基盤が重なりとして断る
+    let directory = Arc::new(FakeDirectory { already_exists: true, ..FakeDirectory::default() });
+    let usecase = CreateAdminUserUseCase::new(directory);
+
+    let err = usecase.execute(admin_user_input("taro@example.com")).await.unwrap_err();
+
+    assert!(matches!(err, UseCaseError::Conflict(_)), "{err:?}");
+}
+
+fn admin_user_input(email: &str) -> CreateAdminUserInput {
+    CreateAdminUserInput {
+        email: Email::parse(email).unwrap(),
+        temporary_password: "Temp-pass-1".into(),
+    }
 }
 
 #[tokio::test]
