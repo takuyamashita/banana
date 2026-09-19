@@ -42,6 +42,28 @@
 - **opentelemetry の版**: `tracing-opentelemetry` の最新(0.33)は `opentelemetry` 0.32 用。各 crate の最新版をそのまま並べると型が合わない。
 - **reqwest 0.13**: `form()` が `form` feature に分かれた。
 
+## 検証を受けて見直した設計
+
+ガイドの記述どおりに動いたが、使い続けると困る点が見つかり、ガイドの方針ごと改めたもの。ガイドは改訂済み。
+
+- **出来事は集約に溜めず、操作の戻り値で返す**: 当初は集約が `events` に出来事を溜め、リポジトリの `insert` が `take_events()` で取り出して outbox に書いていた。
+  - この形だと、取り出し忘れ(`update` 側で outbox に書き忘れるなど)をコンパイラが検出できない。集約の記録と outbox の記録がリポジトリの中に隠れ、ユースケースを読んでも出来事の流れが追えない。
+  - `finalize()` が `Result<PayslipEvent, _>` を返す形(cqrs-es などの Decider パターン)にした。
+  - `PayslipEvent`・`PayrollEvent` に `#[must_use]` を付け、workspace の lints で `unused_must_use = "deny"` にした。`new.finalize()?;` のように `?` で包んで捨てた場合も検出されることを確認した。
+- **記録はトランザクションのスコープ(Unit of Work)でまとめる**: ガイドの「1トランザクションで複数集約を更新しない」は、1つのユースケースで複数の集約を扱う場面が出ると守れない。
+  - 3つの方式を比べた。
+    - 記録先の `save` に出来事を渡す方式: 集約が1つのときしか書けない。
+    - Tx を引数で渡す方式(Tx は trait の関連型): Tx の型が usecase・handler・bootstrap に型引数として伝わり、`Arc<dyn …>` による DI と合わない。
+    - スコープ方式(採用): 下記の形。
+  - 採用した形: `Transactions::begin()` が `Box<dyn TransactionScope>` を返し、スコープから記録先(`payslips()`・`staff()`・`projects()`・`events()`)を借りて `commit()` する。
+  - 取り出し(`*Repository`)と記録(`*Store`)を分けたので、記録はスコープの外では書けない。
+  - 制約は「コンテキストをまたいで1トランザクションで更新しない」に緩めた。スコープが貸すのはそのコンテキストの記録先だけなので、この制約は構造で守られる。
+  - commit せずに捨てたスコープの記録が残らないこと(実際の MySQL)と、出来事の記録に失敗したら給与明細も残らないこと(usecase のフェイク)をテストで確認した。
+- **usecase のテストに mockall は入れない**: 状態を持つ手書きのフェイクのままにした。
+  - スコープの `fn payslips(&mut self) -> Box<dyn PayslipStore + '_>` は、`#[automock]` でコンパイルエラーになる(E0106・E0637、実験で確認)。借用しない戻り値の形と `self: Box<Self>` のメソッドは生成できる。
+  - `tests/` の統合テストから見るとライブラリは `cfg(test)` なしでビルドされるので、`#[cfg_attr(test, automock)]` のモックは見えない。使うには feature を用意する必要がある。
+  - 確かめたいのは呼び出しの順序や回数ではなく、最後に何が記録されたか。外部に副作用を起こすポート(`PayoutGateway`・`UserDirectory` など)で呼び出し回数を固定したくなったら、そのポートにだけ入れる。
+
 ## この環境では確かめていないこと
 
 - AWS への `terraform apply` と実際のデプロイ(`deploy` ワークフロー)。Terraform は validate・tflint・trivy まで。
@@ -54,7 +76,7 @@
 | 対象                                                                                            | 方法                                                     | 結果                             |
 | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------- | -------------------------------- |
 | Rust の lint(fmt・clippy pedantic・cargo-deny・依存ルール)                                      | `mise run lint:rust`                                     | 通過                             |
-| domain・usecase の単体テスト、DB 結合テスト(testcontainers)、API テスト(tonic クライアント)     | `mise run test:rust`                                     | 29件通過                         |
+| domain・usecase の単体テスト、DB 結合テスト(testcontainers)、API テスト(tonic クライアント)     | `mise run test:rust`                                     | 31件通過                         |
 | フロントの lint・型・コンポーネントテスト・ビルド                                               | `mise run lint:ts`・`test:ts`・`pnpm --filter web build` | 通過(2件)                        |
 | gRPC の主要シナリオ(認証・認可・二重確定・入力検証・金額計算)                                   | `scripts/smoke-test.sh`                                  | 16件通過                         |
 | outbox → relay → ElasticMQ → consumer(再配信の冪等性を含む)                                     | local_poller・`cargo lambda invoke`                      | 期待どおり                       |
