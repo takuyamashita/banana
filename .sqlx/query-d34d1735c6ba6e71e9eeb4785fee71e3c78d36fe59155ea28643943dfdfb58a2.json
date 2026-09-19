@@ -14,7 +14,7 @@
         },
         "origin": {
           "Table": {
-            "table": "platform.payouts",
+            "table": "payroll.payouts",
             "name": "id"
           }
         }
@@ -30,7 +30,7 @@
         },
         "origin": {
           "Table": {
-            "table": "platform.payouts",
+            "table": "payroll.payouts",
             "name": "payslip_id"
           }
         }
@@ -46,7 +46,7 @@
         },
         "origin": {
           "Table": {
-            "table": "platform.payouts",
+            "table": "payroll.payouts",
             "name": "staff_id"
           }
         }
@@ -62,7 +62,7 @@
         },
         "origin": {
           "Table": {
-            "table": "platform.payouts",
+            "table": "payroll.payouts",
             "name": "amount_yen"
           }
         }
@@ -78,7 +78,7 @@
         },
         "origin": {
           "Table": {
-            "table": "platform.payouts",
+            "table": "payroll.payouts",
             "name": "outcome"
           }
         }
@@ -94,7 +94,7 @@
         },
         "origin": {
           "Table": {
-            "table": "platform.payouts",
+            "table": "payroll.payouts",
             "name": "receipt"
           }
         }
@@ -110,7 +110,7 @@
         },
         "origin": {
           "Table": {
-            "table": "platform.payouts",
+            "table": "payroll.payouts",
             "name": "reject_reason"
           }
         }

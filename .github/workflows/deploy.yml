@@ -45,7 +45,7 @@ jobs:
 
       - name: server イメージ(cargo-chef)をビルド
         run: |
-          docker build --platform linux/arm64 -f backend/app/server/Dockerfile -t "server:$GITHUB_SHA" .
+          docker build --platform linux/arm64 -f backend/Dockerfile --build-arg SERVICE=payroll -t "server:$GITHUB_SHA" .
           mkdir -p release
           docker save "server:$GITHUB_SHA" | gzip > release/server-image.tar.gz
 

@@ -1,0 +1,12 @@
+# 給与(payroll)サービスの prd 環境。インフラが決める値(issuer・Cognito の ID・トピック・キュー・CORS の許可元・シークレット ID)は
+# Terraform が環境変数(PAYROLL__*)で渡すので、ここには書かない
+[auth]
+provider = "cognito"
+
+[payout]
+provider = "bank"
+base_url = "https://bank-api.prd.example.com"
+
+[telemetry]
+# ADOT collector(ECS はサイドカー、Lambda はレイヤー)
+otlp_endpoint = "http://localhost:4317"

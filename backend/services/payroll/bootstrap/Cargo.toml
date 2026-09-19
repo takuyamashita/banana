@@ -1,0 +1,27 @@
+[package]
+name = "payroll-bootstrap"
+version = "0.1.0"
+edition.workspace = true
+publish.workspace = true
+description = "設定の読み込みと依存の組み立て(DI)。設定を読むのはこの crate だけ"
+
+[dependencies]
+anyhow.workspace = true
+aws-config.workspace = true
+aws-sdk-cognitoidentityprovider.workspace = true
+config.workspace = true
+payroll-handler.workspace = true
+payroll-infrastructure.workspace = true
+payroll-usecase.workspace = true
+platform-gen.workspace = true
+platform-messaging.workspace = true
+platform-service.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tonic.workspace = true
+
+[lints]
+workspace = true

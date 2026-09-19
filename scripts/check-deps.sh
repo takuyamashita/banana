@@ -45,11 +45,15 @@ allowed_workspace_deps() {
   case "$1" in
     *-domain) echo '^platform-kernel$' ;;
     *-usecase) echo "^(${1%-usecase}-domain|platform-kernel)$" ;;
-    *-infrastructure) echo "^(${1%-infrastructure}-(domain|usecase)|platform-(kernel|telemetry))$" ;;
+    *-infrastructure) echo "^(${1%-infrastructure}-(domain|usecase)|platform-(kernel|telemetry|db|messaging))$" ;;
     *-handler) echo "^(${1%-handler}-(domain|usecase)|platform-(kernel|auth|gen))$" ;;
-    platform-kernel | platform-gen) echo '^$' ;;
+    platform-kernel | platform-gen | platform-db) echo '^$' ;;
     platform-auth | platform-telemetry) echo '^platform-kernel$' ;;
-    *) echo '.*' ;; # app 層(bootstrap・server・lambda・migrate)は組み立て役なので何に依存してもよい
+    platform-messaging) echo '^platform-telemetry$' ;;
+    platform-service) echo '^platform-(auth|db|messaging|telemetry)$' ;;
+    # サービスの組み立て役(bootstrap・server・migrate・Lambda)は、自分のコンテキストと共通の crate なら何に依存してもよい
+    # (他のコンテキストへの依存は、下の「コンテキストをまたがない」で止める)
+    *) echo '.*' ;;
   esac
 }
 
@@ -60,6 +64,24 @@ for crate in $MEMBERS; do
   for dep in $(direct "$crate"); do
     if grep -qx "$dep" <<<"$MEMBERS" && ! [[ "$dep" =~ $pattern ]]; then
       violation "$crate → $dep は禁止(許可: $pattern)"
+    fi
+  done
+done
+
+# コンテキストをまたがない: backend/contexts/<名前>/ と backend/services/<名前>/ の crate は、
+# 別の名前のコンテキストの crate に依存しない(サービスの間は、proto の API と出来事でだけつながる)
+context_of() {
+  jq -r --arg name "$1" '.packages[] | select(.name == $name) | .manifest_path' <<<"$META" |
+    sed -nE 's#.*/backend/(contexts|services)/([^/]+)/.*#\2#p'
+}
+for crate in $MEMBERS; do
+  own=$(context_of "$crate")
+  [[ -n $own ]] || continue
+  for dep in $(direct "$crate"); do
+    grep -qx "$dep" <<<"$MEMBERS" || continue
+    other=$(context_of "$dep")
+    if [[ -n $other && $other != "$own" ]]; then
+      violation "$crate($own)→ $dep($other)は禁止。コンテキストの間は API と出来事でつなぐ"
     fi
   done
 done

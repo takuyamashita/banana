@@ -6,6 +6,7 @@ publish.workspace = true
 description = "OIDC トークン検証(JWKS キャッシュ・プロバイダ別クレーム mapper)"
 
 [dependencies]
+axum.workspace = true
 jsonwebtoken.workspace = true
 platform-kernel.workspace = true
 reqwest.workspace = true
@@ -13,8 +14,8 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+tonic.workspace = true
 tracing.workspace = true
-
 
 [dev-dependencies]
 # テストでトークンに署名するため、PEM の鍵を読めるようにする

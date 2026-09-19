@@ -1,0 +1,29 @@
+[package]
+name = "payout-dispatcher"
+version = "0.1.0"
+edition.workspace = true
+publish.workspace = true
+description = "SQS(振込のキュー)トリガーの Lambda。給与確定の出来事を受けて振込を依頼する"
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+aws_lambda_events.workspace = true
+payroll-bootstrap.workspace = true
+lambda_runtime.workspace = true
+payroll-domain.workspace = true
+payroll-infrastructure.workspace = true
+payroll-usecase.workspace = true
+platform-kernel.workspace = true
+platform-messaging.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+
+[[bin]]
+name = "payout-dispatcher"
+path = "src/main.rs"
+
+[lints]
+workspace = true

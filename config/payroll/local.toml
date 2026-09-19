@@ -1,0 +1,36 @@
+# ローカル開発(compose.yaml の依存サービス)向け。ここに本番の秘密情報は書かない
+[server]
+cors_allowed_origins = ["http://localhost:5173"]
+shutdown_grace_seconds = 2
+
+[database]
+url = "mysql://payroll:payroll@127.0.0.1:3306/payroll"
+
+[auth]
+provider = "keycloak"
+issuer = "http://localhost:8080/realms/platform"
+audience = "platform-api"
+
+[user_directory]
+keycloak_base_url = "http://localhost:8080"
+keycloak_realm = "platform"
+keycloak_admin_client_id = "platform-backend"
+keycloak_admin_client_secret = "platform-backend-secret"
+
+[messaging]
+# SNS の代わりに、給与の出来事の受け手(振込・勤怠)のキューへ直接送る
+publish_queue_urls = [
+  "http://localhost:9324/000000000000/payroll-payout.fifo",
+  "http://localhost:9324/000000000000/timesheet-inbox.fifo",
+]
+inbox_queue_url = "http://localhost:9324/000000000000/payroll-inbox.fifo"
+sqs_endpoint = "http://localhost:9324"
+
+[payout]
+provider = "logging"
+queue_url = "http://localhost:9324/000000000000/payroll-payout.fifo"
+
+[telemetry]
+otlp_endpoint = "http://localhost:4317"
+json_logs = false
+log_filter = "info,sqlx=warn"

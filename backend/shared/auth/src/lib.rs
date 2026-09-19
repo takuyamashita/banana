@@ -5,6 +5,7 @@
 
 mod jwks;
 mod mapper;
+mod middleware;
 
 use std::time::Duration;
 
@@ -13,6 +14,7 @@ use platform_kernel::AuthenticatedUser;
 use thiserror::Error;
 
 pub use mapper::ClaimMapper;
+pub use middleware::{authenticate, current_user, require_admin};
 
 use crate::jwks::JwksCache;
 

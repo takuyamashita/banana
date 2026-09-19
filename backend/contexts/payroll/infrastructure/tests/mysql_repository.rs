@@ -13,7 +13,6 @@ use payroll_domain::project::{NewProject, Project, ProjectId, ProjectName};
 use payroll_domain::staff::{DisplayName, NewStaff, Staff, StaffId};
 use payroll_infrastructure::database::MySqlDatabase;
 use payroll_infrastructure::messaging::outbox::MySqlEventOutbox;
-use payroll_infrastructure::messaging::relay::relay_once;
 use payroll_infrastructure::repository::{
     MySqlPayoutRepository, MySqlPayslipRepository, MySqlProjectRepository, MySqlStaffRepository,
 };
@@ -26,6 +25,8 @@ use payroll_usecase::ports::repository::{
     PayoutRepository, PayslipRepository, ProjectRepository, RepositoryError, StaffRepository,
 };
 use platform_kernel::{Email, Money, UserId};
+use platform_messaging::publisher::{Outgoing, PublishError, Publisher};
+use platform_messaging::relay::{RelayLock, relay_once};
 use sqlx::MySqlPool;
 use testcontainers_modules::mysql::Mysql;
 use testcontainers_modules::testcontainers::runners::AsyncRunner;
@@ -591,18 +592,35 @@ async fn payout_is_restored_as_updated() {
     assert_eq!((found.id(), found.amount(), found.outcome()), (id, amount, &rejected));
 }
 
-/// つながらない送り先の SQS。送ろうとしたことだけを確かめるのに使う
-fn unreachable_sqs() -> aws_sdk_sqs::Client {
-    use aws_sdk_sqs::config::{BehaviorVersion, Credentials, Region, retry::RetryConfig};
-    aws_sdk_sqs::Client::from_conf(
-        aws_sdk_sqs::Config::builder()
-            .behavior_version(BehaviorVersion::latest())
-            .region(Region::new("ap-northeast-1"))
-            .endpoint_url("http://127.0.0.1:9")
-            .credentials_provider(Credentials::new("test", "test", None, None, "test"))
-            .retry_config(RetryConfig::disabled())
-            .build(),
-    )
+/// 送った出来事を覚えておく送り先。`fail` なら送れなかったことにする
+#[derive(Default)]
+struct FakePublisher {
+    fail: bool,
+    sent: std::sync::Mutex<Vec<(String, String, String, String)>>,
+}
+
+#[async_trait::async_trait]
+impl Publisher for FakePublisher {
+    async fn publish(&self, message: &Outgoing<'_>) -> Result<(), PublishError> {
+        if self.fail {
+            return Err(PublishError("送り先につながりません".into()));
+        }
+        self.sent.lock().unwrap().push((
+            message.group.to_owned(),
+            message.deduplication_id.to_owned(),
+            message.event_type.to_owned(),
+            message.body.to_owned(),
+        ));
+        Ok(())
+    }
+}
+
+fn failing() -> FakePublisher {
+    FakePublisher { fail: true, ..FakePublisher::default() }
+}
+
+fn lock() -> RelayLock {
+    RelayLock::for_service("payroll")
 }
 
 async fn unpublished_count(pool: &MySqlPool) -> i64 {
@@ -618,17 +636,23 @@ async fn relay_sends_only_while_it_holds_the_lock() {
     let db = db().await;
     let (staff, project) = seed(&db).await;
     create_and_finalize(&db, staff, project, 9).await;
-    let sqs = unreachable_sqs();
+    let publisher = failing();
 
     // 他のインスタンスがロックを持っている間は、送らずに 0 件で終わる
     let mut other = db.pool.acquire().await.unwrap();
     sqlx::query("select get_lock('payroll_outbox_relay', 0)").execute(&mut *other).await.unwrap();
-    assert_eq!(relay_once(&db.pool, &sqs, "queue", &CancellationToken::new()).await.unwrap(), 0);
+    assert_eq!(
+        relay_once(&db.pool, &publisher, &lock(), &CancellationToken::new()).await.unwrap(),
+        0
+    );
     sqlx::query("select release_lock('payroll_outbox_relay')").execute(&mut *other).await.unwrap();
     drop(other);
 
     // ロックが空けば送ろうとする。送れなかった出来事は、試行回数とエラーを残して未送信のまま残る
-    assert_eq!(relay_once(&db.pool, &sqs, "queue", &CancellationToken::new()).await.unwrap(), 0);
+    assert_eq!(
+        relay_once(&db.pool, &publisher, &lock(), &CancellationToken::new()).await.unwrap(),
+        0
+    );
     assert_eq!(unpublished_count(&db.pool).await, 1);
     let (attempts, has_error): (i32, bool) =
         sqlx::query_as("select attempts, last_error is not null from outbox")
@@ -688,10 +712,42 @@ async fn relay_stops_before_the_next_row_when_asked_to_stop() {
     stop.cancel();
 
     // 止められていれば、1件も送ろうとしない(送れなかった回数も増えない)
-    assert_eq!(relay_once(&db.pool, &unreachable_sqs(), "queue", &stop).await.unwrap(), 0);
+    assert_eq!(relay_once(&db.pool, &failing(), &lock(), &stop).await.unwrap(), 0);
     let attempts: i64 = sqlx::query_scalar("select cast(sum(attempts) as signed) from outbox")
         .fetch_one(&db.pool)
         .await
         .unwrap();
     assert_eq!((unpublished_count(&db.pool).await, attempts), (2, 0));
+}
+
+#[tokio::test]
+async fn relay_sends_events_in_order_with_their_group_and_marks_them_published() {
+    let db = db().await;
+    let (staff, project) = seed(&db).await;
+    let first = create_and_finalize(&db, staff, project, 9).await;
+    let second = create_and_finalize(&db, staff, project, 10).await;
+    let publisher = FakePublisher::default();
+
+    assert_eq!(
+        relay_once(&db.pool, &publisher, &lock(), &CancellationToken::new()).await.unwrap(),
+        2
+    );
+
+    // 記録した順に、集約ごとのグループと outbox の番号(重複を除く鍵)を付けて送る
+    let sent = publisher.sent.lock().unwrap().clone();
+    let groups: Vec<_> = sent.iter().map(|(group, ..)| group.clone()).collect();
+    assert_eq!(
+        groups,
+        [format!("payslip-{}", first.as_i64()), format!("payslip-{}", second.as_i64())]
+    );
+    assert!(sent.iter().all(|(_, _, event_type, _)| event_type == "payslip.finalized"));
+    let envelope: serde_json::Value = serde_json::from_str(&sent[0].3).unwrap();
+    assert_eq!(envelope["event_id"].to_string(), sent[0].1);
+    assert_eq!(envelope["payload"]["payslip_id"], first.as_i64());
+    // 送れた出来事は送信済みになり、次は送らない
+    assert_eq!(unpublished_count(&db.pool).await, 0);
+    assert_eq!(
+        relay_once(&db.pool, &publisher, &lock(), &CancellationToken::new()).await.unwrap(),
+        0
+    );
 }

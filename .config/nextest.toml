@@ -4,7 +4,7 @@
 mysql = { max-threads = 8 }
 
 [[profile.default.overrides]]
-filter = "(package(payroll-infrastructure) | package(server) | package(migrate)) & kind(test)"
+filter = "(package(payroll-infrastructure) | package(payroll-server) | package(platform-service)) & kind(test)"
 test-group = "mysql"
 
 [profile.default]

@@ -10,8 +10,8 @@ use payroll_usecase::payslip::{
 use platform_gen::acme::payroll::v1 as proto;
 use tonic::{Request, Response, Status};
 
-use crate::auth::{current_user, require_admin};
 use crate::error::{invalid_argument, to_status};
+use platform_auth::{current_user, require_admin};
 
 pub struct PayrollServiceHandler {
     create_payslip: CreatePayslipUseCase,

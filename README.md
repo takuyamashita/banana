@@ -48,7 +48,7 @@ mise run dev-frontend             # Vite :5173
 非同期側(outbox → SQS → Lambda)をローカルで動かすには、server を起動した状態で
 `cargo run -p payout-dispatcher --bin local_poller` を実行する(ElasticMQ をポーリングして Lambda と同じ処理を呼ぶ。振込の結果は `payouts` テーブルに残り、5回処理できなかったメッセージは `payroll-events-dlq.fifo` に移る)。
 Lambda 本体は `cargo lambda watch -p payout-dispatcher` と
-`cargo lambda invoke payout-dispatcher --data-file backend/app/lambdas/payout-dispatcher/events/sqs-payslip-finalized.json` で確認できる。
+`cargo lambda invoke payout-dispatcher --data-file backend/services/payroll/payout-dispatcher/events/sqs-payslip-finalized.json` で確認できる。
 
 ## worktree で並行開発する
 

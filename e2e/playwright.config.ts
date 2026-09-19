@@ -21,7 +21,7 @@ export default defineConfig({
   // server は /ready(DB にも届く)が 200 になるまで待つ。Vite は変更を即座に反映するので、起動済みならそれを使う
   webServer: [
     {
-      command: "cargo run -p server",
+      command: "cargo run -p payroll-server",
       url: `${API}/ready`,
       // 起動済みの server はコードを変えても古いまま(cargo run は作り直さない)なので、使い回すのは明示したときだけ
       reuseExistingServer: process.env["E2E_REUSE_SERVER"] === "1",

@@ -1,0 +1,13 @@
+[package]
+name = "platform-db"
+version = "0.1.0"
+edition.workspace = true
+publish.workspace = true
+description = "MySQL への接続(接続ごとの設定)と、DB のエラーの分類。どのサービスも同じ決まりで接続する"
+
+[dependencies]
+sqlx.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true
