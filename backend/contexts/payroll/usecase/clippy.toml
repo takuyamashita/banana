@@ -7,4 +7,5 @@ disallowed-methods = [
   { path = "payroll_domain::payslip::Payslip::reconstruct_finalized", reason = "永続化からの再構築はrepository実装専用です。usecaseでは Payslip::draft を使ってください" },
   { path = "payroll_domain::staff::Staff::reconstruct", reason = "永続化からの再構築はrepository実装専用です" },
   { path = "payroll_domain::project::Project::reconstruct", reason = "永続化からの再構築はrepository実装専用です" },
+  { path = "payroll_domain::payout::Payout::reconstruct", reason = "永続化からの再構築はrepository実装専用です" },
 ]

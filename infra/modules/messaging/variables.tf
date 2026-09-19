@@ -8,3 +8,9 @@ variable "visibility_timeout_seconds" {
   type        = number
   default     = 180
 }
+
+variable "alarm_actions" {
+  description = "DLQ のアラームの通知先(SNS トピックの ARN など)。空ならアラームの状態だけが変わる"
+  type        = list(string)
+  default     = []
+}

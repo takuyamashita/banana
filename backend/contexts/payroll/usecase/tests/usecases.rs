@@ -8,20 +8,24 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
+use payroll_domain::payout::{NewPayout, Payout, PayoutId, PayoutOutcome};
 use payroll_domain::payslip::{
     NewPayslip, PayPeriod, Payslip, PayslipEvent, PayslipId, PayslipLine, WorkMinutes,
 };
-use payroll_domain::project::ProjectId;
+use payroll_domain::project::{NewProject, Project, ProjectId, ProjectName};
 use payroll_domain::staff::{DisplayName, NewStaff, Staff, StaffId};
 use payroll_usecase::UseCaseError;
 use payroll_usecase::payslip::{
     CreatePayslipInput, CreatePayslipUseCase, FinalizePayslipUseCase, GetPayslipUseCase,
-    ListPayslipsUseCase,
+    ListPayslipsUseCase, RequestPayoutInput, RequestPayoutResult, RequestPayoutUseCase,
 };
 use payroll_usecase::ports::clock::Clock;
 use payroll_usecase::ports::database::{Database, Db, DbHandle, Transaction};
 use payroll_usecase::ports::events::{EventOutbox, PayrollEvent};
-use payroll_usecase::ports::repository::{PayslipRepository, RepositoryError, StaffRepository};
+use payroll_usecase::ports::payout_gateway::{PayoutError, PayoutGateway, PayoutReceipt};
+use payroll_usecase::ports::repository::{
+    PayoutRepository, PayslipRepository, ProjectRepository, RepositoryError, StaffRepository,
+};
 use payroll_usecase::ports::user_directory::{UserDirectory, UserDirectoryError};
 use payroll_usecase::staff::{CreateStaffInput, CreateStaffUseCase};
 use platform_kernel::{AuthenticatedUser, Email, Money, Role, UserId};
@@ -41,6 +45,8 @@ type StaffRow = (StaffId, UserId, Email);
 struct Records {
     payslips: Vec<PayslipRow>,
     staff: Vec<StaffRow>,
+    projects: Vec<ProjectId>,
+    payouts: Vec<(PayslipId, StaffId, Money, PayoutOutcome)>,
     events: Vec<PayrollEvent>,
 }
 
@@ -52,6 +58,7 @@ struct World {
 }
 
 impl World {
+    /// 派遣社員と、案件1件(案件番号 1)が登録済みの状態
     fn with_staff(rows: &[(i64, &str)]) -> Self {
         let staff = rows
             .iter()
@@ -63,7 +70,11 @@ impl World {
                 )
             })
             .collect();
-        Self { committed: Mutex::new(Records { staff, ..Records::default() }), ..Self::default() }
+        let projects = vec![ProjectId::from_i64(1).unwrap()];
+        Self {
+            committed: Mutex::new(Records { staff, projects, ..Records::default() }),
+            ..Self::default()
+        }
     }
 
     fn records(&self) -> Records {
@@ -212,6 +223,29 @@ impl StaffRepository for FakeStaff {
     }
 }
 
+struct FakeProjects(Arc<World>);
+
+#[async_trait]
+impl ProjectRepository for FakeProjects {
+    #[allow(clippy::disallowed_methods, reason = "フェイクのリポジトリ実装")]
+    async fn find(&self, id: ProjectId) -> Result<Option<Project>, RepositoryError> {
+        Ok(self
+            .0
+            .records()
+            .projects
+            .contains(&id)
+            .then(|| Project::reconstruct(id, ProjectName::new("案件").unwrap())))
+    }
+
+    async fn insert(&self, db: &mut Db, _new: &NewProject) -> Result<ProjectId, RepositoryError> {
+        Ok(fake(db).write(|r| {
+            let id = ProjectId::from_i64(next_id(r.projects.len())).unwrap();
+            r.projects.push(id);
+            id
+        }))
+    }
+}
+
 struct FakeOutbox(Arc<World>);
 
 #[async_trait]
@@ -222,6 +256,59 @@ impl EventOutbox for FakeOutbox {
         }
         fake(db).write(|r| r.events.push(event));
         Ok(())
+    }
+}
+
+struct FakePayouts(Arc<World>);
+
+#[async_trait]
+impl PayoutRepository for FakePayouts {
+    #[allow(clippy::disallowed_methods, reason = "フェイクのリポジトリ実装")]
+    async fn find_by_payslip(
+        &self,
+        payslip_id: PayslipId,
+    ) -> Result<Option<Payout>, RepositoryError> {
+        let records = self.0.records();
+        Ok(records.payouts.iter().enumerate().find(|(_, r)| r.0 == payslip_id).map(|(i, r)| {
+            let id = PayoutId::from_i64(next_id(i)).unwrap();
+            Payout::reconstruct(id, r.0, r.1, r.2, r.3.clone())
+        }))
+    }
+
+    async fn insert(&self, db: &mut Db, new: &NewPayout) -> Result<PayoutId, RepositoryError> {
+        fake(db).write(|r| {
+            // 本物と同じく、1つの給与明細の振込依頼は1つ
+            if r.payouts.iter().any(|p| p.0 == new.payslip_id()) {
+                return Err(RepositoryError::Conflict("一意制約に違反しました".into()));
+            }
+            r.payouts.push((new.payslip_id(), new.staff_id(), new.amount(), new.outcome().clone()));
+            Ok(PayoutId::from_i64(next_id(r.payouts.len() - 1)).unwrap())
+        })
+    }
+}
+
+/// 決めた答えを返す振込先。受けた依頼の冪等キーを覚えておく
+struct FakeGateway {
+    answer: fn() -> Result<PayoutReceipt, PayoutError>,
+    requested: Mutex<Vec<String>>,
+}
+
+impl FakeGateway {
+    fn answering(answer: fn() -> Result<PayoutReceipt, PayoutError>) -> Arc<Self> {
+        Arc::new(Self { answer, requested: Mutex::default() })
+    }
+}
+
+#[async_trait]
+impl PayoutGateway for FakeGateway {
+    async fn request_transfer(
+        &self,
+        _staff_id: StaffId,
+        _amount: Money,
+        idempotency_key: &str,
+    ) -> Result<PayoutReceipt, PayoutError> {
+        self.requested.lock().unwrap().push(idempotency_key.to_owned());
+        (self.answer)()
     }
 }
 
@@ -262,6 +349,7 @@ fn create_usecase(world: &Arc<World>) -> CreatePayslipUseCase {
     CreatePayslipUseCase::new(
         Arc::new(FakePayslips(world.clone())),
         Arc::new(FakeStaff(world.clone())),
+        Arc::new(FakeProjects(world.clone())),
         Arc::new(FakeDatabase(world.clone())),
     )
 }
@@ -273,6 +361,23 @@ fn finalize_usecase(world: &Arc<World>) -> FinalizePayslipUseCase {
         Arc::new(FakeDatabase(world.clone())),
         Arc::new(FixedClock),
     )
+}
+
+fn payout_usecase(world: &Arc<World>, gateway: &Arc<FakeGateway>) -> RequestPayoutUseCase {
+    RequestPayoutUseCase::new(
+        Arc::new(FakePayouts(world.clone())),
+        gateway.clone(),
+        Arc::new(FakeDatabase(world.clone())),
+    )
+}
+
+fn payout_input(payslip: i64, key: &str) -> RequestPayoutInput {
+    RequestPayoutInput {
+        payslip_id: PayslipId::from_i64(payslip).unwrap(),
+        staff_id: StaffId::from_i64(1).unwrap(),
+        total: Money::from_yen(12_000).unwrap(),
+        idempotency_key: key.to_owned(),
+    }
 }
 
 fn line() -> PayslipLine {
@@ -315,6 +420,24 @@ async fn create_rejects_unknown_staff() {
     let world = Arc::new(World::default());
     let err = create_usecase(&world).execute(input(1, 9)).await.unwrap_err();
     assert!(matches!(err, UseCaseError::InvalidInput(_)));
+}
+
+#[tokio::test]
+async fn create_rejects_unknown_project() {
+    let world = Arc::new(World::with_staff(&[(1, "taro")]));
+    let unknown = PayslipLine::new(
+        ProjectId::from_i64(99).unwrap(),
+        WorkMinutes::from_minutes(600).unwrap(),
+        Money::from_yen(1_200).unwrap(),
+    );
+
+    let err = create_usecase(&world)
+        .execute(CreatePayslipInput { lines: vec![line(), unknown], ..input(1, 9) })
+        .await
+        .unwrap_err();
+
+    assert!(matches!(err, UseCaseError::InvalidInput(_)));
+    assert!(world.records().payslips.is_empty());
 }
 
 #[tokio::test]
@@ -448,4 +571,63 @@ async fn create_staff_disables_user_when_registration_fails() {
         directory.disabled.lock().unwrap().as_slice(),
         [UserId::parse("sub-new@example.com").unwrap()]
     );
+}
+
+#[tokio::test]
+async fn accepted_payout_is_recorded_with_its_receipt() {
+    let world = Arc::new(World::default());
+    let gateway = FakeGateway::answering(|| Ok(PayoutReceipt("R-1".into())));
+
+    let result =
+        payout_usecase(&world, &gateway).execute(payout_input(1, "event-1")).await.unwrap();
+
+    assert_eq!(result, RequestPayoutResult::Accepted);
+    assert_eq!(*gateway.requested.lock().unwrap(), ["event-1"]);
+    let payouts = world.records().payouts;
+    assert_eq!(payouts.len(), 1);
+    assert_eq!(payouts[0].3, PayoutOutcome::Accepted { receipt: "R-1".into() });
+}
+
+#[tokio::test]
+async fn rejected_payout_is_recorded_and_not_treated_as_a_failure() {
+    let world = Arc::new(World::default());
+    let gateway =
+        FakeGateway::answering(|| Err(PayoutError::Rejected("口座が見つかりません".into())));
+
+    let result =
+        payout_usecase(&world, &gateway).execute(payout_input(1, "event-1")).await.unwrap();
+
+    // やり直しても通らないので、失敗にはせず、理由とともに記録する
+    assert_eq!(result, RequestPayoutResult::Rejected { reason: "口座が見つかりません".into() });
+    assert_eq!(
+        world.records().payouts[0].3,
+        PayoutOutcome::Rejected { reason: "口座が見つかりません".into() }
+    );
+}
+
+#[tokio::test]
+async fn unavailable_payout_is_not_recorded_so_it_can_be_retried() {
+    let world = Arc::new(World::default());
+    let gateway = FakeGateway::answering(|| Err(PayoutError::Unavailable("timeout".into())));
+
+    let err =
+        payout_usecase(&world, &gateway).execute(payout_input(1, "event-1")).await.unwrap_err();
+
+    assert!(matches!(err, UseCaseError::Unavailable(_)));
+    assert!(world.records().payouts.is_empty());
+}
+
+#[tokio::test]
+async fn payout_is_requested_only_once_per_payslip() {
+    let world = Arc::new(World::default());
+    let gateway = FakeGateway::answering(|| Ok(PayoutReceipt("R-1".into())));
+    let usecase = payout_usecase(&world, &gateway);
+
+    usecase.execute(payout_input(1, "event-1")).await.unwrap();
+    // 同じ給与確定のメッセージがもう一度届いても、振込先には依頼しない
+    let again = usecase.execute(payout_input(1, "event-1")).await.unwrap();
+
+    assert_eq!(again, RequestPayoutResult::AlreadyRequested);
+    assert_eq!(gateway.requested.lock().unwrap().len(), 1);
+    assert_eq!(world.records().payouts.len(), 1);
 }

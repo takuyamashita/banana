@@ -1,0 +1,133 @@
+{
+  "db_name": "MySQL",
+  "query": "select id, payslip_id, staff_id, amount_yen, outcome, receipt, reject_reason\n             from payouts where payslip_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | PRIMARY_KEY | AUTO_INCREMENT",
+          "collation": 63,
+          "max_size": 20
+        },
+        "origin": {
+          "Table": {
+            "table": "platform.payouts",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "payslip_id",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | UNIQUE_KEY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 20
+        },
+        "origin": {
+          "Table": {
+            "table": "platform.payouts",
+            "name": "payslip_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "staff_id",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 20
+        },
+        "origin": {
+          "Table": {
+            "table": "platform.payouts",
+            "name": "staff_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "amount_yen",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 20
+        },
+        "origin": {
+          "Table": {
+            "table": "platform.payouts",
+            "name": "amount_yen"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "outcome",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL | NO_DEFAULT_VALUE",
+          "collation": 255,
+          "max_size": 64
+        },
+        "origin": {
+          "Table": {
+            "table": "platform.payouts",
+            "name": "outcome"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "receipt",
+        "type_info": {
+          "type": "VarString",
+          "flags": "",
+          "collation": 255,
+          "max_size": 1020
+        },
+        "origin": {
+          "Table": {
+            "table": "platform.payouts",
+            "name": "receipt"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "reject_reason",
+        "type_info": {
+          "type": "VarString",
+          "flags": "",
+          "collation": 255,
+          "max_size": 4000
+        },
+        "origin": {
+          "Table": {
+            "table": "platform.payouts",
+            "name": "reject_reason"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "d34d1735c6ba6e71e9eeb4785fee71e3c78d36fe59155ea28643943dfdfb58a2"
+}

@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use payroll_domain::staff::StaffId;
-use payroll_usecase::ports::payout_gateway::{PayoutError, PayoutGateway, PayoutId};
+use payroll_usecase::ports::payout_gateway::{PayoutError, PayoutGateway, PayoutReceipt};
 use platform_kernel::Money;
 
 /// ローカル用。振込APIの代わりにログへ出すだけ。config の payout.provider = "logging" で選ぶ
@@ -13,13 +13,13 @@ impl PayoutGateway for LoggingPayoutGateway {
         staff_id: StaffId,
         amount: Money,
         idempotency_key: &str,
-    ) -> Result<PayoutId, PayoutError> {
+    ) -> Result<PayoutReceipt, PayoutError> {
         tracing::info!(
             staff_id = staff_id.as_i64(),
             amount_yen = amount.as_yen(),
             idempotency_key,
             "payout requested (logging gateway)"
         );
-        Ok(PayoutId(format!("local-{idempotency_key}")))
+        Ok(PayoutReceipt(format!("local-{idempotency_key}")))
     }
 }

@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "insert into payouts (payslip_id, staff_id, amount_yen, outcome, receipt, reject_reason)\n             values (?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "493c880aeba8154256c7236d0ac5239ed54ad7052798ca125fbf14b0c0a6b2e5"
+}

@@ -6,6 +6,7 @@
 mod config;
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Context as _;
 use payroll_handler::{PayrollServiceHandler, ProjectServiceHandler, StaffServiceHandler};
@@ -17,7 +18,7 @@ use payroll_infrastructure::external::{
 use payroll_infrastructure::messaging::outbox::MySqlEventOutbox;
 use payroll_infrastructure::query::{MySqlProjectQuery, MySqlStaffQuery};
 use payroll_infrastructure::repository::{
-    MySqlPayslipRepository, MySqlProjectRepository, MySqlStaffRepository,
+    MySqlPayoutRepository, MySqlPayslipRepository, MySqlProjectRepository, MySqlStaffRepository,
 };
 use payroll_usecase::payslip::{
     CreatePayslipUseCase, FinalizePayslipUseCase, GetPayslipUseCase, ListPayslipsUseCase,
@@ -124,7 +125,7 @@ pub struct Handlers {
 pub fn build_handlers(pool: &MySqlPool, user_directory: Arc<dyn UserDirectory>) -> Handlers {
     let payslips: Arc<dyn PayslipRepository> = Arc::new(MySqlPayslipRepository::new(pool.clone()));
     let staff: Arc<dyn StaffRepository> = Arc::new(MySqlStaffRepository::new(pool.clone()));
-    let projects: Arc<dyn ProjectRepository> = Arc::new(MySqlProjectRepository);
+    let projects: Arc<dyn ProjectRepository> = Arc::new(MySqlProjectRepository::new(pool.clone()));
     let outbox: Arc<dyn EventOutbox> = Arc::new(MySqlEventOutbox);
     let db: Arc<dyn Database> = Arc::new(MySqlDatabase::new(pool.clone()));
     let staff_query: Arc<dyn StaffQuery> = Arc::new(MySqlStaffQuery::new(pool.clone()));
@@ -132,7 +133,12 @@ pub fn build_handlers(pool: &MySqlPool, user_directory: Arc<dyn UserDirectory>) 
 
     Handlers {
         payroll: PayrollServiceHandler::new(
-            CreatePayslipUseCase::new(payslips.clone(), staff.clone(), db.clone()),
+            CreatePayslipUseCase::new(
+                payslips.clone(),
+                staff.clone(),
+                projects.clone(),
+                db.clone(),
+            ),
             FinalizePayslipUseCase::new(
                 payslips.clone(),
                 outbox,
@@ -154,15 +160,30 @@ pub fn build_handlers(pool: &MySqlPool, user_directory: Arc<dyn UserDirectory>) 
     }
 }
 
+/// 振込先の応答を待つ上限。1件あたりの上限 × バッチの件数が Lambda のタイムアウトに収まるようにする
+const PAYOUT_CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
+const PAYOUT_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+
 // 振込はSQSのconsumer(Lambda)側で組み立てる
-pub fn build_request_payout(config: &AppConfig) -> RequestPayoutUseCase {
+pub fn build_request_payout(
+    config: &AppConfig,
+    pool: &MySqlPool,
+) -> anyhow::Result<RequestPayoutUseCase> {
     let gateway: Arc<dyn PayoutGateway> = match config.payout.provider {
         PayoutProvider::Logging => Arc::new(LoggingPayoutGateway),
         PayoutProvider::Bank => Arc::new(BankPayoutGateway::new(
-            reqwest::Client::new(),
+            reqwest::Client::builder()
+                .connect_timeout(PAYOUT_CONNECT_TIMEOUT)
+                .timeout(PAYOUT_REQUEST_TIMEOUT)
+                .build()
+                .context("failed to build the payout HTTP client")?,
             config.payout.base_url.clone(),
             config.payout.api_key.clone(),
         )),
     };
-    RequestPayoutUseCase::new(gateway)
+    Ok(RequestPayoutUseCase::new(
+        Arc::new(MySqlPayoutRepository::new(pool.clone())),
+        gateway,
+        Arc::new(MySqlDatabase::new(pool.clone())),
+    ))
 }

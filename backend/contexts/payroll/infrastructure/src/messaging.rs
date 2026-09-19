@@ -1,7 +1,6 @@
-//! outbox 経由で SQS へ送る側(relay)と、受け取った側の冪等化(`processed_events`)
+//! 出来事を outbox に記録し、relay が SQS へ送る。キューに流す形(封筒とペイロード)もここで決める
 
 pub mod envelope;
 pub mod outbox;
 pub mod payloads;
-pub mod processed_events;
 pub mod relay;

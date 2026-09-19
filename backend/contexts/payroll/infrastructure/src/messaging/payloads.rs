@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PayslipFinalizedPayload {
+    pub payslip_id: i64,
     pub staff_id: i64,
     pub pay_year: u16,
     pub pay_month: u8,

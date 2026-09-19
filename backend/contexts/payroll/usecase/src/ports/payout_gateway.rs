@@ -3,9 +3,9 @@ use payroll_domain::staff::StaffId;
 use platform_kernel::Money;
 use thiserror::Error;
 
-/// 振込依頼の受付番号。振込先が発行する
+/// 振込依頼の受付番号。振込先が発行し、振込先への問い合わせに使う
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PayoutId(pub String);
+pub struct PayoutReceipt(pub String);
 
 /// 振込を依頼できなかった理由
 #[derive(Debug, Error)]
@@ -30,5 +30,5 @@ pub trait PayoutGateway: Send + Sync {
         staff_id: StaffId,
         amount: Money,
         idempotency_key: &str,
-    ) -> Result<PayoutId, PayoutError>;
+    ) -> Result<PayoutReceipt, PayoutError>;
 }

@@ -1,7 +1,8 @@
 use std::time::Duration;
 
 use aws_sdk_sqs::Client as SqsClient;
-use sqlx::mysql::MySqlPool;
+use sqlx::Connection as _;
+use sqlx::mysql::{MySqlConnection, MySqlPool};
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
 
@@ -17,21 +18,50 @@ pub enum RelayError {
     Json(#[from] serde_json::Error),
 }
 
-// 未送信行を取り出してSQSへ送る。
-// SKIP LOCKED により、複数インスタンスで同時に動かしても同じ行を掴まない
+/// relay を1つのインスタンスだけで動かすためのロック名(MySQL の `GET_LOCK`)。
+/// 複数のインスタンスが並んで送ると、同じ集約の出来事が outbox の順と違う順で SQS に届きうる
+const RELAY_LOCK: &str = "payroll_outbox_relay";
+
+/// 未送信の出来事を outbox の順に SQS へ送り、送った件数を返す。
+///
+/// 送るのはロックを取れたインスタンスだけで、取れなかったときは何もせず 0 を返す。
+/// ロックは接続に結びつくので、プロセスが落ちて接続が切れれば外れる
 pub async fn relay_once(
     pool: &MySqlPool,
     sqs: &SqsClient,
     queue_url: &str,
 ) -> Result<usize, RelayError> {
-    let mut tx = pool.begin().await?;
+    let mut conn = pool.acquire().await?;
+    let locked: Option<i64> =
+        sqlx::query_scalar("select get_lock(?, 0)").bind(RELAY_LOCK).fetch_one(&mut *conn).await?;
+    if locked != Some(1) {
+        return Ok(0);
+    }
+
+    let sent = send_unpublished(&mut conn, sqs, queue_url).await;
+
+    // 外せなかったロックを接続ごとプールに戻すと、以後どのインスタンスも送れなくなる。
+    // 外せなかったときは接続を閉じる(閉じればロックも外れる)
+    let released = sqlx::query("select release_lock(?)").bind(RELAY_LOCK).execute(&mut *conn).await;
+    if let Err(err) = released {
+        tracing::warn!(error = %err, "failed to release relay lock, closing the connection");
+        conn.close_on_drop();
+    }
+    sent
+}
+
+async fn send_unpublished(
+    conn: &mut MySqlConnection,
+    sqs: &SqsClient,
+    queue_url: &str,
+) -> Result<usize, RelayError> {
+    let mut tx = conn.begin().await?;
 
     let rows = sqlx::query!(
         r#"select id, aggregate_id, payload as "payload: sqlx::types::JsonValue" from outbox
          where published_at is null
          order by id
-         limit 100
-         for update skip locked"#
+         limit 100"#
     )
     .fetch_all(&mut *tx)
     .await?;

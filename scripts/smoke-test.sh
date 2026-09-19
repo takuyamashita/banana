@@ -72,6 +72,8 @@ check "14分の稼働は InvalidArgument" "InvalidArgument" \
   "$(call "$ADMIN" PayrollService/CreatePayslip "{\"staff_id\":$TARO_ID,\"pay_year\":2026,\"pay_month\":10,\"lines\":[{\"project_id\":$PROJECT_ID,\"work_minutes\":14,\"hourly_rate\":1000}]}")"
 check "存在しない派遣社員は InvalidArgument" "InvalidArgument" \
   "$(call "$ADMIN" PayrollService/CreatePayslip "{\"staff_id\":999999,\"pay_year\":2026,\"pay_month\":9,\"lines\":$LINES}")"
+check "存在しない案件は InvalidArgument" "InvalidArgument" \
+  "$(call "$ADMIN" PayrollService/CreatePayslip "{\"staff_id\":$TARO_ID,\"pay_year\":2026,\"pay_month\":11,\"lines\":[{\"project_id\":999999,\"work_minutes\":600,\"hourly_rate\":1000}]}")"
 
 call "$ADMIN" PayrollService/FinalizePayslip "{\"payslip_id\":$PAYSLIP_ID}" >/dev/null
 check "確定すると確定済み" "PAYSLIP_STATUS_FINALIZED" \

@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "select id, aggregate_id, payload as \"payload: sqlx::types::JsonValue\" from outbox\n         where published_at is null\n         order by id\n         limit 100\n         for update skip locked",
+  "query": "select id, aggregate_id, payload as \"payload: sqlx::types::JsonValue\" from outbox\n         where published_at is null\n         order by id\n         limit 100",
   "describe": {
     "columns": [
       {
@@ -61,5 +61,5 @@
       false
     ]
   },
-  "hash": "f55b756fd65c42e2efd7d6d07f49124b272ee814e605a9f9a3b300ccbb20ffae"
+  "hash": "2847369b0a00a5d56e7840696d4fb1240dce34de0553f9525d7a85f611597478"
 }

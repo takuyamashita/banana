@@ -31,6 +31,7 @@ fn encode(event: &PayrollEvent) -> Result<OutboxRow, serde_json::Error> {
             aggregate_id: id.as_i64(),
             event_type: PayslipFinalizedPayload::EVENT_TYPE,
             payload: serde_json::to_value(PayslipFinalizedPayload {
+                payslip_id: id.as_i64(),
                 staff_id: staff_id.as_i64(),
                 pay_year: period.year(),
                 pay_month: period.month(),

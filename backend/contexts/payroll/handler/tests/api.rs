@@ -83,11 +83,17 @@ async fn api() -> Api {
 
     let payslips = Arc::new(MySqlPayslipRepository::new(pool.clone()));
     let staff = Arc::new(MySqlStaffRepository::new(pool.clone()));
+    let projects = Arc::new(MySqlProjectRepository::new(pool.clone()));
     let db = Arc::new(MySqlDatabase::new(pool.clone()));
 
     let router = tonic::service::Routes::new(
         proto::payroll_service_server::PayrollServiceServer::new(PayrollServiceHandler::new(
-            CreatePayslipUseCase::new(payslips.clone(), staff.clone(), db.clone()),
+            CreatePayslipUseCase::new(
+                payslips.clone(),
+                staff.clone(),
+                projects.clone(),
+                db.clone(),
+            ),
             FinalizePayslipUseCase::new(
                 payslips.clone(),
                 Arc::new(MySqlEventOutbox),
@@ -105,7 +111,7 @@ async fn api() -> Api {
     )))
     .add_service(proto::project_service_server::ProjectServiceServer::new(
         ProjectServiceHandler::new(
-            CreateProjectUseCase::new(Arc::new(MySqlProjectRepository), db),
+            CreateProjectUseCase::new(projects, db),
             ListProjectsUseCase::new(Arc::new(MySqlProjectQuery::new(pool.clone()))),
         ),
     ))

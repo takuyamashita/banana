@@ -5,7 +5,7 @@ use payroll_domain::staff::StaffId;
 
 use crate::UseCaseError;
 use crate::ports::database::Database;
-use crate::ports::repository::{PayslipRepository, StaffRepository};
+use crate::ports::repository::{PayslipRepository, ProjectRepository, StaffRepository};
 
 /// 給与明細の作成で管理者が入力する内容
 pub struct CreatePayslipInput {
@@ -24,6 +24,7 @@ pub struct CreatePayslipInput {
 pub struct CreatePayslipUseCase {
     payslips: Arc<dyn PayslipRepository>,
     staff: Arc<dyn StaffRepository>,
+    projects: Arc<dyn ProjectRepository>,
     db: Arc<dyn Database>,
 }
 
@@ -32,18 +33,24 @@ impl CreatePayslipUseCase {
     pub fn new(
         payslips: Arc<dyn PayslipRepository>,
         staff: Arc<dyn StaffRepository>,
+        projects: Arc<dyn ProjectRepository>,
         db: Arc<dyn Database>,
     ) -> Self {
-        Self { payslips, staff, db }
+        Self { payslips, staff, projects, db }
     }
 
     /// 給与明細を作成中として作り、振られた給与明細番号を返す。
     ///
-    /// 派遣社員が登録されていなければ `InvalidInput`、その月の給与明細が既にあれば `Conflict`、
+    /// 派遣社員か明細行の案件が登録されていなければ `InvalidInput`、その月の給与明細が既にあれば `Conflict`、
     /// 明細行がない・稼働時間が不正などの業務ルール違反なら `InvalidInput` になる
     pub async fn execute(&self, input: CreatePayslipInput) -> Result<PayslipId, UseCaseError> {
         if self.staff.find(input.staff_id).await?.is_none() {
             return Err(UseCaseError::InvalidInput("派遣社員が存在しません".into()));
+        }
+        for line in &input.lines {
+            if self.projects.find(line.project_id()).await?.is_none() {
+                return Err(UseCaseError::InvalidInput("案件が存在しません".into()));
+            }
         }
         let existing = self.payslips.list_by_staff(input.staff_id).await?;
         if existing.iter().any(|p| p.content().period() == input.period) {

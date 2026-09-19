@@ -3,6 +3,7 @@
 // allow-unwrap-in-tests は #[test] 関数の中にしか効かず、補助関数は対象外
 #![allow(clippy::unwrap_used)]
 
+use payroll_domain::payout::{Payout, PayoutOutcome};
 use payroll_domain::payslip::{
     DraftPayslip, PayPeriod, Payslip, PayslipId, PayslipLine, PayslipStatus, WorkMinutes,
 };
@@ -10,13 +11,14 @@ use payroll_domain::project::{NewProject, ProjectId, ProjectName};
 use payroll_domain::staff::{DisplayName, NewStaff, StaffId};
 use payroll_infrastructure::database::MySqlDatabase;
 use payroll_infrastructure::messaging::outbox::MySqlEventOutbox;
+use payroll_infrastructure::messaging::relay::{RelayError, relay_once};
 use payroll_infrastructure::repository::{
-    MySqlPayslipRepository, MySqlProjectRepository, MySqlStaffRepository,
+    MySqlPayoutRepository, MySqlPayslipRepository, MySqlProjectRepository, MySqlStaffRepository,
 };
 use payroll_usecase::ports::database::Database;
 use payroll_usecase::ports::events::{EventOutbox, PayrollEvent};
 use payroll_usecase::ports::repository::{
-    PayslipRepository, ProjectRepository, RepositoryError, StaffRepository,
+    PayoutRepository, PayslipRepository, ProjectRepository, RepositoryError, StaffRepository,
 };
 use platform_kernel::{Email, Money, Unsaved, UserId};
 use sqlx::MySqlPool;
@@ -55,7 +57,7 @@ async fn seed(db: &TestDb) -> (StaffId, ProjectId) {
         )
         .await
         .unwrap();
-    let project = MySqlProjectRepository
+    let project = MySqlProjectRepository::new(db.pool.clone())
         .insert(&mut conn, &NewProject::new(ProjectName::new("案件A").unwrap()))
         .await
         .unwrap();
@@ -228,4 +230,97 @@ async fn corrupted_row_is_reported_not_panicked() {
         .await
         .unwrap();
     assert!(matches!(repo.find(id).await, Err(RepositoryError::CorruptedData(_))));
+}
+
+#[tokio::test]
+async fn registered_project_can_be_found() {
+    let db = db().await;
+    let (_, project) = seed(&db).await;
+    let repo = MySqlProjectRepository::new(db.pool.clone());
+
+    let found = repo.find(project).await.unwrap().unwrap();
+    assert_eq!(found.name().as_str(), "案件A");
+    assert!(repo.find(ProjectId::from_i64(999).unwrap()).await.unwrap().is_none());
+}
+
+/// つながらない送り先の SQS。送ろうとしたことだけを確かめるのに使う
+fn unreachable_sqs() -> aws_sdk_sqs::Client {
+    use aws_sdk_sqs::config::{BehaviorVersion, Credentials, Region, retry::RetryConfig};
+    aws_sdk_sqs::Client::from_conf(
+        aws_sdk_sqs::Config::builder()
+            .behavior_version(BehaviorVersion::latest())
+            .region(Region::new("ap-northeast-1"))
+            .endpoint_url("http://127.0.0.1:9")
+            .credentials_provider(Credentials::new("test", "test", None, None, "test"))
+            .retry_config(RetryConfig::disabled())
+            .build(),
+    )
+}
+
+async fn unpublished_count(pool: &MySqlPool) -> i64 {
+    let (count,): (i64,) = sqlx::query_as("select count(*) from outbox where published_at is null")
+        .fetch_one(pool)
+        .await
+        .unwrap();
+    count
+}
+
+#[tokio::test]
+async fn relay_sends_only_while_it_holds_the_lock() {
+    let db = db().await;
+    let (staff, project) = seed(&db).await;
+    finalize(&db, draft(staff, project, 9)).await.unwrap();
+    let sqs = unreachable_sqs();
+
+    // 他のインスタンスがロックを持っている間は、送らずに 0 件で終わる
+    let mut other = db.pool.acquire().await.unwrap();
+    sqlx::query("select get_lock('payroll_outbox_relay', 0)").execute(&mut *other).await.unwrap();
+    assert_eq!(relay_once(&db.pool, &sqs, "queue").await.unwrap(), 0);
+    sqlx::query("select release_lock('payroll_outbox_relay')").execute(&mut *other).await.unwrap();
+    drop(other);
+
+    // ロックが空けば送ろうとする。送れなかった出来事は未送信のまま残る
+    let err = relay_once(&db.pool, &sqs, "queue").await.unwrap_err();
+    assert!(matches!(err, RelayError::Sqs(_)));
+    assert_eq!(unpublished_count(&db.pool).await, 1);
+
+    // 失敗しても、ロックは外れている
+    let mut next = db.pool.acquire().await.unwrap();
+    let (locked,): (Option<i64>,) = sqlx::query_as("select get_lock('payroll_outbox_relay', 0)")
+        .fetch_one(&mut *next)
+        .await
+        .unwrap();
+    assert_eq!(locked, Some(1));
+}
+
+#[tokio::test]
+async fn payout_is_recorded_once_per_payslip_with_its_outcome() {
+    let db = db().await;
+    let (staff, project) = seed(&db).await;
+    let payslip = finalize(&db, draft(staff, project, 9)).await.unwrap();
+    let other = finalize(&db, draft(staff, project, 10)).await.unwrap();
+    let repo = MySqlPayoutRepository::new(db.pool.clone());
+    let mut conn = MySqlDatabase::new(db.pool.clone()).connection().await.unwrap();
+    let amount = Money::from_yen(15_750).unwrap();
+
+    let accepted = PayoutOutcome::Accepted { receipt: "R-1".into() };
+    repo.insert(&mut conn, &Payout::new(payslip, staff, amount, accepted.clone())).await.unwrap();
+    // 断られた理由は列に収まる長さで切って残す
+    let rejected = PayoutOutcome::Rejected { reason: "口座不備".repeat(300) };
+    repo.insert(&mut conn, &Payout::new(other, staff, amount, rejected)).await.unwrap();
+
+    let found = repo.find_by_payslip(payslip).await.unwrap().unwrap();
+    assert_eq!((found.staff_id(), found.amount(), found.outcome()), (staff, amount, &accepted));
+    let PayoutOutcome::Rejected { reason } =
+        repo.find_by_payslip(other).await.unwrap().unwrap().outcome().clone()
+    else {
+        panic!("断られた振込依頼のはず");
+    };
+    assert_eq!(reason.chars().count(), 1000);
+
+    // 1つの給与明細の振込依頼は1つ
+    let again =
+        Payout::new(payslip, staff, amount, PayoutOutcome::Accepted { receipt: "R-2".into() });
+    let err = repo.insert(&mut conn, &again).await.unwrap_err();
+    assert!(matches!(err, RepositoryError::Conflict(_)));
 }

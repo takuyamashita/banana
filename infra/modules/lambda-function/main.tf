@@ -109,6 +109,8 @@ resource "aws_lambda_event_source_mapping" "sqs" {
   count            = var.sqs_queue_arn == null ? 0 : 1
   event_source_arn = var.sqs_queue_arn
   function_name    = aws_lambda_function.this.arn
-  # FIFO キューでは最大 10。1件でも失敗したらバッチごと再配信され、処理済み分は冪等性で読み飛ばす
+  # FIFO キューでは最大 10
   batch_size = 10
+  # 失敗した件だけを返してキューに戻す。関数は、失敗した件と同じグループの後ろの件も返す(順序を保つ)
+  function_response_types = ["ReportBatchItemFailures"]
 }

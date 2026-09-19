@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use payroll_domain::staff::StaffId;
-use payroll_usecase::ports::payout_gateway::{PayoutError, PayoutGateway, PayoutId};
+use payroll_usecase::ports::payout_gateway::{PayoutError, PayoutGateway, PayoutReceipt};
 use platform_kernel::Money;
 use serde::Deserialize;
 
@@ -34,7 +34,7 @@ impl PayoutGateway for BankPayoutGateway {
         staff_id: StaffId,
         amount: Money,
         idempotency_key: &str,
-    ) -> Result<PayoutId, PayoutError> {
+    ) -> Result<PayoutReceipt, PayoutError> {
         let res = self
             .client
             .post(format!("{}/transfers", self.base_url))
@@ -57,6 +57,6 @@ impl PayoutGateway for BankPayoutGateway {
             return Err(PayoutError::Unavailable(status.to_string()));
         }
         let body: TransferResponse = res.json().await.map_err(unavailable)?;
-        Ok(PayoutId(body.id))
+        Ok(PayoutReceipt(body.id))
     }
 }

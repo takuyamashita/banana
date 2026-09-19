@@ -1,4 +1,4 @@
-// SQSに流すメッセージの封筒。event_id は outbox.id で、consumerの二重処理判定に使う。
+// SQSに流すメッセージの封筒。event_id は outbox.id で、振込先に渡す冪等キーに使う。
 // キューの形はinfrastructureの関心事なので、domainには置かない
 use serde::{Deserialize, Serialize};
 

@@ -1,4 +1,4 @@
-//! 案件・派遣社員・給与明細の記録と取り出し。
+//! 案件・派遣社員・給与明細・振込依頼の記録と取り出し。
 //!
 //! 記録(`insert`・`update`)は書き込み先([`Db`])を受け取る。同じトランザクションに書いた記録は、
 //! まとめて確定するか、まとめて取り消される。
@@ -6,8 +6,9 @@
 //! [`Db`]: super::database::Db
 
 use async_trait::async_trait;
+use payroll_domain::payout::{NewPayout, Payout, PayoutId};
 use payroll_domain::payslip::{NewPayslip, Payslip, PayslipId};
-use payroll_domain::project::{NewProject, ProjectId};
+use payroll_domain::project::{NewProject, Project, ProjectId};
 use payroll_domain::staff::{NewStaff, Staff, StaffId};
 use platform_kernel::{Email, UserId};
 use thiserror::Error;
@@ -61,9 +62,23 @@ pub trait StaffRepository: Send + Sync {
     async fn insert(&self, db: &mut Db, new: &NewStaff) -> Result<StaffId, RepositoryError>;
 }
 
-/// 案件の記録
+/// 案件の記録と取り出し
 #[async_trait]
 pub trait ProjectRepository: Send + Sync {
+    /// 案件番号で案件を探す
+    async fn find(&self, id: ProjectId) -> Result<Option<Project>, RepositoryError>;
     /// 新しい案件を登録し、振られた案件番号を返す
     async fn insert(&self, db: &mut Db, new: &NewProject) -> Result<ProjectId, RepositoryError>;
+}
+
+/// 振込依頼の記録と取り出し
+#[async_trait]
+pub trait PayoutRepository: Send + Sync {
+    /// 給与明細の振込依頼を探す。1つの給与明細につき振込依頼は1つ
+    async fn find_by_payslip(
+        &self,
+        payslip_id: PayslipId,
+    ) -> Result<Option<Payout>, RepositoryError>;
+    /// 振込依頼を記録し、振られた振込依頼番号を返す
+    async fn insert(&self, db: &mut Db, new: &NewPayout) -> Result<PayoutId, RepositoryError>;
 }
