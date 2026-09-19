@@ -1,5 +1,4 @@
 use std::fmt;
-use std::ops::{Add, Mul};
 
 use thiserror::Error;
 
@@ -30,26 +29,10 @@ impl Money {
         self.0
     }
 
-    /// 切り捨て除算。端数の扱いは呼び出し側(ドメイン)の業務ルールで選ぶ
+    /// 足し算。桁があふれるときは `None`
     #[must_use]
-    pub fn div_floor(self, divisor: i64) -> Self {
-        Self(self.0.div_euclid(divisor))
-    }
-}
-
-impl Add for Money {
-    type Output = Self;
-
-    fn add(self, rhs: Self) -> Self {
-        Self(self.0.saturating_add(rhs.0))
-    }
-}
-
-impl Mul<u32> for Money {
-    type Output = Self;
-
-    fn mul(self, rhs: u32) -> Self {
-        Self(self.0.saturating_mul(i64::from(rhs)))
+    pub fn checked_add(self, rhs: Self) -> Option<Self> {
+        self.0.checked_add(rhs.0).map(Self)
     }
 }
 
@@ -69,8 +52,12 @@ mod tests {
     }
 
     #[test]
-    fn div_floor_truncates() {
-        let m = Money::from_yen(1_999).unwrap();
-        assert_eq!(m.div_floor(60).as_yen(), 33);
+    fn overflowing_addition_is_none() {
+        let max = Money::from_yen(i64::MAX).unwrap();
+        assert_eq!(max.checked_add(Money::from_yen(1).unwrap()), None);
+        assert_eq!(
+            Money::from_yen(1).unwrap().checked_add(Money::from_yen(2).unwrap()),
+            Some(Money::from_yen(3).unwrap())
+        );
     }
 }

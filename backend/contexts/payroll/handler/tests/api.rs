@@ -74,7 +74,14 @@ struct Api {
 }
 
 async fn api() -> Api {
-    let container = Mysql::default().with_tag("8.4").start().await.unwrap();
+    // テストごとに MySQL を立てるので、同時に多数が起動するとカーネルの非同期 I/O の上限
+    // (fs.aio-max-nr)を使い切って起動に失敗する。非同期 I/O を使わない設定で立てる
+    let container = Mysql::default()
+        .with_tag("8.4")
+        .with_cmd(["--innodb-use-native-aio=0"])
+        .start()
+        .await
+        .unwrap();
     let port = container.get_host_port_ipv4(3306).await.unwrap();
     let pool = payroll_infrastructure::connect(&format!("mysql://root@127.0.0.1:{port}/test"), 5)
         .await

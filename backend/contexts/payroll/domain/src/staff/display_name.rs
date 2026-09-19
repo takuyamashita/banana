@@ -18,3 +18,16 @@ impl DisplayName {
         &self.0
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn trimmed_and_1_to_50_characters() {
+        assert_eq!(DisplayName::new(" 派遣 太郎 ").unwrap().as_str(), "派遣 太郎");
+        assert!(DisplayName::new("あ".repeat(50)).is_ok());
+        assert_eq!(DisplayName::new("あ".repeat(51)), Err(StaffError::InvalidDisplayName));
+        assert_eq!(DisplayName::new("   "), Err(StaffError::InvalidDisplayName));
+    }
+}

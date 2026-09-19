@@ -16,8 +16,13 @@ impl Email {
     pub fn parse(value: impl Into<String>) -> Result<Self, InvalidEmail> {
         let value = value.into().trim().to_ascii_lowercase();
         let valid = value.len() <= 254
+            && !value.contains(char::is_whitespace)
             && value.split_once('@').is_some_and(|(local, domain)| {
-                !local.is_empty() && domain.contains('.') && !domain.starts_with('.')
+                !local.is_empty()
+                    && !domain.contains('@')
+                    && domain.contains('.')
+                    && !domain.starts_with('.')
+                    && !domain.ends_with('.')
             });
         if !valid {
             return Err(InvalidEmail);
@@ -44,5 +49,12 @@ mod tests {
     fn address_without_domain_is_rejected() {
         assert_eq!(Email::parse("foo@"), Err(InvalidEmail));
         assert_eq!(Email::parse("foo@localhost"), Err(InvalidEmail));
+        assert_eq!(Email::parse("foo@example."), Err(InvalidEmail));
+    }
+
+    #[test]
+    fn address_with_two_at_signs_or_spaces_is_rejected() {
+        assert_eq!(Email::parse("a@b@example.com"), Err(InvalidEmail));
+        assert_eq!(Email::parse("a b@example.com"), Err(InvalidEmail));
     }
 }

@@ -16,11 +16,11 @@ test("管理者が作成して確定した給与明細を、本人がログイ�
   await payslips.open();
   await payslips.create(`${staff.displayName}(${staff.email})`, 2026, 9, [
     { project: project.name, minutes: 9600, hourlyRate: 1501 },
-    { project: project.name, minutes: 100, hourlyRate: 1500 },
+    { project: project.name, minutes: 90, hourlyRate: 1500 },
   ]);
   await expect(adminPage.getByText(/給与明細 #\d+ を作成しました。/)).toBeVisible();
   await expect(adminPage.getByText(/作成中/)).toBeVisible();
-  // 9600分×1501円/60 = 240,160円、100分→90分×1500円/60 = 2,250円
+  // 9600分×1501円/60 = 240,160円、90分×1500円/60 = 2,250円
   await expect(adminPage.getByTestId("payslip-total")).toHaveText("￥242,410");
 
   await payslips.finalize(2026, 9);

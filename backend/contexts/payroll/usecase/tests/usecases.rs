@@ -10,7 +10,8 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use payroll_domain::payout::{NewPayout, Payout, PayoutId, PayoutOutcome};
 use payroll_domain::payslip::{
-    NewPayslip, PayPeriod, Payslip, PayslipEvent, PayslipId, PayslipLine, WorkMinutes,
+    FinalizedPayslip, HourlyRate, NewPayslip, PayPeriod, Payslip, PayslipEvent, PayslipId,
+    PayslipLine, WorkMinutes,
 };
 use payroll_domain::project::{NewProject, Project, ProjectId, ProjectName};
 use payroll_domain::staff::{DisplayName, NewStaff, Staff, StaffId};
@@ -150,13 +151,6 @@ fn fake(db: &mut Db) -> &mut FakeDb {
     db.downcast_mut::<FakeDb>().unwrap()
 }
 
-fn finalized_at<Id>(payslip: &Payslip<Id>) -> Option<OffsetDateTime> {
-    match payslip {
-        Payslip::Draft(_) => None,
-        Payslip::Finalized(p) => Some(p.finalized_at()),
-    }
-}
-
 struct FakePayslips(Arc<World>);
 
 #[async_trait]
@@ -174,24 +168,38 @@ impl PayslipRepository for FakePayslips {
         db: &mut Db,
         id: PayslipId,
     ) -> Result<Option<Payslip>, RepositoryError> {
-        Ok(fake(db).write(|r| r.payslips.iter().find(|row| row.0 == id).map(to_payslip)))
+        // 本物と同じく、ロックして読むにはトランザクションが要る
+        let db = fake(db);
+        if matches!(db, FakeDb::Connection(_)) {
+            return Err(RepositoryError::Internal("トランザクションが必要です".into()));
+        }
+        Ok(db.write(|r| r.payslips.iter().find(|row| row.0 == id).map(to_payslip)))
     }
 
     async fn insert(&self, db: &mut Db, new: &NewPayslip) -> Result<PayslipId, RepositoryError> {
         Ok(fake(db).write(|r| {
             let id = PayslipId::from_i64(next_id(r.payslips.len())).unwrap();
             let c = new.content();
-            r.payslips.push((id, c.staff_id(), c.period(), c.lines().to_vec(), finalized_at(new)));
+            r.payslips.push((id, c.staff_id(), c.period(), c.lines().to_vec(), None));
             id
         }))
     }
 
-    async fn update(&self, db: &mut Db, payslip: &Payslip) -> Result<(), RepositoryError> {
+    async fn record_finalized(
+        &self,
+        db: &mut Db,
+        payslip: &FinalizedPayslip,
+    ) -> Result<(), RepositoryError> {
         fake(db).write(|r| {
-            let row = r.payslips.iter_mut().find(|row| row.0 == payslip.content().id()).unwrap();
-            row.4 = finalized_at(payslip);
-        });
-        Ok(())
+            // 本物と同じく、作成中の記録だけを書き換える
+            match r.payslips.iter_mut().find(|row| row.0 == payslip.content().id()) {
+                Some(row) if row.4.is_none() => {
+                    row.4 = Some(payslip.finalized_at());
+                    Ok(())
+                }
+                _ => Err(RepositoryError::Conflict("作成中の給与明細ではありません".into())),
+            }
+        })
     }
 }
 
@@ -384,8 +392,9 @@ fn line() -> PayslipLine {
     PayslipLine::new(
         ProjectId::from_i64(1).unwrap(),
         WorkMinutes::from_minutes(600).unwrap(),
-        Money::from_yen(1_200).unwrap(),
+        HourlyRate::from_yen(1_200).unwrap(),
     )
+    .unwrap()
 }
 
 fn input(staff: i64, month: u8) -> CreatePayslipInput {
@@ -428,8 +437,9 @@ async fn create_rejects_unknown_project() {
     let unknown = PayslipLine::new(
         ProjectId::from_i64(99).unwrap(),
         WorkMinutes::from_minutes(600).unwrap(),
-        Money::from_yen(1_200).unwrap(),
-    );
+        HourlyRate::from_yen(1_200).unwrap(),
+    )
+    .unwrap();
 
     let err = create_usecase(&world)
         .execute(CreatePayslipInput { lines: vec![line(), unknown], ..input(1, 9) })
@@ -463,8 +473,8 @@ async fn finalize_records_the_finalized_payslip_and_its_event_together() {
     assert_eq!(records.payslips[0].4, Some(NOW));
     assert!(matches!(
         records.events.as_slice(),
-        [PayrollEvent::Payslip { id: event_id, event: PayslipEvent::Finalized { total, .. } }]
-            if *event_id == id && total.as_yen() == 12_000
+        [PayrollEvent::Payslip(PayslipEvent::Finalized { payslip_id, total, finalized_at, .. })]
+            if *payslip_id == id && total.as_yen() == 12_000 && *finalized_at == NOW
     ));
 }
 

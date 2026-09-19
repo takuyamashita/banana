@@ -59,7 +59,9 @@ impl From<RepositoryError> for UseCaseError {
     fn from(err: RepositoryError) -> Self {
         match err {
             RepositoryError::Conflict(msg) => Self::Conflict(msg),
-            RepositoryError::CorruptedData(msg) => Self::Internal(msg),
+            RepositoryError::CorruptedData(msg) | RepositoryError::Internal(msg) => {
+                Self::Internal(msg)
+            }
             RepositoryError::Unavailable(msg) => Self::Unavailable(msg),
         }
     }

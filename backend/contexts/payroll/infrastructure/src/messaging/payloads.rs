@@ -9,6 +9,8 @@ pub struct PayslipFinalizedPayload {
     pub pay_year: u16,
     pub pay_month: u8,
     pub total_yen: i64,
+    /// 確定した日時(RFC 3339)
+    pub finalized_at: String,
 }
 
 impl PayslipFinalizedPayload {

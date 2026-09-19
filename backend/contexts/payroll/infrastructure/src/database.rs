@@ -33,15 +33,31 @@ impl DbHandle for MySqlDb {
 }
 
 /// 受け取った `Db` から MySQL の接続を取り出す。トランザクションなら、その中の接続になる。
-/// 別の実装の `Db` が渡されるのは組み立ての誤りなので、記録はせずにエラーにする
+/// 別の実装の `Db` が渡されるのは組み立ての誤りなので、記録はせずに Internal にする
+/// (Unavailable にすると、直らないのに再試行される)
 pub(crate) fn mysql(db: &mut Db) -> Result<&mut MySqlConnection, RepositoryError> {
     match db.downcast_mut::<MySqlDb>() {
         Some(MySqlDb::Transaction(tx)) => Ok(&mut **tx),
         Some(MySqlDb::Connection(conn)) => Ok(&mut **conn),
-        None => {
-            Err(RepositoryError::Unavailable("MySQL 以外の書き込み先が渡されました".to_owned()))
-        }
+        None => Err(foreign_db()),
     }
+}
+
+/// トランザクションの中の接続を取り出す。ロックして読む(select ... for update)ときに使う。
+/// 接続が渡されたら、ロックは文が終わった時点で外れて意味がないので、Internal にする
+/// (usecase がトランザクションを張り忘れたことを、テストで検出できるようにする)
+pub(crate) fn mysql_tx(db: &mut Db) -> Result<&mut MySqlConnection, RepositoryError> {
+    match db.downcast_mut::<MySqlDb>() {
+        Some(MySqlDb::Transaction(tx)) => Ok(&mut **tx),
+        Some(MySqlDb::Connection(_)) => Err(RepositoryError::Internal(
+            "ロックして読むにはトランザクションが必要です".to_owned(),
+        )),
+        None => Err(foreign_db()),
+    }
+}
+
+fn foreign_db() -> RepositoryError {
+    RepositoryError::Internal("MySQL 以外の書き込み先が渡されました".to_owned())
 }
 
 pub struct MySqlDatabase {
@@ -88,6 +104,7 @@ mod tests {
     #[test]
     fn foreign_db_is_rejected() {
         let mut db = Db::new(Foreign);
-        assert!(matches!(mysql(&mut db), Err(RepositoryError::Unavailable(_))));
+        assert!(matches!(mysql(&mut db), Err(RepositoryError::Internal(_))));
+        assert!(matches!(mysql_tx(&mut db), Err(RepositoryError::Internal(_))));
     }
 }

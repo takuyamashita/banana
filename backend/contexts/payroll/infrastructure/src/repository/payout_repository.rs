@@ -37,6 +37,7 @@ struct PayoutRow {
 impl TryFrom<PayoutRow> for Payout {
     type Error = RepositoryError;
 
+    #[allow(clippy::disallowed_methods, reason = "リポジトリ実装は記録から組み立て直す")]
     fn try_from(row: PayoutRow) -> Result<Self, Self::Error> {
         let outcome = match (row.outcome.as_str(), row.receipt, row.reject_reason) {
             ("accepted", Some(receipt), None) => PayoutOutcome::Accepted { receipt },

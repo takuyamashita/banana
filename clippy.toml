@@ -1,3 +1,14 @@
-# 本番コードの unwrap は禁止(workspace lints)、テストでは許可する
+# 本番コードの unwrap・expect は禁止(workspace lints)、テストでは許可する
 allow-unwrap-in-tests = true
 allow-expect-in-tests = true
+
+# 記録からの組み立て直し(reconstruct)は、リポジトリ実装だけが呼ぶ。
+# 全 crate で禁止し、リポジトリ実装(とテストのフェイク)の呼び出し箇所だけ #[allow] で許可する。
+# crate ごとに clippy.toml を置くとこのファイルが丸ごと置き換わる(マージされない)ので、置かない
+disallowed-methods = [
+  { path = "payroll_domain::payslip::Payslip::reconstruct_draft", reason = "記録からの組み立て直しはリポジトリ実装だけが呼ぶ。新しく作るなら Payslip::draft を使う" },
+  { path = "payroll_domain::payslip::Payslip::reconstruct_finalized", reason = "記録からの組み立て直しはリポジトリ実装だけが呼ぶ。確定は DraftPayslip::finalize で行う" },
+  { path = "payroll_domain::staff::Staff::reconstruct", reason = "記録からの組み立て直しはリポジトリ実装だけが呼ぶ" },
+  { path = "payroll_domain::project::Project::reconstruct", reason = "記録からの組み立て直しはリポジトリ実装だけが呼ぶ" },
+  { path = "payroll_domain::payout::Payout::reconstruct", reason = "記録からの組み立て直しはリポジトリ実装だけが呼ぶ" },
+]

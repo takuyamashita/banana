@@ -6,6 +6,7 @@ use payroll_usecase::ports::database::Db;
 use payroll_usecase::ports::events::{EventOutbox, PayrollEvent};
 use payroll_usecase::ports::repository::RepositoryError;
 use serde_json::Value;
+use time::format_description::well_known::Rfc3339;
 
 use super::payloads::PayslipFinalizedPayload;
 use crate::database::mysql;
@@ -21,22 +22,27 @@ struct OutboxRow {
 
 /// 出来事ごとに、outbox の行(どの集約の・何の出来事か・キューに流す JSON)を決める。
 /// 出来事の種類が増えたらここに足す
-fn encode(event: &PayrollEvent) -> Result<OutboxRow, serde_json::Error> {
+fn encode(event: &PayrollEvent) -> Result<OutboxRow, RepositoryError> {
     match event {
-        PayrollEvent::Payslip {
-            id,
-            event: PayslipEvent::Finalized { staff_id, period, total },
-        } => Ok(OutboxRow {
+        PayrollEvent::Payslip(PayslipEvent::Finalized {
+            payslip_id,
+            staff_id,
+            period,
+            total,
+            finalized_at,
+        }) => Ok(OutboxRow {
             aggregate_type: "payslip",
-            aggregate_id: id.as_i64(),
+            aggregate_id: payslip_id.as_i64(),
             event_type: PayslipFinalizedPayload::EVENT_TYPE,
             payload: serde_json::to_value(PayslipFinalizedPayload {
-                payslip_id: id.as_i64(),
+                payslip_id: payslip_id.as_i64(),
                 staff_id: staff_id.as_i64(),
                 pay_year: period.year(),
                 pay_month: period.month(),
                 total_yen: total.as_yen(),
-            })?,
+                finalized_at: finalized_at.format(&Rfc3339).map_err(corrupted)?,
+            })
+            .map_err(corrupted)?,
         }),
     }
 }
@@ -47,7 +53,7 @@ pub struct MySqlEventOutbox;
 impl EventOutbox for MySqlEventOutbox {
     async fn append(&self, db: &mut Db, event: PayrollEvent) -> Result<(), RepositoryError> {
         let conn = mysql(db)?;
-        let row = encode(&event).map_err(corrupted)?;
+        let row = encode(&event)?;
         sqlx::query!(
             "insert into outbox (aggregate_type, aggregate_id, event_type, payload) values (?, ?, ?, ?)",
             row.aggregate_type,

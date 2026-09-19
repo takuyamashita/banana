@@ -59,7 +59,7 @@ check "派遣社員登録" "" "$TARO_ID/$HANAKO_ID"
 check "同じメールの再登録は AlreadyExists" "AlreadyExists" \
   "$(call "$ADMIN" StaffService/CreateStaff "{\"email\":\"$TARO\",\"display_name\":\"x\",\"temporary_password\":\"Temp-pass-1\"}")"
 
-LINES="[{\"project_id\":$PROJECT_ID,\"work_minutes\":9600,\"hourly_rate\":1501},{\"project_id\":$PROJECT_ID,\"work_minutes\":100,\"hourly_rate\":1500}]"
+LINES="[{\"project_id\":$PROJECT_ID,\"work_minutes\":9600,\"hourly_rate\":1501},{\"project_id\":$PROJECT_ID,\"work_minutes\":90,\"hourly_rate\":1500}]"
 CREATE="{\"staff_id\":$TARO_ID,\"pay_year\":2026,\"pay_month\":9,\"lines\":$LINES}"
 PAYSLIP_ID=$(call "$ADMIN" PayrollService/CreatePayslip "$CREATE" | jq -r .payslipId)
 check "給与明細の作成" "" "$PAYSLIP_ID"
@@ -68,7 +68,7 @@ check "作成直後は作成中" "PAYSLIP_STATUS_DRAFT" \
 check "同じ月の作成は AlreadyExists" "AlreadyExists" "$(call "$ADMIN" PayrollService/CreatePayslip "$CREATE")"
 check "月=257 は InvalidArgument(as キャストなら1月になる)" "InvalidArgument" \
   "$(call "$ADMIN" PayrollService/CreatePayslip "{\"staff_id\":$TARO_ID,\"pay_year\":2026,\"pay_month\":257,\"lines\":$LINES}")"
-check "14分の稼働は InvalidArgument" "InvalidArgument" \
+check "15分単位でない稼働(14分)は InvalidArgument" "InvalidArgument" \
   "$(call "$ADMIN" PayrollService/CreatePayslip "{\"staff_id\":$TARO_ID,\"pay_year\":2026,\"pay_month\":10,\"lines\":[{\"project_id\":$PROJECT_ID,\"work_minutes\":14,\"hourly_rate\":1000}]}")"
 check "存在しない派遣社員は InvalidArgument" "InvalidArgument" \
   "$(call "$ADMIN" PayrollService/CreatePayslip "{\"staff_id\":999999,\"pay_year\":2026,\"pay_month\":9,\"lines\":$LINES}")"
@@ -85,8 +85,8 @@ check "存在しない給与明細の確定は NotFound" "NotFound" \
 # 本人に見えないことを確かめるための、作成中のままの10月分
 DRAFT_ID=$(call "$ADMIN" PayrollService/CreatePayslip "{\"staff_id\":$TARO_ID,\"pay_year\":2026,\"pay_month\":10,\"lines\":$LINES}" | jq -r .payslipId)
 
-# 9600分×1501円/60 = 240,160円、100分→90分×1500円/60 = 2,250円
-check "合計は円未満切り捨て・15分単位" '"totalYen": "242410"' \
+# 9600分×1501円/60 = 240,160円、90分×1500円/60 = 2,250円
+check "合計は円未満切り捨て" '"totalYen": "242410"' \
   "$(call "$ADMIN" PayrollService/GetPayslip "{\"payslip_id\":$PAYSLIP_ID}")"
 
 confirm_password "$TARO"

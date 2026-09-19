@@ -20,6 +20,7 @@ impl MySqlProjectRepository {
 
 #[async_trait]
 impl ProjectRepository for MySqlProjectRepository {
+    #[allow(clippy::disallowed_methods, reason = "リポジトリ実装は記録から組み立て直す")]
     async fn find(&self, id: ProjectId) -> Result<Option<Project>, RepositoryError> {
         let Some(row) = sqlx::query!("select id, name from projects where id = ?", id.as_i64())
             .fetch_optional(&self.pool)

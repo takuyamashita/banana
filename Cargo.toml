@@ -72,7 +72,7 @@ sqlx = { version = "0.9.0", default-features = false, features = [
 ] }
 testcontainers-modules = { version = "0.15.0", features = ["mysql"] }
 thiserror = "2.0.20"
-time = { version = "0.3.55", features = ["macros"] }
+time = { version = "0.3.55", features = ["macros", "formatting"] }
 tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "signal", "time", "sync"] }
 tokio-util = "0.7.19"
 tonic = "0.14.6"
@@ -93,6 +93,7 @@ unused_must_use = "deny"
 [workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }
 unwrap_used = "deny"
+expect_used = "deny"
 disallowed_methods = "deny"
 # pedantic のうち、この規模では手間の割に得がないもの
 missing_errors_doc = "allow"

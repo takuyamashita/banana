@@ -1,17 +1,17 @@
 use async_trait::async_trait;
 use payroll_domain::payslip::{
-    NewPayslip, PayPeriod, Payslip, PayslipId, PayslipLine, PayslipStatus, WorkMinutes,
+    FinalizedPayslip, HourlyRate, NewPayslip, PayPeriod, Payslip, PayslipId, PayslipLine,
+    WorkMinutes,
 };
 use payroll_domain::project::ProjectId;
 use payroll_domain::staff::StaffId;
 use payroll_usecase::ports::database::Db;
 use payroll_usecase::ports::repository::{PayslipRepository, RepositoryError};
-use platform_kernel::Money;
 use sqlx::Connection as _;
 use sqlx::mysql::MySqlPool;
 use time::{OffsetDateTime, PrimitiveDateTime, UtcOffset};
 
-use crate::database::mysql;
+use crate::database::{mysql, mysql_tx};
 use crate::db::{corrupted, db_err};
 
 pub struct MySqlPayslipRepository {
@@ -81,7 +81,7 @@ impl PayslipRepository for MySqlPayslipRepository {
         db: &mut Db,
         id: PayslipId,
     ) -> Result<Option<Payslip>, RepositoryError> {
-        let conn = mysql(db)?;
+        let conn = mysql_tx(db)?;
         let rows = sqlx::query_as!(
             JoinedRow,
             "select p.id, p.staff_id, p.pay_year, p.pay_month, p.status, p.finalized_at,
@@ -104,14 +104,12 @@ impl PayslipRepository for MySqlPayslipRepository {
         // 給与明細と明細行は必ず一緒に書く。渡された書き込み先がトランザクションなら、その中の
         // SAVEPOINT になる
         let mut tx = mysql(db)?.begin().await.map_err(db_err)?;
+        // 登録するのは作成中の給与明細だけ(確定は登録してから行う)
         let result = sqlx::query!(
-            "insert into payslips (staff_id, pay_year, pay_month, status, finalized_at)
-             values (?, ?, ?, ?, ?)",
+            "insert into payslips (staff_id, pay_year, pay_month, status) values (?, ?, ?, 'draft')",
             new.content().staff_id().as_i64(),
             new.content().period().year(),
             new.content().period().month(),
-            encode_status(new.status()),
-            finalized_at(new),
         )
         .execute(&mut *tx)
         .await
@@ -139,17 +137,25 @@ impl PayslipRepository for MySqlPayslipRepository {
         Ok(payslip_id)
     }
 
-    async fn update(&self, db: &mut Db, payslip: &Payslip) -> Result<(), RepositoryError> {
+    async fn record_finalized(
+        &self,
+        db: &mut Db,
+        payslip: &FinalizedPayslip,
+    ) -> Result<(), RepositoryError> {
         let conn = mysql(db)?;
-        sqlx::query!(
-            "update payslips set status = ?, finalized_at = ? where id = ?",
-            encode_status(payslip.status()),
-            finalized_at(payslip),
+        // 作成中の記録だけを書き換える。ロックせずに読んだ古い作成中を書き戻して、
+        // 確定済み(振込の出来事は記録済み)を作成中に戻すことがないようにする
+        let result = sqlx::query!(
+            "update payslips set status = 'finalized', finalized_at = ? where id = ? and status = 'draft'",
+            utc(payslip.finalized_at()),
             payslip.content().id().as_i64(),
         )
         .execute(&mut *conn)
         .await
         .map_err(db_err)?;
+        if result.rows_affected() != 1 {
+            return Err(RepositoryError::Conflict("作成中の給与明細ではありません".to_owned()));
+        }
         Ok(())
     }
 }
@@ -166,8 +172,9 @@ fn assemble(rows: Vec<JoinedRow>) -> Result<Vec<Payslip>, RepositoryError> {
         let line = PayslipLine::new(
             ProjectId::from_i64(row.project_id).map_err(corrupted)?,
             WorkMinutes::from_minutes(row.work_minutes).map_err(corrupted)?,
-            Money::from_yen(row.hourly_rate).map_err(corrupted)?,
-        );
+            HourlyRate::from_yen(row.hourly_rate).map_err(corrupted)?,
+        )
+        .map_err(corrupted)?;
         match &mut current {
             Some((head, lines)) if head.id == row.id => lines.push(line),
             _ => {
@@ -184,6 +191,7 @@ fn assemble(rows: Vec<JoinedRow>) -> Result<Vec<Payslip>, RepositoryError> {
     Ok(payslips)
 }
 
+#[allow(clippy::disallowed_methods, reason = "リポジトリ実装は記録から組み立て直す")]
 fn reconstruct(head: &JoinedRow, lines: Vec<PayslipLine>) -> Result<Payslip, RepositoryError> {
     let id = PayslipId::from_i64(head.id).map_err(corrupted)?;
     let staff_id = StaffId::from_i64(head.staff_id).map_err(corrupted)?;
@@ -202,22 +210,7 @@ fn reconstruct(head: &JoinedRow, lines: Vec<PayslipLine>) -> Result<Payslip, Rep
     .map_err(corrupted)
 }
 
-/// 確定済みなら確定日時を返す。DB の datetime は UTC で持つ(接続の time_zone も UTC)
-fn finalized_at<Id>(payslip: &Payslip<Id>) -> Option<PrimitiveDateTime> {
-    match payslip {
-        Payslip::Draft(_) => None,
-        Payslip::Finalized(p) => Some(utc(p.finalized_at())),
-    }
-}
-
 fn utc(at: OffsetDateTime) -> PrimitiveDateTime {
     let at = at.to_offset(UtcOffset::UTC);
     PrimitiveDateTime::new(at.date(), at.time())
-}
-
-fn encode_status(status: PayslipStatus) -> &'static str {
-    match status {
-        PayslipStatus::Draft => "draft",
-        PayslipStatus::Finalized => "finalized",
-    }
 }

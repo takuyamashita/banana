@@ -29,6 +29,7 @@ struct StaffRow {
 impl TryFrom<StaffRow> for Staff {
     type Error = RepositoryError;
 
+    #[allow(clippy::disallowed_methods, reason = "リポジトリ実装は記録から組み立て直す")]
     fn try_from(row: StaffRow) -> Result<Self, Self::Error> {
         Ok(Staff::reconstruct(
             StaffId::from_i64(row.id).map_err(corrupted)?,

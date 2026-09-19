@@ -7,7 +7,7 @@
 
 use async_trait::async_trait;
 use payroll_domain::payout::{NewPayout, Payout, PayoutId};
-use payroll_domain::payslip::{NewPayslip, Payslip, PayslipId};
+use payroll_domain::payslip::{FinalizedPayslip, NewPayslip, Payslip, PayslipId};
 use payroll_domain::project::{NewProject, Project, ProjectId};
 use payroll_domain::staff::{NewStaff, Staff, StaffId};
 use platform_kernel::{Email, UserId};
@@ -24,9 +24,12 @@ pub enum RepositoryError {
     /// 記録されている内容が業務ルールに合わず、取り出せない
     #[error("保存されたデータが壊れています: {0}")]
     CorruptedData(String),
-    /// 記録の読み書きが一時的にできない
+    /// 記録の読み書きが一時的にできない。時間をおけば成功しうる
     #[error("リポジトリの操作に失敗しました: {0}")]
     Unavailable(String),
+    /// やり直しても直らない異常(記録の形が想定と違う、書き込み先の用意の誤りなど)
+    #[error("リポジトリの内部エラー: {0}")]
+    Internal(String),
 }
 
 /// 給与明細の記録と取り出し
@@ -37,6 +40,7 @@ pub trait PayslipRepository: Send + Sync {
     /// 派遣社員の有効な給与明細を、新しい月から順に返す
     async fn list_by_staff(&self, staff_id: StaffId) -> Result<Vec<Payslip>, RepositoryError>;
     /// 給与明細番号で給与明細を探し、同じトランザクションが終わるまで他から変更されないようにする。
+    /// 書き込み先はトランザクションでなければならない(接続では、読んだ直後に変更されうる)。
     /// 読んだ内容を確かめてから書き戻すとき(確定など)に使う
     async fn find_for_update(
         &self,
@@ -45,8 +49,13 @@ pub trait PayslipRepository: Send + Sync {
     ) -> Result<Option<Payslip>, RepositoryError>;
     /// 新しい給与明細を登録し、振られた給与明細番号を返す
     async fn insert(&self, db: &mut Db, new: &NewPayslip) -> Result<PayslipId, RepositoryError>;
-    /// 登録済みの給与明細の変更(状態の変化など)を記録する
-    async fn update(&self, db: &mut Db, payslip: &Payslip) -> Result<(), RepositoryError>;
+    /// 作成中だった給与明細が確定したことを記録する。
+    /// 記録が作成中でなければ(先に確定されていたなど)、何も変えずに `Conflict` になる
+    async fn record_finalized(
+        &self,
+        db: &mut Db,
+        payslip: &FinalizedPayslip,
+    ) -> Result<(), RepositoryError>;
 }
 
 /// 派遣社員の記録と取り出し

@@ -5,7 +5,9 @@ use payroll_domain::staff::StaffId;
 
 use crate::UseCaseError;
 use crate::ports::database::Database;
-use crate::ports::repository::{PayslipRepository, ProjectRepository, StaffRepository};
+use crate::ports::repository::{
+    PayslipRepository, ProjectRepository, RepositoryError, StaffRepository,
+};
 
 /// 給与明細の作成で管理者が入力する内容
 pub struct CreatePayslipInput {
@@ -59,6 +61,13 @@ impl CreatePayslipUseCase {
 
         let draft = Payslip::draft(input.staff_id, input.period, input.lines)?;
         let mut db = self.db.connection().await?;
-        Ok(self.payslips.insert(&mut db, &draft.into()).await?)
+        match self.payslips.insert(&mut db, &draft).await {
+            Ok(id) => Ok(id),
+            // 事前の確かめの後に、同じ月の給与明細が同時に作られた
+            Err(RepositoryError::Conflict(_)) => {
+                Err(UseCaseError::Conflict("この月の給与明細は既にあります".into()))
+            }
+            Err(err) => Err(err.into()),
+        }
     }
 }

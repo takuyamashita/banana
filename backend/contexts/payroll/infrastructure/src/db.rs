@@ -25,17 +25,36 @@ pub async fn connect(url: &str, max_connections: u32) -> Result<MySqlPool, sqlx:
 /// sqlx のエラーを usecase の `RepositoryError` に翻訳する。
 ///
 /// `impl From<sqlx::Error> for RepositoryError` は書けない。両方とも infrastructure から見て
-/// 外部の型なので、孤児ルール(E0117)に触れる。usecase 側に書けば usecase が sqlx に依存してしまう
+/// 外部の型なので、孤児ルール(E0117)に触れる。usecase 側に書けば usecase が sqlx に依存してしまう。
+///
+/// 再試行すれば通りうるもの(接続できない・ロック待ちのタイムアウト・デッドロック)だけを Unavailable にし、
+/// それ以外(列がない・型が合わない・制約違反など、やり直しても直らないもの)は Internal にする
 #[allow(clippy::needless_pass_by_value, reason = "map_err(db_err) で渡すため値で受ける")]
 pub(crate) fn db_err(err: sqlx::Error) -> RepositoryError {
-    if let Some(db) = err.as_database_error()
-        && db.is_unique_violation()
-    {
-        // 制約名や値を含む DB のメッセージはクライアントに返さず、ログにだけ残す
-        tracing::info!(detail = db.message(), "unique constraint violated");
-        return RepositoryError::Conflict("一意制約に違反しました".to_owned());
+    match &err {
+        sqlx::Error::Database(db) if db.is_unique_violation() => {
+            // DB のメッセージ(Duplicate entry '<値>' for key '<制約名>')はクライアントに返さない。
+            // 値にはメールアドレスなどが入るので、ログにも制約名だけを残す
+            let constraint = db.message().rsplit_once("for key ").map_or("-", |(_, key)| key);
+            tracing::info!(constraint, "unique constraint violated");
+            RepositoryError::Conflict("一意制約に違反しました".to_owned())
+        }
+        // 1205: ロック待ちのタイムアウト、1213: デッドロック。やり直せば通りうる
+        sqlx::Error::Database(db)
+            if matches!(
+                db.try_downcast_ref().map(sqlx::mysql::MySqlDatabaseError::number),
+                Some(1205 | 1213)
+            ) =>
+        {
+            RepositoryError::Unavailable(err.to_string())
+        }
+        sqlx::Error::Io(_)
+        | sqlx::Error::Tls(_)
+        | sqlx::Error::PoolTimedOut
+        | sqlx::Error::PoolClosed
+        | sqlx::Error::WorkerCrashed => RepositoryError::Unavailable(err.to_string()),
+        _ => RepositoryError::Internal(err.to_string()),
     }
-    RepositoryError::Unavailable(err.to_string())
 }
 
 pub(crate) fn corrupted(err: impl std::fmt::Display) -> RepositoryError {
