@@ -2459,6 +2459,7 @@ dependencies = [
  "payroll-domain",
  "payroll-usecase",
  "platform-db",
+ "platform-gen",
  "platform-kernel",
  "platform-messaging",
  "platform-telemetry",
@@ -2511,6 +2512,16 @@ dependencies = [
  "thiserror",
  "time",
  "tokio",
+]
+
+[[package]]
+name = "pbjson"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e8edd1efdd8ab23ba9cb9ace3d9987a72663d5d7c9f74fa00b51d6213645cf6c"
+dependencies = [
+ "base64 0.22.1",
+ "serde",
 ]
 
 [[package]]
@@ -2595,7 +2606,9 @@ dependencies = [
 name = "platform-gen"
 version = "0.1.0"
 dependencies = [
+ "pbjson",
  "prost",
+ "serde",
  "tonic",
  "tonic-prost",
 ]

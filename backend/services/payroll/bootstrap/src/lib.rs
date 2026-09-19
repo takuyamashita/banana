@@ -155,7 +155,7 @@ pub fn build_handlers(pool: &MySqlPool, user_directory: Arc<dyn UserDirectory>) 
             ),
             FinalizePayslipUseCase::new(
                 payslips.clone(),
-                outbox,
+                outbox.clone(),
                 db.clone(),
                 Arc::new(SystemClock),
             ),
@@ -163,12 +163,12 @@ pub fn build_handlers(pool: &MySqlPool, user_directory: Arc<dyn UserDirectory>) 
             ListPayslipsUseCase::new(payslips, staff.clone()),
         ),
         staff: StaffServiceHandler::new(
-            CreateStaffUseCase::new(staff.clone(), db.clone(), user_directory),
+            CreateStaffUseCase::new(staff.clone(), outbox.clone(), db.clone(), user_directory),
             ListStaffUseCase::new(staff_query),
             GetMeUseCase::new(staff),
         ),
         project: ProjectServiceHandler::new(
-            CreateProjectUseCase::new(projects, db),
+            CreateProjectUseCase::new(projects, outbox, db),
             ListProjectsUseCase::new(project_query),
         ),
     }

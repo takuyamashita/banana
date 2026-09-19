@@ -1,6 +1,6 @@
 use platform_kernel::{Email, Unsaved, UserId};
 
-use super::{DisplayName, StaffId};
+use super::{DisplayName, StaffEvent, StaffId};
 
 /// 派遣社員。派遣先の案件で働く人の雇用記録と、その人のログイン用アカウントの対応
 #[derive(Debug)]
@@ -40,6 +40,15 @@ impl Staff<Unsaved> {
     #[must_use]
     pub fn new(user_id: UserId, email: Email, display_name: DisplayName) -> Self {
         Self { id: Unsaved, user_id, email, display_name }
+    }
+
+    /// この内容で登録され、派遣社員番号 `id` が振られた、という出来事
+    pub fn registered_as(&self, id: StaffId) -> StaffEvent {
+        StaffEvent::Registered {
+            staff_id: id,
+            user_id: self.user_id.clone(),
+            display_name: self.display_name.clone(),
+        }
     }
 }
 

@@ -209,4 +209,5 @@ pub struct Staff {
     pub display_name: ::prost::alloc::string::String,
 }
 include!("acme.payroll.v1.tonic.rs");
+include!("acme.payroll.v1.serde.rs");
 // @@protoc_insertion_point(module)

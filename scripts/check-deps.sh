@@ -45,7 +45,8 @@ allowed_workspace_deps() {
   case "$1" in
     *-domain) echo '^platform-kernel$' ;;
     *-usecase) echo "^(${1%-usecase}-domain|platform-kernel)$" ;;
-    *-infrastructure) echo "^(${1%-infrastructure}-(domain|usecase)|platform-(kernel|telemetry|db|messaging))$" ;;
+    # platform-gen は出来事の約束(proto の acme.*.events.v1)を読み書きするため
+    *-infrastructure) echo "^(${1%-infrastructure}-(domain|usecase)|platform-(kernel|telemetry|db|messaging|gen))$" ;;
     *-handler) echo "^(${1%-handler}-(domain|usecase)|platform-(kernel|auth|gen))$" ;;
     platform-kernel | platform-gen | platform-db) echo '^$' ;;
     platform-auth | platform-telemetry) echo '^platform-kernel$' ;;

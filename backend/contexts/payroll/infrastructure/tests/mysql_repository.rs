@@ -751,3 +751,102 @@ async fn relay_sends_events_in_order_with_their_group_and_marks_them_published()
         0
     );
 }
+
+#[tokio::test]
+async fn staff_and_projects_registered_before_events_existed_are_announced() {
+    use platform_gen::acme::payroll::events::v1 as published;
+
+    let container = Mysql::default()
+        .with_tag("8.4")
+        .with_cmd(["--innodb-use-native-aio=0"])
+        .start()
+        .await
+        .unwrap();
+    let port = container.get_host_port_ipv4(3306).await.unwrap();
+    let pool = payroll_infrastructure::connect(&format!("mysql://root@127.0.0.1:{port}/test"), 2)
+        .await
+        .unwrap();
+
+    // 出来事を記録するようになる前(知らせるマイグレーションの手前)の DB に、派遣社員と案件がある
+    let migrations = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations");
+    let before = std::env::temp_dir().join(format!("payroll-migrations-before-{port}"));
+    std::fs::create_dir_all(&before).unwrap();
+    for entry in std::fs::read_dir(&migrations).unwrap() {
+        let path = entry.unwrap().path();
+        if path.file_name().unwrap().to_str().unwrap() < "20260920000011" {
+            std::fs::copy(&path, before.join(path.file_name().unwrap())).unwrap();
+        }
+    }
+    sqlx::migrate::Migrator::new(before.as_path()).await.unwrap().run(&pool).await.unwrap();
+    sqlx::query("insert into projects (name) values ('案件A')").execute(&pool).await.unwrap();
+    sqlx::query(
+        "insert into staff (user_id, email, display_name) values ('sub-1', 'taro@example.com', '派遣 太郎')",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    payroll_infrastructure::MIGRATOR.run(&pool).await.unwrap();
+
+    // 知らせる出来事が outbox に入り、ペイロードは Rust が送るもの(proto の JSON 形)と同じ形
+    let rows: Vec<(String, serde_json::Value)> =
+        sqlx::query_as("select event_type, payload from outbox order by id")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    let project = published::ProjectCreated { project_id: 1, name: "案件A".into() };
+    let staff = published::StaffRegistered {
+        staff_id: 1,
+        user_id: "sub-1".into(),
+        display_name: "派遣 太郎".into(),
+    };
+    assert_eq!(
+        rows,
+        [
+            ("project.created".to_owned(), serde_json::to_value(&project).unwrap()),
+            ("staff.registered".to_owned(), serde_json::to_value(&staff).unwrap()),
+        ]
+    );
+    assert_eq!(
+        serde_json::from_value::<published::StaffRegistered>(rows[1].1.clone()).unwrap(),
+        staff
+    );
+    std::fs::remove_dir_all(before).unwrap();
+}
+
+#[tokio::test]
+async fn registering_staff_and_projects_records_events_in_the_published_shape() {
+    use payroll_usecase::project::CreateProjectUseCase;
+    use platform_gen::acme::payroll::events::v1 as published;
+
+    let db = db().await;
+    let outbox: Arc<dyn EventOutbox> = Arc::new(MySqlEventOutbox);
+    let id = CreateProjectUseCase::new(
+        Arc::new(MySqlProjectRepository::new(db.pool.clone())),
+        outbox,
+        Arc::new(MySqlDatabase::new(db.pool.clone())),
+    )
+    .execute(ProjectName::new("案件B").unwrap())
+    .await
+    .unwrap();
+
+    let (aggregate, event_type, payload): (String, String, serde_json::Value) = sqlx::query_as(
+        "select concat(aggregate_type, '-', aggregate_id), event_type, payload from outbox",
+    )
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        (aggregate, event_type),
+        (format!("project-{}", id.as_i64()), "project.created".to_owned())
+    );
+    // int64 は文字列(proto の JSON の決まり)。他の言語の受け手も同じ形で読める
+    assert_eq!(
+        payload,
+        serde_json::json!({ "projectId": id.as_i64().to_string(), "name": "案件B" })
+    );
+    assert_eq!(
+        serde_json::from_value::<published::ProjectCreated>(payload).unwrap().project_id,
+        id.as_i64()
+    );
+}

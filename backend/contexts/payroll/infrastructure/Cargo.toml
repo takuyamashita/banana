@@ -11,6 +11,7 @@ aws-sdk-cognitoidentityprovider.workspace = true
 payroll-domain.workspace = true
 payroll-usecase.workspace = true
 platform-db.workspace = true
+platform-gen.workspace = true
 platform-kernel.workspace = true
 platform-telemetry.workspace = true
 reqwest.workspace = true

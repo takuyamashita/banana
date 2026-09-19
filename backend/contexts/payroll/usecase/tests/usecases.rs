@@ -12,8 +12,8 @@ use payroll_domain::payout::{NewPayout, Payout, PayoutId, PayoutOutcome};
 use payroll_domain::payslip::{
     HourlyRate, NewPayslip, PayPeriod, Payslip, PayslipEvent, PayslipId, PayslipLine, WorkMinutes,
 };
-use payroll_domain::project::{NewProject, Project, ProjectId, ProjectName};
-use payroll_domain::staff::{DisplayName, NewStaff, Staff, StaffId};
+use payroll_domain::project::{NewProject, Project, ProjectEvent, ProjectId, ProjectName};
+use payroll_domain::staff::{DisplayName, NewStaff, Staff, StaffEvent, StaffId};
 use payroll_usecase::UseCaseError;
 use payroll_usecase::payslip::{
     CreatePayslipInput, CreatePayslipLine, CreatePayslipUseCase, FinalizePayslipUseCase,
@@ -28,6 +28,7 @@ use payroll_usecase::ports::repository::{
     PayoutRepository, PayslipRepository, ProjectRepository, RepositoryError, StaffRepository,
 };
 use payroll_usecase::ports::user_directory::{UserDirectory, UserDirectoryError};
+use payroll_usecase::project::CreateProjectUseCase;
 use payroll_usecase::staff::{CreateStaffInput, CreateStaffUseCase};
 use platform_kernel::{AuthenticatedUser, Email, Money, Role, UserId};
 use time::OffsetDateTime;
@@ -663,9 +664,84 @@ fn staff_input(email: &str) -> CreateStaffInput {
 fn create_staff_usecase(world: &Arc<World>, directory: &Arc<FakeDirectory>) -> CreateStaffUseCase {
     CreateStaffUseCase::new(
         Arc::new(FakeStaff(world.clone())),
+        Arc::new(FakeOutbox(world.clone())),
         Arc::new(FakeDatabase(world.clone())),
         directory.clone(),
     )
+}
+
+#[tokio::test]
+async fn registered_staff_is_announced_with_the_account_it_is_tied_to() {
+    let world = Arc::new(World::default());
+    let directory = Arc::new(FakeDirectory::default());
+
+    let id = create_staff_usecase(&world, &directory)
+        .execute(staff_input("new@example.com"))
+        .await
+        .unwrap();
+
+    // 他の業務(勤怠)は、この出来事で派遣社員とログイン用アカウントを結びつける
+    assert_eq!(
+        world.records().events,
+        [PayrollEvent::Staff(StaffEvent::Registered {
+            staff_id: id,
+            user_id: UserId::parse("sub-new@example.com").unwrap(),
+            display_name: DisplayName::new("新人").unwrap(),
+        })]
+    );
+}
+
+#[tokio::test]
+async fn staff_is_not_registered_when_the_event_cannot_be_recorded() {
+    let world = Arc::new(World { fail_event_append: true, ..World::default() });
+    let directory = Arc::new(FakeDirectory::default());
+
+    let err = create_staff_usecase(&world, &directory)
+        .execute(staff_input("new@example.com"))
+        .await
+        .unwrap_err();
+
+    // 登録だけが残って、勤怠が知らない派遣社員ができることはない。発行したアカウントも消す
+    assert!(matches!(err, UseCaseError::Unavailable(_)));
+    assert!(world.records().staff.is_empty());
+    assert_eq!(*directory.deleted.lock().unwrap(), [UserId::parse("sub-new@example.com").unwrap()]);
+}
+
+fn create_project_usecase(world: &Arc<World>) -> CreateProjectUseCase {
+    CreateProjectUseCase::new(
+        Arc::new(FakeProjects(world.clone())),
+        Arc::new(FakeOutbox(world.clone())),
+        Arc::new(FakeDatabase(world.clone())),
+    )
+}
+
+#[tokio::test]
+async fn created_project_is_announced() {
+    let world = Arc::new(World::default());
+
+    let id =
+        create_project_usecase(&world).execute(ProjectName::new("案件A").unwrap()).await.unwrap();
+
+    assert_eq!(
+        world.records().events,
+        [PayrollEvent::Project(ProjectEvent::Created {
+            project_id: id,
+            name: ProjectName::new("案件A").unwrap(),
+        })]
+    );
+}
+
+#[tokio::test]
+async fn project_is_not_created_when_the_event_cannot_be_recorded() {
+    let world = Arc::new(World { fail_event_append: true, ..World::default() });
+
+    let err = create_project_usecase(&world)
+        .execute(ProjectName::new("案件A").unwrap())
+        .await
+        .unwrap_err();
+
+    assert!(matches!(err, UseCaseError::Unavailable(_)));
+    assert!(world.records().projects.is_empty());
 }
 
 #[tokio::test]

@@ -8,6 +8,7 @@ use platform_kernel::Email;
 
 use crate::UseCaseError;
 use crate::ports::database::Database;
+use crate::ports::events::{EventOutbox, PayrollEvent};
 use crate::ports::queries::{StaffQuery, StaffView};
 use crate::ports::repository::StaffRepository;
 use crate::ports::user_directory::UserDirectory;
@@ -25,9 +26,10 @@ pub struct CreateStaffInput {
 /// 管理者が派遣社員を登録する。
 ///
 /// 派遣社員のログイン用アカウントを発行し、そのアカウントと雇用記録を結びつける。
-/// 同じメールアドレスの派遣社員は登録できない
+/// 同じメールアドレスの派遣社員は登録できない。登録したことは他の業務(勤怠など)に知らせる
 pub struct CreateStaffUseCase {
     staff_repository: Arc<dyn StaffRepository>,
+    outbox: Arc<dyn EventOutbox>,
     db: Arc<dyn Database>,
     user_directory: Arc<dyn UserDirectory>,
 }
@@ -36,10 +38,11 @@ impl CreateStaffUseCase {
     #[must_use]
     pub fn new(
         staff_repository: Arc<dyn StaffRepository>,
+        outbox: Arc<dyn EventOutbox>,
         db: Arc<dyn Database>,
         user_directory: Arc<dyn UserDirectory>,
     ) -> Self {
-        Self { staff_repository, db, user_directory }
+        Self { staff_repository, outbox, db, user_directory }
     }
 
     /// 派遣社員を登録し、振られた派遣社員番号を返す。
@@ -68,9 +71,13 @@ impl CreateStaffUseCase {
         }
     }
 
+    /// 雇用記録と、登録したという出来事を一緒に記録する(どちらか一方だけが残ることはない)
     async fn register(&self, new: &NewStaff) -> Result<StaffId, UseCaseError> {
-        let mut db = self.db.connection().await?;
-        Ok(self.staff_repository.insert(&mut db, new).await?)
+        let mut tx = self.db.transaction().await?;
+        let id = self.staff_repository.insert(&mut tx, new).await?;
+        self.outbox.append(&mut tx, PayrollEvent::Staff(new.registered_as(id))).await?;
+        tx.commit().await?;
+        Ok(id)
     }
 }
 

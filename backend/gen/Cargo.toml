@@ -6,6 +6,9 @@ publish.workspace = true
 description = "proto から buf generate で生成したコード。lint 対象外"
 
 [dependencies]
+# 出来事(acme.*.events.v1)を proto の JSON 形でキューに流す(serde の実装は neoeinstein-prost-serde が生成する)
+pbjson.workspace = true
 prost.workspace = true
 tonic.workspace = true
 tonic-prost.workspace = true
+serde.workspace = true

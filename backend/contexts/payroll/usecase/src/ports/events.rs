@@ -2,6 +2,8 @@
 
 use async_trait::async_trait;
 use payroll_domain::payslip::PayslipEvent;
+use payroll_domain::project::ProjectEvent;
+use payroll_domain::staff::StaffEvent;
 
 use super::database::Db;
 use super::repository::RepositoryError;
@@ -12,9 +14,13 @@ use super::repository::RepositoryError;
 pub enum PayrollEvent {
     /// 給与明細に起きた出来事
     Payslip(PayslipEvent),
+    /// 派遣社員に起きた出来事
+    Staff(StaffEvent),
+    /// 案件に起きた出来事
+    Project(ProjectEvent),
 }
 
-/// 出来事の記録先。記録した出来事は、後から後続の業務(振込など)に届けられる
+/// 出来事の記録先。記録した出来事は、後から後続の業務(振込・勤怠など)に届けられる
 #[async_trait]
 pub trait EventOutbox: Send + Sync {
     /// 出来事を記録する。記録は、同じトランザクションの他の記録と一緒に確定する

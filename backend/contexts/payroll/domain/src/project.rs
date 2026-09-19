@@ -4,10 +4,12 @@
 
 mod entity;
 mod error;
+mod event;
 mod id;
 mod name;
 
 pub use self::entity::{NewProject, Project};
 pub use self::error::ProjectError;
+pub use self::event::ProjectEvent;
 pub use self::id::ProjectId;
 pub use self::name::ProjectName;
