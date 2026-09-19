@@ -87,11 +87,11 @@ test("作成すると作成中として一覧に出て、確定すると確定�
   expect(screen.getByTestId("payslip-total")).toHaveTextContent("12,000");
   expect(screen.getByRole("cell", { name: "案件A" })).toBeInTheDocument();
 
-  await user.click(screen.getByRole("button", { name: "2026年9月分を確定する" }));
+  await user.click(screen.getByRole("button", { name: "派遣 太郎の2026年9月分を確定する" }));
 
   expect(await screen.findByText("給与明細 #42 を確定しました。")).toBeInTheDocument();
   expect(screen.getByText(/確定済み/)).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "2026年9月分を確定する" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "派遣 太郎の2026年9月分を確定する" })).not.toBeInTheDocument();
 });
 
 test("サーバーのエラーメッセージを表示する", async () => {
@@ -107,4 +107,67 @@ test("サーバーのエラーメッセージを表示する", async () => {
   await fillAndCreate();
 
   expect(await screen.findByRole("alert")).toHaveTextContent("この月の給与明細は既にあります");
+});
+
+test("派遣社員を選び直すと、新しい一覧が届くまで前の人の給与明細と確定ボタンを出さない", async () => {
+  // 花子の一覧は、テストが release を呼ぶまで返さない
+  let release = () => {};
+  const hanakoListed = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const draft = (staffId: bigint, payslipId: bigint) =>
+    create(PayslipSchema, {
+      payslipId,
+      staffId,
+      payYear: 2026,
+      payMonth: 9,
+      status: PayslipStatus.DRAFT,
+      totalYen: 12_000n,
+      lines: [{ projectId: 10n, workMinutes: 600, hourlyRate: 1_200n, amountYen: 12_000n }],
+    });
+  const transport = createRouterTransport(({ service }) => {
+    service(StaffService, {
+      listStaff: () => ({
+        staff: [
+          { staffId: 1n, email: "taro@example.com", displayName: "派遣 太郎" },
+          { staffId: 2n, email: "hanako@example.com", displayName: "派遣 花子" },
+        ],
+      }),
+    });
+    service(ProjectService, { listProjects: () => ({ projects: [{ projectId: 10n, name: "案件A" }] }) });
+    service(PayrollService, {
+      listPayslips: async ({ staffId }) => {
+        if (staffId === 2n) {
+          await hanakoListed;
+          return { payslips: [draft(2n, 7n)] };
+        }
+        return { payslips: [draft(1n, 5n)] };
+      },
+    });
+  });
+  render(
+    <ApiProvider
+      clients={{
+        payroll: createClient(PayrollService, transport),
+        staff: createClient(StaffService, transport),
+        project: createClient(ProjectService, transport),
+      }}
+    >
+      <PayslipAdmin />
+    </ApiProvider>,
+  );
+  const user = userEvent.setup();
+  const select = await screen.findByLabelText("派遣社員");
+  await screen.findByRole("option", { name: "派遣 花子(hanako@example.com)" });
+
+  await user.selectOptions(select, "1");
+  expect(await screen.findByRole("button", { name: "派遣 太郎の2026年9月分を確定する" })).toBeInTheDocument();
+
+  await user.selectOptions(select, "2");
+  expect(screen.getByRole("status")).toHaveTextContent("読み込み中");
+  expect(screen.queryByRole("button", { name: /確定する/ })).not.toBeInTheDocument();
+
+  release();
+  expect(await screen.findByRole("button", { name: "派遣 花子の2026年9月分を確定する" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /派遣 太郎/ })).not.toBeInTheDocument();
 });

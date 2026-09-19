@@ -13,6 +13,12 @@ interface LineInput {
 
 const emptyLine: LineInput = { projectId: "", workMinutes: "", hourlyRate: "" };
 
+/// 取り出した給与明細の一覧と、それが誰のものか
+interface Listed {
+  staffId: string;
+  payslips: Payslip[];
+}
+
 /// 管理者が派遣社員の月次給与明細を作成し、内容を確かめてから確定する画面
 export function PayslipAdmin() {
   const api = useApi();
@@ -22,7 +28,7 @@ export function PayslipAdmin() {
   const [year, setYear] = useState(String(new Date().getFullYear()));
   const [month, setMonth] = useState(String(new Date().getMonth() + 1));
   const [lines, setLines] = useState<LineInput[]>([{ ...emptyLine }]);
-  const [payslips, setPayslips] = useState<Payslip[]>([]);
+  const [listed, setListed] = useState<Listed | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -36,25 +42,34 @@ export function PayslipAdmin() {
       .catch((err: unknown) => setError(errorMessage(err)));
   }, [api]);
 
+  // 一覧は誰のものかと組にして持つ。派遣社員を選び直した直後や、応答の順序が入れ替わったときに、
+  // 前の派遣社員の給与明細(と確定ボタン)を出さないため
   const reload = useCallback(
     async (id: string) => {
       if (!id) return;
       const res = await api.payroll.listPayslips({ staffId: BigInt(id) });
-      setPayslips(res.payslips);
+      setListed({ staffId: id, payslips: res.payslips });
     },
     [api],
   );
 
   useEffect(() => {
-    if (!staffId) return;
-    api.payroll
-      .listPayslips({ staffId: BigInt(staffId) })
-      .then((res) => setPayslips(res.payslips))
-      .catch((err: unknown) => setError(errorMessage(err)));
+    const controller = new AbortController();
+    if (staffId) {
+      api.payroll
+        .listPayslips({ staffId: BigInt(staffId) }, { signal: controller.signal })
+        .then((res) => setListed({ staffId, payslips: res.payslips }))
+        .catch((err: unknown) => {
+          if (!controller.signal.aborted) setError(errorMessage(err));
+        });
+    }
+    return () => controller.abort();
   }, [api, staffId]);
 
-  // 派遣社員を選ぶまでは一覧を出さない
-  const shown = staffId ? payslips : [];
+  // 選んでいる派遣社員の一覧だけを出す。まだ届いていなければ読み込み中
+  const shown = listed && listed.staffId === staffId ? listed.payslips : [];
+  const loading = staffId !== "" && listed?.staffId !== staffId;
+  const staffName = staff.find((s) => String(s.staffId) === staffId)?.displayName ?? "";
 
   const updateLine = (index: number, patch: Partial<LineInput>) =>
     setLines((prev) => prev.map((line, i) => (i === index ? { ...line, ...patch } : line)));
@@ -172,12 +187,13 @@ export function PayslipAdmin() {
       {error && <Alert>{error}</Alert>}
       {notice && <Alert tone="success">{notice}</Alert>}
 
+      {loading && <output>読み込み中…</output>}
       {shown.map((p) => (
         <section key={String(p.payslipId)} className="payslip-item">
           <PayslipView payslip={p} projectName={projectName} />
           {p.status === PayslipStatus.DRAFT && (
             <Button disabled={busy} onClick={() => finalize(p)}>
-              {`${p.payYear}年${p.payMonth}月分を確定する`}
+              {`${staffName}の${p.payYear}年${p.payMonth}月分を確定する`}
             </Button>
           )}
         </section>
