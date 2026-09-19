@@ -101,9 +101,9 @@ async fn payslip_and_its_event_are_committed_together() {
 
     let found = repo.find(id).await.unwrap().unwrap();
     assert_eq!(found.status(), PayslipStatus::Finalized);
-    assert_eq!(found.lines().len(), 2);
+    assert_eq!(found.content().lines().len(), 2);
     // 600分×1500/60 = 15,000 と 45分×1001/60 = 750.75 → 750
-    assert_eq!(found.total().as_yen(), 15_750);
+    assert_eq!(found.content().total().as_yen(), 15_750);
 
     let (count, event_type, aggregate_id): (i64, String, i64) = sqlx::query_as(
         "select count(*), max(event_type), max(aggregate_id) from outbox where published_at is null",
@@ -149,7 +149,7 @@ async fn payslip_written_outside_a_transaction_is_kept_whole() {
 
     // 接続に書いた給与明細は、明細行まで一緒に確定している
     let found = repo.find(id).await.unwrap().unwrap();
-    assert_eq!(found.lines().len(), 2);
+    assert_eq!(found.content().lines().len(), 2);
 }
 
 #[tokio::test]

@@ -46,7 +46,7 @@ impl GetPayslipUseCase {
     ) -> Result<Payslip, UseCaseError> {
         let payslip = self.repository.find(id).await?.ok_or(UseCaseError::NotFound)?;
 
-        if !can_view(self.staff_repository.as_ref(), user, payslip.staff_id()).await? {
+        if !can_view(self.staff_repository.as_ref(), user, payslip.content().staff_id()).await? {
             return Err(UseCaseError::NotFound);
         }
         Ok(payslip)

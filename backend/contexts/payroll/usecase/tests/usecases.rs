@@ -144,7 +144,8 @@ impl PayslipRepository for FakePayslips {
     async fn insert(&self, db: &mut Db, new: &NewPayslip) -> Result<PayslipId, RepositoryError> {
         Ok(fake(db).write(|r| {
             let id = PayslipId::from_i64(next_id(r.payslips.len())).unwrap();
-            r.payslips.push((id, new.staff_id(), new.period(), new.lines().to_vec()));
+            let c = new.content();
+            r.payslips.push((id, c.staff_id(), c.period(), c.lines().to_vec()));
             id
         }))
     }

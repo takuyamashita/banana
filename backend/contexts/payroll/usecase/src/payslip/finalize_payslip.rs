@@ -49,7 +49,7 @@ impl FinalizePayslipUseCase {
             return Err(UseCaseError::InvalidInput("派遣社員が存在しません".into()));
         }
         let existing = self.payslips.list_by_staff(input.staff_id).await?;
-        if existing.iter().any(|p| p.period() == input.period) {
+        if existing.iter().any(|p| p.content().period() == input.period) {
             return Err(UseCaseError::Conflict("この月の給与明細は既に確定しています".into()));
         }
 

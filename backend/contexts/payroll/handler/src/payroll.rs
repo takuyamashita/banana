@@ -98,18 +98,19 @@ impl proto::payroll_service_server::PayrollService for PayrollServiceHandler {
 }
 
 fn to_proto(p: &Payslip) -> proto::Payslip {
+    let c = p.content();
     proto::Payslip {
-        payslip_id: p.id().as_i64(),
-        staff_id: p.staff_id().as_i64(),
-        pay_year: i32::from(p.period().year()),
-        pay_month: i32::from(p.period().month()),
+        payslip_id: c.id().as_i64(),
+        staff_id: c.staff_id().as_i64(),
+        pay_year: i32::from(c.period().year()),
+        pay_month: i32::from(c.period().month()),
         status: match p.status() {
             PayslipStatus::Draft => proto::PayslipStatus::Draft,
             PayslipStatus::Finalized => proto::PayslipStatus::Finalized,
         }
         .into(),
-        total_yen: p.total().as_yen(),
-        lines: p
+        total_yen: c.total().as_yen(),
+        lines: c
             .lines()
             .iter()
             .map(|l| proto::PayslipLine {

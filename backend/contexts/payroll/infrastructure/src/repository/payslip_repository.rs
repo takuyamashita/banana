@@ -81,9 +81,9 @@ impl PayslipRepository for MySqlPayslipRepository {
         let result = sqlx::query!(
             "insert into payslips (staff_id, pay_year, pay_month, status, finalized_at)
              values (?, ?, ?, ?, if(? = 'finalized', current_timestamp(6), null))",
-            new.staff_id().as_i64(),
-            new.period().year(),
-            new.period().month(),
+            new.content().staff_id().as_i64(),
+            new.content().period().year(),
+            new.content().period().month(),
             encode_status(new.status()),
             encode_status(new.status()),
         )
@@ -95,7 +95,7 @@ impl PayslipRepository for MySqlPayslipRepository {
             .map_err(corrupted)
             .and_then(|id| PayslipId::from_i64(id).map_err(corrupted))?;
 
-        for line in new.lines() {
+        for line in new.content().lines() {
             sqlx::query!(
                 "insert into payslip_lines (payslip_id, project_id, work_minutes, hourly_rate)
                  values (?, ?, ?, ?)",
@@ -122,7 +122,7 @@ impl PayslipRepository for MySqlPayslipRepository {
              where id = ?",
             encode_status(payslip.status()),
             encode_status(payslip.status()),
-            payslip.id().as_i64(),
+            payslip.content().id().as_i64(),
         )
         .execute(&mut *conn)
         .await
