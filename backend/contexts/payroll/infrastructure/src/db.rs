@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use payroll_usecase::ports::repository::RepositoryError;
 use sqlx::Executor;
 use sqlx::migrate::Migrator;
@@ -6,15 +8,21 @@ use sqlx::mysql::{MySqlPool, MySqlPoolOptions};
 /// infrastructure/migrations を埋め込んだマイグレーター。app/migrate から使う
 pub static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
-/// 接続ごとに分離レベルとタイムゾーンを固定する。
-/// 既定の REPEATABLE READ はギャップロックが広く、存在確認→挿入でデッドロックを招きやすい
+/// プールから接続を借りるのを待つ上限。混んでいるときに、リクエストが長く待ち続けないようにする
+const ACQUIRE_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// 接続ごとに分離レベル・タイムゾーン・ロック待ちの上限を固定する。
+/// 既定の REPEATABLE READ はギャップロックが広く、存在確認→挿入でデッドロックを招きやすい。
+/// ロック待ちの既定(50秒)は長すぎるので、10秒で打ち切る(打ち切られたら Unavailable になる)
 pub async fn connect(url: &str, max_connections: u32) -> Result<MySqlPool, sqlx::Error> {
     MySqlPoolOptions::new()
         .max_connections(max_connections)
+        .acquire_timeout(ACQUIRE_TIMEOUT)
         .after_connect(|conn, _meta| {
             Box::pin(async move {
                 conn.execute("set session transaction isolation level read committed").await?;
                 conn.execute("set time_zone = '+00:00'").await?;
+                conn.execute("set session innodb_lock_wait_timeout = 10").await?;
                 Ok(())
             })
         })

@@ -326,11 +326,35 @@ async fn second_payslip_for_the_same_month_violates_unique_key() {
 }
 
 #[tokio::test]
+async fn database_rejects_status_and_finalized_at_that_do_not_match() {
+    let db = db().await;
+    let (staff, project) = seed(&db).await;
+    let id = create(&db, &draft(staff, project, 9)).await.unwrap();
+
+    for sql in [
+        "update payslips set status = 'paid' where id = ?",
+        "update payslips set finalized_at = now(6) where id = ?",
+        "update payslips set status = 'finalized' where id = ?",
+    ] {
+        let result = sqlx::query(sql).bind(id.as_i64()).execute(&db.pool).await;
+        assert!(result.is_err(), "CHECK 制約で拒否されるはず: {sql}");
+    }
+}
+
+#[tokio::test]
 async fn corrupted_row_is_reported_not_panicked() {
     let db = db().await;
     let (staff, project) = seed(&db).await;
     let repo = MySqlPayslipRepository::new(db.pool.clone());
     let id = create_and_finalize(&db, staff, project, 9).await;
+    // DB の制約をすり抜けた記録(制約を張る前のデータ・手作業など)も、組み立て直しで弾く
+    sqlx::query(
+        "alter table payslips alter check ck_payslip_status not enforced,
+                              alter check ck_payslip_finalized_at not enforced",
+    )
+    .execute(&db.pool)
+    .await
+    .unwrap();
     let corrupt = |sql: &'static str| {
         let pool = db.pool.clone();
         async move { sqlx::query(sql).bind(id.as_i64()).execute(&pool).await.unwrap() }
