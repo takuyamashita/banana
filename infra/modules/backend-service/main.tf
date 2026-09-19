@@ -13,6 +13,23 @@ resource "aws_ecr_repository" "this" {
   }
 }
 
+# 古いイメージを消す。ロールバックに使う最近の版は残す(タグは git sha で、上書きできない)
+resource "aws_ecr_lifecycle_policy" "this" {
+  repository = aws_ecr_repository.this.name
+  policy = jsonencode({
+    rules = [{
+      rulePriority = 1
+      description  = "keep the latest ${var.ecr_keep_images} images"
+      selection = {
+        tagStatus   = "any"
+        countType   = "imageCountMoreThan"
+        countNumber = var.ecr_keep_images
+      }
+      action = { type = "expire" }
+    }]
+  })
+}
+
 resource "aws_cloudwatch_log_group" "this" {
   name              = "/ecs/${var.name}"
   retention_in_days = 30
@@ -20,9 +37,10 @@ resource "aws_cloudwatch_log_group" "this" {
 
 resource "aws_ecs_cluster" "this" {
   name = var.name
+  # タスクごとの CPU・メモリの細かい指標。有料なので、見る必要がある環境だけで有効にする
   setting {
     name  = "containerInsights"
-    value = "enabled"
+    value = var.container_insights ? "enabled" : "disabled"
   }
 }
 
@@ -76,6 +94,25 @@ data "aws_iam_policy_document" "task" {
   }
 }
 
+# migrate は server と別のロールにする。DB の管理者のシークレットを読めるのは migrate だけ
+resource "aws_iam_role" "migrate" {
+  name               = "${var.name}-migrate"
+  assume_role_policy = data.aws_iam_policy_document.ecs_assume.json
+}
+
+data "aws_iam_policy_document" "migrate" {
+  statement {
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = [var.database_url_secret_arn, var.database_admin_secret_arn, var.database_app_user_secret_arn]
+  }
+}
+
+resource "aws_iam_role_policy" "migrate" {
+  name   = "${var.name}-migrate"
+  role   = aws_iam_role.migrate.id
+  policy = data.aws_iam_policy_document.migrate.json
+}
+
 resource "aws_iam_role_policy" "task" {
   name   = "${var.name}-task"
   role   = aws_iam_role.task.id
@@ -123,7 +160,7 @@ resource "aws_vpc_security_group_ingress_rule" "task_from_alb" {
   description                  = "From ALB"
 }
 
-# 外向きは HTTPS(AWS API・JWKS・振込API)と VPC 内の MySQL だけ
+# 外向きは HTTPS(AWS API・JWKS・振込API)と DB だけ
 resource "aws_vpc_security_group_egress_rule" "task_https" {
   security_group_id = aws_security_group.task.id
   cidr_ipv4         = "0.0.0.0/0"
@@ -134,12 +171,12 @@ resource "aws_vpc_security_group_egress_rule" "task_https" {
 }
 
 resource "aws_vpc_security_group_egress_rule" "task_mysql" {
-  security_group_id = aws_security_group.task.id
-  cidr_ipv4         = var.vpc_cidr
-  ip_protocol       = "tcp"
-  from_port         = 3306
-  to_port           = 3306
-  description       = "MySQL in VPC"
+  security_group_id            = aws_security_group.task.id
+  referenced_security_group_id = var.database_security_group_id
+  ip_protocol                  = "tcp"
+  from_port                    = 3306
+  to_port                      = 3306
+  description                  = "MySQL"
 }
 
 resource "aws_lb" "this" {
@@ -244,18 +281,22 @@ resource "aws_ecs_task_definition" "migrate" {
   cpu                      = 256
   memory                   = 512
   execution_role_arn       = aws_iam_role.execution.arn
-  task_role_arn            = aws_iam_role.task.arn
+  task_role_arn            = aws_iam_role.migrate.arn
   runtime_platform {
     operating_system_family = "LINUX"
     cpu_architecture        = "ARM64"
   }
   container_definitions = jsonencode([
     {
-      name             = "migrate"
-      image            = var.image
-      essential        = true
-      entryPoint       = ["/app/migrate"]
-      environment      = concat(local.environment, [{ name = "APP__TELEMETRY__OTLP_ENDPOINT", value = "" }])
+      name       = "migrate"
+      image      = var.image
+      essential  = true
+      entryPoint = ["/app/migrate"]
+      environment = concat(local.environment, [
+        { name = "APP__TELEMETRY__OTLP_ENDPOINT", value = "" },
+        { name = "APP__SECRETS__DATABASE_ADMIN_SECRET_ID", value = var.database_admin_secret_arn },
+        { name = "APP__SECRETS__DATABASE_APP_USER_SECRET_ID", value = var.database_app_user_secret_arn },
+      ])
       logConfiguration = local.log_configuration
     },
   ])
@@ -284,4 +325,92 @@ resource "aws_ecs_service" "this" {
     container_port   = 50051
   }
   depends_on = [aws_lb_listener.https]
+  # タスク数はオートスケールが決める(apply で最初の数に戻さない)
+  lifecycle {
+    ignore_changes = [desired_count]
+  }
+}
+
+# ---- オートスケール ----
+
+# CPU を目安に min_count〜max_count の間で増減する。DB の接続数(タスク数 × database.max_connections)が
+# RDS の上限に収まるように max_count を決める
+resource "aws_appautoscaling_target" "this" {
+  service_namespace  = "ecs"
+  resource_id        = "service/${aws_ecs_cluster.this.name}/${aws_ecs_service.this.name}"
+  scalable_dimension = "ecs:service:DesiredCount"
+  min_capacity       = var.desired_count
+  max_capacity       = var.max_count
+}
+
+resource "aws_appautoscaling_policy" "cpu" {
+  name               = "${var.name}-cpu"
+  service_namespace  = aws_appautoscaling_target.this.service_namespace
+  resource_id        = aws_appautoscaling_target.this.resource_id
+  scalable_dimension = aws_appautoscaling_target.this.scalable_dimension
+  policy_type        = "TargetTrackingScaling"
+  target_tracking_scaling_policy_configuration {
+    target_value = 60
+    predefined_metric_specification {
+      predefined_metric_type = "ECSServiceAverageCPUUtilization"
+    }
+  }
+}
+
+# ---- アラーム ----
+
+# 使える server がない(タスクが起動しない・ヘルスチェックに落ち続ける)
+resource "aws_cloudwatch_metric_alarm" "no_healthy_task" {
+  alarm_name          = "${var.name}-no-healthy-task"
+  alarm_description   = "ALB の転送先に正常な server がない。ECS のイベントとタスクのログを見る"
+  namespace           = "AWS/ApplicationELB"
+  metric_name         = "HealthyHostCount"
+  dimensions          = { LoadBalancer = aws_lb.this.arn_suffix, TargetGroup = aws_lb_target_group.this.arn_suffix }
+  statistic           = "Minimum"
+  period              = 60
+  evaluation_periods  = 2
+  threshold           = 1
+  comparison_operator = "LessThanThreshold"
+  treat_missing_data  = "breaching"
+  alarm_actions       = var.alarm_actions
+  ok_actions          = var.alarm_actions
+}
+
+# server が 5xx を返している、または ALB が server に届かず 5xx を返している。
+# gRPC-Web のエラー(Internal・Unavailable など)は HTTP 200 で返るので、ここには数えられない(アプリのログで見る)
+resource "aws_cloudwatch_metric_alarm" "http_5xx" {
+  alarm_name          = "${var.name}-http-5xx"
+  alarm_description   = "ALB か server が 5xx を返している。ALB のアクセスログと server のログを見る"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  threshold           = 5
+  evaluation_periods  = 1
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = var.alarm_actions
+  ok_actions          = var.alarm_actions
+
+  metric_query {
+    id          = "total"
+    expression  = "FILL(target, 0) + FILL(elb, 0)"
+    return_data = true
+  }
+  metric_query {
+    id = "target"
+    metric {
+      namespace   = "AWS/ApplicationELB"
+      metric_name = "HTTPCode_Target_5XX_Count"
+      dimensions  = { LoadBalancer = aws_lb.this.arn_suffix }
+      stat        = "Sum"
+      period      = 300
+    }
+  }
+  metric_query {
+    id = "elb"
+    metric {
+      namespace   = "AWS/ApplicationELB"
+      metric_name = "HTTPCode_ELB_5XX_Count"
+      dimensions  = { LoadBalancer = aws_lb.this.arn_suffix }
+      stat        = "Sum"
+      period      = 300
+    }
+  }
 }

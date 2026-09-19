@@ -6,6 +6,7 @@ mise.local.toml
 *.tfstate
 *.tfstate.*
 .terraform/
+tfplan
 /e2e/test-results/
 /e2e/playwright-report/
 /frontend/apps/web/.vite/

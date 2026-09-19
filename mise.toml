@@ -164,9 +164,10 @@ run = [
   "terraform fmt -check -recursive",
   "tflint --init --config \"$PWD/.tflint.hcl\"",
   "tflint --recursive --config \"$PWD/.tflint.hcl\"",
-  "trivy config --quiet --exit-code 1 --severity HIGH,CRITICAL --ignorefile .trivyignore.yaml .",
+  # bootstrap はバケット名を tfvars から for_each に使うので、値を渡さないとバケットごとの設定を見分けられない
+  "trivy config --quiet --exit-code 1 --severity HIGH,CRITICAL --ignorefile .trivyignore.yaml --tf-vars bootstrap/terraform.tfvars .",
   # 型・参照・モジュールの引数の誤りは fmt や tflint では見つからない。state には触れない(-backend=false)
-  "for env in envs/*/; do terraform -chdir=\"$env\" init -backend=false -input=false >/dev/null && terraform -chdir=\"$env\" validate -no-color || exit 1; done",
+  "for dir in envs/*/ bootstrap/; do terraform -chdir=\"$dir\" init -backend=false -input=false >/dev/null && terraform -chdir=\"$dir\" validate -no-color || exit 1; done",
 ]
 
 [tasks."lint:actions"]

@@ -58,7 +58,7 @@ resource "aws_security_group" "this" {
   vpc_id      = var.vpc_id
 }
 
-# 外向きは HTTPS(AWS API・外部API)と VPC 内の MySQL だけ
+# 外向きは HTTPS(AWS API・外部API)と DB だけ
 resource "aws_vpc_security_group_egress_rule" "https" {
   security_group_id = aws_security_group.this.id
   cidr_ipv4         = "0.0.0.0/0"
@@ -69,12 +69,13 @@ resource "aws_vpc_security_group_egress_rule" "https" {
 }
 
 resource "aws_vpc_security_group_egress_rule" "mysql" {
-  security_group_id = aws_security_group.this.id
-  cidr_ipv4         = var.vpc_cidr
-  ip_protocol       = "tcp"
-  from_port         = 3306
-  to_port           = 3306
-  description       = "MySQL in VPC"
+  count                        = var.database_security_group_id == null ? 0 : 1
+  security_group_id            = aws_security_group.this.id
+  referenced_security_group_id = var.database_security_group_id
+  ip_protocol                  = "tcp"
+  from_port                    = 3306
+  to_port                      = 3306
+  description                  = "MySQL"
 }
 
 resource "aws_lambda_function" "this" {
@@ -117,4 +118,22 @@ resource "aws_lambda_event_source_mapping" "sqs" {
   scaling_config {
     maximum_concurrency = var.maximum_concurrency
   }
+}
+
+# 関数そのものが失敗した(タイムアウト・異常終了・設定の誤り)。
+# 1件ずつの処理の失敗は ReportBatchItemFailures で返すのでここには数えられず、繰り返せば DLQ のアラームになる
+resource "aws_cloudwatch_metric_alarm" "errors" {
+  alarm_name          = "${var.name}-errors"
+  alarm_description   = "Lambda ${var.name} が失敗している。ログを見る"
+  namespace           = "AWS/Lambda"
+  metric_name         = "Errors"
+  dimensions          = { FunctionName = aws_lambda_function.this.function_name }
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 0
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = var.alarm_actions
+  ok_actions          = var.alarm_actions
 }

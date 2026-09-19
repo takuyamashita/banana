@@ -38,3 +38,9 @@ variable "adot_layer_arn" {
   type        = string
   default     = null
 }
+
+variable "alarm_email" {
+  description = "アラームを受け取るメールアドレス。null なら購読を作らない"
+  type        = string
+  default     = null
+}

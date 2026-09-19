@@ -52,7 +52,7 @@ Lambda 本体は `cargo lambda watch -p payout-dispatcher` と
 worktree ごとに別の compose(DB・Keycloak なども別)と別のポートで動かせる。
 
 ```sh
-mise run worktree:new -- feature-x     # ../banana-feature-x を作り(ブランチも)、スロットとポートを .env.worktree に書く
+mise run worktree:new -- feature-x     # ../banana-feature-x を作り(ブランチも)、スロットとポートをその worktree の .env に書く
 cd ../banana-feature-x
 mise run e2e                           # この worktree 専用の依存サービス・server・Vite で動く
 mise run worktree:list                 # worktree ごとのスロットとポート
@@ -62,10 +62,21 @@ mise run worktree:remove -- feature-x  # worktree と compose(データも)を�
 - スロットは 1〜9(main は 0)。ポートは「既定値 + スロット × 100」(スロット 1 なら API :50151・画面 :5273・Keycloak :8180・MySQL :3406)。
 - 名前はブランチ名。既にあるブランチならそれを checkout し、なければ作る。ディレクトリ名と compose のプロジェクト名では `/` などを `-` にし、小文字にする(`feature/X` → `banana-feature-x`)。
 - 画面はその worktree の `WEB_PORT` で開く(スロット 1 なら http://localhost:5273)。
-- mise が `.env.worktree` を読み、`COMPOSE_NAME` と各ポート、server の接続先(`DATABASE_URL`・`APP__*`)を環境変数で渡す。
-  `docker compose` も mise を有効にしたシェル(または `mise exec --`)から実行する。そうしないと main の compose を操作してしまう。
+- 値(`COMPOSE_NAME` と各ポート、server の接続先の `DATABASE_URL`・`APP__*`)は worktree の `.env` にある。
+  `docker compose` はプロジェクトの `.env` を自分で読み、mise も読んで環境変数で渡すので、そのディレクトリでそのまま使える。
 - `target/` は worktree ごとに作られるので、初回の cargo ビルドには時間がかかる。
 - `worktree:remove` は、そのディレクトリのブランチが指定の名前と一致し、コミットしていない変更がないときだけ進む(`feature/x` と `feature-x` は同じディレクトリ名になるので、取り違えて消さないため)。
+
+## AWS に構築する
+
+1. `infra/bootstrap/terraform.tfvars` と `infra/envs/*/terraform.tfvars` の仮の値(`000000000000`・`REPLACE_ME`・`example.com`)を実際の値にする。
+2. 管理者の権限で `infra/bootstrap` を apply する(state の置き場・Lambda の zip の置き場・GitHub Actions のロール)。
+   最初はローカルの state で apply し、`backend.tf` のコメントを外して `terraform init -migrate-state` で作ったバケットに移す。
+3. GitHub の Environments を作る: `dev`・`stg`・`prod`(変数 `AWS_DEPLOY_ROLE_ARN`)と `dev-plan`・`stg-plan`・`prod-plan`(変数 `AWS_PLAN_ROLE_ARN`)。
+   値は bootstrap の出力。`stg`・`prod` には承認者(Required reviewers)を付ける。
+4. 各環境を apply し(最初の1回は管理者が手元から。以後は deploy ワークフロー)、振込 API のキーを Secrets Manager に入れる。
+5. deploy ワークフローを実行する。migrate がテーブルと、アプリが接続する DB ユーザー(読み書きだけ)を作る。
+   それまで server は DB に接続できない。
 
 ## 構成
 
@@ -78,7 +89,9 @@ backend/
   app/{bootstrap,server,migrate,lambdas/payout-dispatcher}  組み立てと実行ファイル
 frontend/apps/web                Vite + React(features/ 間の import は oxlint で禁止)
 frontend/packages/{api-client,ui}
+infra/bootstrap                  アカウントに1回だけ作るもの(state・成果物の置き場、GitHub Actions のロール)
+infra/modules/stack              1つの環境の組み立て(環境ごとの差は規模と保護の強さだけ)
 infra/modules/{network,database,backend-service,lambda-function,frontend-hosting,auth,messaging}
-infra/envs/{dev,stg,prod}
+infra/envs/{dev,stg,prod}        modules/stack に値を渡すだけ
 e2e/                             Playwright
 ```

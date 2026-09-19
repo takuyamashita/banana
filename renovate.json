@@ -17,6 +17,7 @@
     },
     { "matchManagers": ["npm"], "matchPackageNames": ["/^@connectrpc/", "@bufbuild/protobuf"], "groupName": "connect" },
     { "matchManagers": ["npm"], "matchPackageNames": ["oxlint", "oxfmt", "oxlint-tsgolint"], "groupName": "oxc" },
-    { "matchManagers": ["terraform"], "groupName": "terraform providers" }
+    { "matchManagers": ["terraform"], "groupName": "terraform providers" },
+    { "matchManagers": ["dockerfile"], "pinDigests": true }
   ]
 }

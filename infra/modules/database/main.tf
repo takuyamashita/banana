@@ -1,5 +1,8 @@
 # RDS for MySQL 8.4(compose.yaml の mysql:8.4 と揃える)。
-# アプリは接続文字列を Secrets Manager から起動時に読む(bootstrap の secrets.database_url_secret_id)
+#
+# ユーザーは2つに分ける。管理者は RDS がパスワードを作って Secrets Manager で管理し(ローテーションも RDS)、
+# migrate だけが使う。アプリ(server・Lambda)は読み書きだけのユーザーで接続し、テーブルを変えられない。
+# アプリ用のユーザーは migrate がマイグレーションの後に作る(Terraform からは VPC の中の DB に届かないため)
 resource "aws_db_subnet_group" "this" {
   name       = var.name
   subnet_ids = var.subnet_ids
@@ -41,7 +44,8 @@ resource "aws_db_parameter_group" "this" {
   }
 }
 
-resource "random_password" "master" {
+# migrate が作るアプリ用のユーザーのパスワード。記号は使わない(migrate が SQL の文に埋め込むため)
+resource "random_password" "app" {
   length  = 32
   special = false
 }
@@ -55,8 +59,8 @@ resource "aws_db_instance" "this" {
   max_allocated_storage        = 100
   storage_encrypted            = true
   db_name                      = "platform"
-  username                     = "platform"
-  password                     = random_password.master.result
+  username                     = "admin"
+  manage_master_user_password  = true
   db_subnet_group_name         = aws_db_subnet_group.this.name
   vpc_security_group_ids       = [aws_security_group.this.id]
   parameter_group_name         = aws_db_parameter_group.this.name
@@ -70,7 +74,19 @@ resource "aws_db_instance" "this" {
   copy_tags_to_snapshot        = true
 }
 
+# アプリ用のユーザー。migrate が読んで、この名前とパスワードでユーザーを作る。
 # パスワードは tfstate にも残る。state の S3 バケットは暗号化・アクセス制限を前提にする
+resource "aws_secretsmanager_secret" "app_user" {
+  name        = "platform/${var.env}/database-app-user"
+  description = "MySQL user for the application (created by migrate)"
+}
+
+resource "aws_secretsmanager_secret_version" "app_user" {
+  secret_id     = aws_secretsmanager_secret.app_user.id
+  secret_string = jsonencode({ username = "app", password = random_password.app.result })
+}
+
+# アプリが接続に使う文字列(アプリ用のユーザー)
 resource "aws_secretsmanager_secret" "database_url" {
   name        = "platform/${var.env}/database-url"
   description = "MySQL connection string for the application"
@@ -78,5 +94,5 @@ resource "aws_secretsmanager_secret" "database_url" {
 
 resource "aws_secretsmanager_secret_version" "database_url" {
   secret_id     = aws_secretsmanager_secret.database_url.id
-  secret_string = "mysql://${aws_db_instance.this.username}:${random_password.master.result}@${aws_db_instance.this.address}:${aws_db_instance.this.port}/${aws_db_instance.this.db_name}?ssl-mode=required"
+  secret_string = "mysql://app:${random_password.app.result}@${aws_db_instance.this.address}:${aws_db_instance.this.port}/${aws_db_instance.this.db_name}?ssl-mode=required"
 }

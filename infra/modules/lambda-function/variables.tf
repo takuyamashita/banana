@@ -23,9 +23,10 @@ variable "vpc_id" {
   type        = string
 }
 
-variable "vpc_cidr" {
-  description = "VPC の CIDR(MySQL への外向き通信を VPC 内に限る)"
+variable "database_security_group_id" {
+  description = "DB のセキュリティグループ。MySQL への外向き通信をここだけに限る。null なら DB に接続しない"
   type        = string
+  default     = null
 }
 
 variable "subnet_ids" {
@@ -73,4 +74,10 @@ variable "maximum_concurrency" {
   description = "SQS トリガーで同時に動かす数の上限(2 以上)。1つあたりの DB 接続数 × この値が RDS の上限に収まるようにする"
   type        = number
   default     = 2
+}
+
+variable "alarm_actions" {
+  description = "アラームの通知先(SNS トピックの ARN など)"
+  type        = list(string)
+  default     = []
 }

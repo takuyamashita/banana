@@ -1,6 +1,10 @@
 name: deploy-environment
 
-# deploy.yml から環境ごとに呼ぶ。build ジョブが作った成果物(release)を、その環境に置いて切り替える
+# deploy.yml から環境ごとに呼ぶ。build ジョブが作った成果物(release)を、その環境に置いて切り替える。
+#
+# plan と apply を分ける。plan は読み取りのロールで作ってジョブの概要に出し、
+# 承認者はそれを見てから deploy ジョブ(GitHub Environment「<環境>」。stg・prod は承認が要る)を通す。
+# apply するのは承認した plan そのもの。その間に state が変わっていれば apply は失敗する(plan からやり直す)
 on:
   workflow_call:
     inputs:
@@ -14,7 +18,44 @@ permissions:
   id-token: write
 
 jobs:
+  plan:
+    runs-on: ubuntu-24.04-arm
+    environment: ${{ inputs.environment }}-plan
+    env:
+      ENV_DIR: infra/envs/${{ inputs.environment }}
+      VERSION: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: jdx/mise-action@v4.3.0
+        with:
+          install_args: terraform
+      - uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          aws-region: ap-northeast-1
+      # 秘密でない環境ごとの値は terraform.tfvars(自動で読まれる)、デプロイのたびに変わる値だけここで渡す
+      - name: terraform plan
+        working-directory: ${{ env.ENV_DIR }}
+        run: |
+          terraform init -input=false
+          terraform plan -input=false -out=tfplan \
+            -var="image_tag=$VERSION" \
+            -var="lambda_artifact_key=payout-dispatcher/$VERSION.zip"
+          {
+            echo "### terraform plan (${{ inputs.environment }})"
+            echo '```'
+            terraform show -no-color tfplan | tail -c 60000
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      # plan のファイルにはシークレットの値も入りうる。承認と apply の間だけ持つ
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: tfplan-${{ inputs.environment }}
+          path: ${{ env.ENV_DIR }}/tfplan
+          retention-days: 1
+
   deploy:
+    needs: plan
     runs-on: ubuntu-24.04-arm
     environment: ${{ inputs.environment }}
     concurrency:
@@ -38,6 +79,10 @@ jobs:
         with:
           name: release
           path: release
+      - uses: actions/download-artifact@v8.0.1
+        with:
+          name: tfplan-${{ inputs.environment }}
+          path: ${{ env.ENV_DIR }}
 
       - name: Terraform の出力を読む
         id: tf
@@ -97,13 +142,9 @@ jobs:
           echo "migrate exit code: $code"
           test "$code" = "0"
 
-      # 秘密でない環境ごとの値は terraform.tfvars(自動で読まれる)、デプロイのたびに変わる値だけここで渡す
-      - name: terraform apply(サービス更新・Lambda 更新)
+      - name: terraform apply(承認した plan で、サービス更新・Lambda 更新)
         working-directory: ${{ env.ENV_DIR }}
-        run: |
-          terraform apply -input=false -auto-approve \
-            -var="image_tag=$VERSION" \
-            -var="lambda_artifact_key=payout-dispatcher/$VERSION.zip"
+        run: terraform apply -input=false tfplan
 
       # apply はタスクの入れ替えを待たずに終わる。新しいタスクが起動できないまま次に進まないよう、安定するまで待つ
       - name: server の入れ替えが終わるのを待つ

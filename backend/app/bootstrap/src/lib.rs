@@ -78,11 +78,11 @@ async fn secret_or(
         .to_owned())
 }
 
-/// DB 接続。接続文字列は Secrets Manager 指定があればそちらを優先する
-pub async fn connect_db(
+/// DB の接続文字列。Secrets Manager の指定があればそちらを優先する
+pub async fn database_url(
     config: &AppConfig,
     aws: &aws_config::SdkConfig,
-) -> anyhow::Result<MySqlPool> {
+) -> anyhow::Result<String> {
     let url = secret_or(
         aws,
         &config.secrets.database_url_secret_id,
@@ -91,6 +91,25 @@ pub async fn connect_db(
     )
     .await?;
     anyhow::ensure!(!url.is_empty(), "database.url is not configured");
+    Ok(url)
+}
+
+/// Secrets Manager のシークレットを読む
+pub async fn read_secret(
+    aws: &aws_config::SdkConfig,
+    secret_id: &str,
+    what: &str,
+) -> anyhow::Result<String> {
+    anyhow::ensure!(!secret_id.is_empty(), "{what} secret id is not configured");
+    secret_or(aws, secret_id, "", what).await
+}
+
+/// DB 接続。接続文字列は Secrets Manager 指定があればそちらを優先する
+pub async fn connect_db(
+    config: &AppConfig,
+    aws: &aws_config::SdkConfig,
+) -> anyhow::Result<MySqlPool> {
+    let url = database_url(config, aws).await?;
     payroll_infrastructure::connect(&url, config.database.max_connections)
         .await
         .context("failed to connect to database")

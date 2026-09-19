@@ -42,7 +42,7 @@ deny = [
   { crate = "native-tls", reason = "TLS は rustls に揃える" },
   { crate = "openssl-sys", reason = "TLS は rustls に揃える" },
   # sqlx を直接使ってよいのは DB に触る層だけ。wrappers は「直接依存してよい親」の一覧
-  { crate = "sqlx", wrappers = ["payroll-infrastructure", "bootstrap", "server"] },
+  { crate = "sqlx", wrappers = ["payroll-infrastructure", "bootstrap", "server", "migrate"] },
 ]
 
 [sources]

@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 // 前提: docker compose の依存サービスとマイグレーション済みの DB(mise run e2e が用意する)
-// ポートは環境変数で変えられる(worktree ごとに別の組を立てるとき、mise が .env.worktree から渡す)
+// ポートは環境変数で変えられる(worktree ごとに別の組を立てるとき、mise が worktree の .env から渡す)
 const WEB = `http://localhost:${process.env["WEB_PORT"] ?? 5173}`;
 const API = `http://localhost:${process.env["API_PORT"] ?? 50051}`;
 

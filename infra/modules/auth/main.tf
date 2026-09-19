@@ -22,6 +22,13 @@ resource "aws_cognito_user_pool" "this" {
     allow_admin_create_user_only = true
   }
 
+  # 給与の情報を扱うので、認証アプリ(TOTP)での多要素認証を使えるようにする。
+  # prod は必須(ON)。Cognito ではグループ(管理者だけ)ごとに必須にはできない
+  mfa_configuration = var.mfa_configuration
+  software_token_mfa_configuration {
+    enabled = true
+  }
+
   account_recovery_setting {
     recovery_mechanism {
       name     = "verified_email"

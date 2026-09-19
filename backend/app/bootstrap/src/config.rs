@@ -97,9 +97,17 @@ pub struct PayoutConfig {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(
+    clippy::struct_field_names,
+    reason = "設定のキー(APP__SECRETS__*_SECRET_ID)と同じ名前にする"
+)]
 pub struct SecretsConfig {
     pub database_url_secret_id: String,
     pub payout_api_key_secret_id: String,
+    /// migrate が使う DB の管理者(RDS が管理するシークレット。JSON: username, password)
+    pub database_admin_secret_id: String,
+    /// migrate が作るアプリ用の DB ユーザー(JSON: username, password)
+    pub database_app_user_secret_id: String,
 }
 
 #[derive(Debug, Deserialize)]

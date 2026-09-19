@@ -13,8 +13,8 @@ variable "vpc_id" {
   type        = string
 }
 
-variable "vpc_cidr" {
-  description = "VPC の CIDR(MySQL への外向き通信を VPC 内に限る)"
+variable "database_security_group_id" {
+  description = "DB のセキュリティグループ。MySQL への外向き通信をここだけに限る"
   type        = string
 }
 
@@ -39,7 +39,17 @@ variable "certificate_arn" {
 }
 
 variable "database_url_secret_arn" {
-  description = "DB 接続文字列のシークレット"
+  description = "DB 接続文字列のシークレット(アプリ用のユーザー)"
+  type        = string
+}
+
+variable "database_admin_secret_arn" {
+  description = "DB の管理者のシークレット。migrate だけが読む"
+  type        = string
+}
+
+variable "database_app_user_secret_arn" {
+  description = "migrate が作るアプリ用の DB ユーザーのシークレット"
   type        = string
 }
 
@@ -66,9 +76,33 @@ variable "memory" {
 }
 
 variable "desired_count" {
-  description = "タスク数"
+  description = "タスク数の下限(オートスケールはここから増やす)"
   type        = number
   default     = 2
+}
+
+variable "max_count" {
+  description = "オートスケールで増やすタスク数の上限。タスク数 × database.max_connections が RDS の上限に収まるようにする"
+  type        = number
+  default     = 4
+}
+
+variable "container_insights" {
+  description = "Container Insights(タスクごとの詳しい指標。有料)を有効にするか"
+  type        = bool
+  default     = false
+}
+
+variable "ecr_keep_images" {
+  description = "ECR に残すイメージの数(ロールバックに使う)"
+  type        = number
+  default     = 30
+}
+
+variable "alarm_actions" {
+  description = "アラームの通知先(SNS トピックの ARN など)"
+  type        = list(string)
+  default     = []
 }
 
 variable "adot_collector_version" {

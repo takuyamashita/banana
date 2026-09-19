@@ -12,3 +12,9 @@ misconfigurations:
   - id: AWS-0132
     paths: ["modules/frontend-hosting/main.tf"]
     statement: 公開前提の静的ファイルなので SSE-S3 で足りる。CMK は不要
+  - id: AWS-0095
+    paths: ["modules/stack/main.tf"]
+    statement: アラームの通知に秘密情報は載らない。CloudWatch からの発行は AWS 管理キー(alias/aws/sns)で暗号化したトピックに届かず、CMK と鍵ポリシーが要るので暗号化しない
+  - id: AWS-0132
+    paths: ["bootstrap/main.tf"]
+    statement: state と成果物は SSE-S3 で暗号化し、読めるのは IAM で絞ったロールだけにする。CMK は鍵の管理の手間に見合わない(state のシークレットを守るのは IAM とバケットポリシー)

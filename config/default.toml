@@ -39,6 +39,10 @@ api_key = ""
 # 指定すると起動時に Secrets Manager から取る(AWS では Terraform が環境変数で渡す)
 database_url_secret_id = ""
 payout_api_key_secret_id = ""
+# migrate だけが使う。指定すると管理者でマイグレーションし、その後アプリ用のユーザー(読み書きだけ)を作る。
+# 空ならアプリと同じ接続でマイグレーションだけを流す(ローカル)
+database_admin_secret_id = ""
+database_app_user_secret_id = ""
 
 [telemetry]
 otlp_endpoint = ""

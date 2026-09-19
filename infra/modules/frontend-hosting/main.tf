@@ -31,6 +31,20 @@ resource "aws_s3_bucket_versioning" "this" {
   }
 }
 
+# 上書き・削除された古い版は30日で消す(デプロイで index.html などを置き直すたびに版が増える)。
+# 古い assets/ は、開いたままの画面のために消さずに置くので、少しずつ増える
+resource "aws_s3_bucket_lifecycle_configuration" "this" {
+  bucket = aws_s3_bucket.this.id
+  rule {
+    id     = "expire-noncurrent-versions"
+    status = "Enabled"
+    filter {}
+    noncurrent_version_expiration {
+      noncurrent_days = 30
+    }
+  }
+}
+
 resource "aws_cloudfront_origin_access_control" "this" {
   name                              = var.bucket_name
   origin_access_control_origin_type = "s3"
