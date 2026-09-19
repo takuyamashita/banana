@@ -51,7 +51,9 @@
   - `finalize()` が出来事を戻り値で返す形(cqrs-es などの Decider パターン)にした。
   - `PayslipEvent`・`PayrollEvent` に `#[must_use]` を付け、workspace の lints で `unused_must_use = "deny"` にした。`Result<PayslipEvent, _>` を `?` で包んで捨てた場合も、`(FinalizedPayslip, PayslipEvent)` のタプルごと捨てた場合も検出される(「unused `PayslipEvent` in tuple element 1」)ことを確認した。
 - **給与明細の状態を型で分ける**: 当初は `status` フィールドを持つ1つの型で、`finalize(&mut self)` が作成中かを実行時に確かめ、確定済みなら `AlreadyFinalized` を返していた。
-  - 作成中と確定済みを別の型(`DraftPayslip`・`FinalizedPayslip`。共通部分は `PayslipIn<State, Id>` に1回だけ書く)にし、`finalize(self) -> (FinalizedPayslip, PayslipEvent)` は作成中の型にだけ置いた。確定済みに `finalize` を呼ぶとコンパイルエラー(E0599)になることを compile_fail の doc テストで固定し、`AlreadyFinalized` はなくした。
+  - 作成中と確定済みを別の構造体(`DraftPayslip<Id>`・`FinalizedPayslip<Id>`)にし、`finalize(self) -> (FinalizedPayslip, PayslipEvent)` は作成中の型にだけ置いた。確定済みに `finalize` を呼ぶとコンパイルエラー(E0599「no method named `finalize` found for struct `FinalizedPayslip<Id>`」)になることを compile_fail の doc テストで固定し、`AlreadyFinalized` はなくした。
+  - 途中で、状態も型引数で持つ形(`PayslipIn<State, Id>` と `PhantomData<State>`、別名 `DraftPayslip = PayslipIn<Draft, Id>`)を試した。共通のフィールドを1回で書けるが、登録(番号)の軸と掛け算になって型が6つに増え、エラーメッセージにも `PayslipIn<Finalized, Unsaved>` のような内部の名前が出た。状態は構造体を並べた enum で表し、型引数は登録の軸だけにした。共通のルール(明細行が1件以上、支給額の計算)は関数にして両方の構造体から使う。
+  - `Payslip` のアクセサで `Self::Draft(p) | Self::Finalized(p) => p.lines()` とは書けない(型が違うので E0308)。`Self::Draft(DraftPayslip { lines, .. }) | Self::Finalized(FinalizedPayslip { lines, .. }) => lines` のように同じ型のフィールドに分解すれば1つの腕にまとめられる。共通部分を別の構造体に切り出す案(`PayslipContent`)も試したが、状態ごとのフィールドがない今は間接が増えるだけなのでやめた。
   - DB から読み出した給与明細は状態が実行時にしか分からないので、`enum Payslip { Draft, Finalized }` で包む。`NewPayslip::draft`・`Payslip::reconstruct`・各アクセサの呼び方は変わらず、変更は domain と確定のユースケースとテストだけで済んだ。
   - Rust では `&mut self` の書き換えも所有権で1か所に限られるので、「元を消費して新しいものを返す」こと自体の利点は小さい。消費する形にしたのは、戻り値の型を変える(状態を型で表す)ためだけ。
   - リポジトリは状態を問わない `Payslip` を返し、状態の確かめは usecase が `match` か `let Payslip::Draft(draft) = payslip else { .. }` で行う。確かめずに `payslip.finalize()` と書くとコンパイルエラー(E0599「no method named `finalize` found for enum `Payslip`」)になり、確かめてから取り出した `draft.finalize()` は通ることを試して確認した。状態が違うときは `FailedPrecondition` を返し、存在しない(`NotFound`)と区別する。
