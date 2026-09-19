@@ -68,6 +68,16 @@
   - Rust では `&mut self` の書き換えも所有権で1か所に限られるので、「元を消費して新しいものを返す」こと自体の利点は小さい。消費する形にしたのは、戻り値の型を変える(状態を型で表す)ためだけ。
   - リポジトリは状態を問わない `Payslip` を返し、状態の確かめは usecase が `match` か `let Payslip::Draft(draft) = payslip else { .. }` で行う。確かめずに `payslip.finalize()` と書くとコンパイルエラー(E0599)になり、確かめてから取り出した `draft.finalize()` は通る。状態が違うときは `FailedPrecondition` を返し、存在しない(`NotFound`)と区別する。
   - `find_draft(id) -> Option<DraftPayslip>` のような状態ごとの取り出しはリポジトリに置かない。状態が違うのか存在しないのかが区別できず、状態が増えるたびにメソッドも増えるため。同じ確かめ方が複数のユースケースに出てきたら、`Payslip` に `into_draft()` のような取り出しを足す(今は新規作成直後の `finalize` だけなので未実装)。
+- **確定した日時は確定済みの型だけが持つ**: 状態ごとの情報がある場合の形を、確定日時で確かめた。
+  - `FinalizedPayslip` に `finalized_at` を持たせ、`finalize(at)` で受け取る。共通の内容(`PayslipContent`)に `Option` で置くと、作成中なのに確定日時がある、という状態を型で防げない。読むときは状態を確かめる。
+  - 記録からの組み立て直しは状態ごとに分けた(`reconstruct_draft`・`reconstruct_finalized`)。状態と確定日時の組み合わせが合わない行(確定済みなのに確定日時がない、など)は、リポジトリが `CorruptedData` にする(DB 結合テストで確認)。`update` は状態から確定日時を書くので、将来「確定を取り消す」仕様が入っても古い確定日時は残らないが、確定の履歴を残すかは業務として決め直す。
+  - 確定日時は DB の `current_timestamp` ではなく、usecase の `Clock`(本番は `SystemClock`)から取って domain に渡す。DB の `datetime(6)` にはマイクロ秒まで UTC で往復することを確認した。
+  - clippy の禁止リスト(`disallowed-methods`)も2つの名前に差し替え、usecase から呼ぶと止まることを確認した。
+- **給与明細は「作成(insert)」と「確定(find_for_update → update)」の2段階にした**: 以前は「作ってすぐ確定して insert」で、リポジトリから読む・状態を確かめる・書き戻す、という型の使い方がサンプルに現れていなかった。
+  - `CreatePayslip` で作成中として insert し、`FinalizePayslip(payslip_id)` はトランザクションの中で `find_for_update`(`select ... for update`)で読んで `let Payslip::Draft(draft) = payslip else` で確かめ、`update` と `outbox.append` を同じトランザクションに書く。
+  - ロックせずに読むと、同じ給与明細を同時に確定したときに出来事が2つ記録され、振込の冪等キー(outbox の行ごと)でも防げない二重振込になる。
+  - 派遣社員本人には作成中の給与明細を見せない(`GetPayslip` は `NotFound`、`ListPayslips` からは除く)。スモークテストに「二重確定は FailedPrecondition」「本人に作成中は NotFound・一覧に出ない」を足した(23件)。
+  - 画面は「給与明細」タブで作成し、一覧で作成中を確かめて「確定する」を押す2段階にした(e2e も同じ流れ)。
 - **リポジトリは書き込み先を受け取り、トランザクションを張るかは usecase が決める**: ガイドの「1トランザクションで複数集約を更新しない」は、1つのユースケースで複数の集約を扱う場面が出ると守れない。制約は「コンテキストをまたいで1トランザクションで更新しない」に緩めた。
   - 採用した形:
     - usecase は `Database` から書き込み先を用意する。一緒に確定させたい記録は `transaction()` に書いて `commit()`、1件だけ書くときは `connection()` に書く。
@@ -99,9 +109,9 @@
 | 対象                                                                                            | 方法                                                     | 結果                             |
 | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------- | -------------------------------- |
 | Rust の lint(fmt・clippy pedantic・cargo-deny・依存ルール)                                      | `mise run lint:rust`                                     | 通過                             |
-| domain・usecase の単体テスト、DB 結合テスト(testcontainers)、API テスト(tonic クライアント)     | `mise run test:rust`                                     | 33件通過                         |
+| domain・usecase の単体テスト、DB 結合テスト(testcontainers)、API テスト(tonic クライアント)     | `mise run test:rust`                                     | 38件通過                         |
 | フロントの lint・型・コンポーネントテスト・ビルド                                               | `mise run lint:ts`・`test:ts`・`pnpm --filter web build` | 通過(2件)                        |
-| gRPC の主要シナリオ(認証・認可・二重確定・入力検証・金額計算)                                   | `scripts/smoke-test.sh`                                  | 16件通過                         |
+| gRPC の主要シナリオ(認証・認可・二重確定・入力検証・金額計算)                                   | `scripts/smoke-test.sh`                                  | 23件通過                         |
 | outbox → relay → ElasticMQ → consumer(再配信の冪等性を含む)                                     | local_poller・`cargo lambda invoke`                      | 期待どおり                       |
 | ブラウザの一連の流れ(Keycloak ログイン・初回パスワード変更・給与確定・本人だけが明細を見られる) | `mise run e2e`(Playwright)                               | 2件通過(3回反復でも安定)         |
 | server イメージ(cargo-chef・distroless)                                                         | ビルド・起動・`/health`・SIGTERM・イメージ内 migrate     | 62MB、0.05秒でグレースフルに停止 |
