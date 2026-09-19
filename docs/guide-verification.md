@@ -52,17 +52,21 @@
   - `PayslipEvent`・`PayrollEvent` に `#[must_use]` を付け、workspace の lints で `unused_must_use = "deny"` にした。`Result<PayslipEvent, _>` を `?` で包んで捨てた場合も、`(FinalizedPayslip, PayslipEvent)` のタプルごと捨てた場合も検出される(「unused `PayslipEvent` in tuple element 1」)ことを確認した。
 - **給与明細の状態を型で分ける**: 当初は `status` フィールドを持つ1つの型で、`finalize(&mut self)` が作成中かを実行時に確かめ、確定済みなら `AlreadyFinalized` を返していた。
   - 作成中と確定済みを別の型(`DraftPayslip`・`FinalizedPayslip`)にし、`finalize(self) -> (FinalizedPayslip, PayslipEvent)` は作成中の型にだけ置いた。確定済みに `finalize` を呼ぶとコンパイルエラー(E0599)になることを compile_fail の doc テストで固定し、`AlreadyFinalized` はなくした。
-  - 給与明細は `Payslip<S = PayslipStatus, Id = PayslipId>` の1つの型にした。状態 `S` は作成中(`Draft`)・確定済み(`Finalized`)の目印か、実行時に決まる状態(`PayslipStatus`。型引数を省略したときの既定)のどれか。別名は `DraftPayslip<Id> = Payslip<Draft, Id>`・`FinalizedPayslip<Id>`・`NewPayslip = Payslip<PayslipStatus, Unsaved>`。
-    - アクセサ(`staff_id`・`period`・`lines`・`total`・`status`・`id`)は `impl<S: State, Id>` に1回だけ書く。`State` は3つの状態の型が実装する trait で、`status()` を1回で書くために置く。目印と `State` は再公開しない。
-    - 状態ごとに分けるときは `into_state()` で `PayslipState { Draft, Finalized }` にして `match` する。全状態を扱ったかはコンパイラが確かめる。
-    - 状態は値(`state: S`)で持つので、状態ごとの情報(確定日時など)を状態の型に持たせられる。
-    - 状態の型から実行時の状態へ戻す `From` は状態ごとに書く(`impl<S: State> From<Payslip<S, Id>>` とまとめると、標準の `From<T> for T` と重なって E0119)。
-  - 比べて採らなかった形:
-    - 状態だけを型引数で持つ形(`PayslipIn<State, Id>` + `PhantomData<State>`)+ 状態を問わないものは `enum Payslip { Draft, Finalized }`: アクセサが `PayslipIn` と enum の2か所になる。enum 側は `Self::Draft(p) | Self::Finalized(p) => p.lines()` と書けず(型が違うので E0308)、`each_state!` マクロで1行にしていた。`PhantomData` は値を持たないので、状態ごとの情報も持てない。
-    - 状態ごとの構造体を並べた enum(型引数は登録の軸だけ): 一番素直だが、共通のフィールドとアクセサを状態の数だけ書く。
-    - 共通部分の構造体(`PayslipContent`)・trait のデフォルト実装(フィールドに触れないので結局1つずつ書く)・`enum_dispatch` などの crate(domain の依存ルールに反する)。
+  - 形は「共通の内容 + 状態ごとの型 + 状態を問わない enum」にした。
+    - `PayslipContent<Id>` に共通のデータ(番号・派遣社員・対象月・明細行)とアクセサ・支給額を1回だけ持つ。
+    - `DraftPayslip<Id>`・`FinalizedPayslip<Id>` は `content` を持つ状態ごとの構造体。`finalize` は作成中だけに置き、状態ごとの情報(確定日時など)はここに足す。
+    - `enum Payslip<Id> { Draft, Finalized }` は状態を問わない給与明細で、`content()` と `status()` を持つ。呼び出し側は `payslip.content().lines()` のように1段たどって読む。
+    - 型引数は登録(番号)の軸だけ。
+  - 他のプロダクトや文献を調べて決めた(2026-09-19)。
+    - 状態ごとのレコードを sum type でまとめ、共通データを共通のレコードにするのは、F# の Scott Wlaschin(*Designing with types*・*Domain Modeling Made Functional*)の形。Rust 公式入門書の `DraftPost`・`Post` の例、corrode の記事(状態は基本 enum、typestate は型引数で読みにくくなる)とも合う。
+    - 実運用のプロダクト(Lemmy・zero2prod・cqrs-es の例)は、1つの構造体に状態のフィールド(bool や status 列)を持ち、実行時に確かめる形が最も多い。
+    - typestate + 保存用の enum の組み合わせを勧める記事もあるが、保存される集約では必ず enum を経由するので、アクセサが2か所になる。
+  - 途中で試してやめた形:
+    - 状態を型引数で持つ形(`PayslipIn<State, Id>` + `PhantomData<State>`)+ 状態を問わない `enum Payslip`: アクセサが2か所になる(enum 側は `Self::Draft(p) | Self::Finalized(p)` と書けず E0308、`each_state!` マクロで1行にしていた)。
+    - 状態の型引数に実行時の状態(`PayslipStatus`)も入れる形(`Payslip<S = PayslipStatus, Id>` + `State` trait + `PayslipState`): アクセサは1か所になったが、型引数の省略時の意味や `State` trait など独自の仕組みが増え、他の人が読んで定番と分かる形ではなかった。
+    - 状態ごとの構造体に共通のフィールドとアクセサをそれぞれ書く形: 状態の数だけ重複する。
   - Rust では `&mut self` の書き換えも所有権で1か所に限られるので、「元を消費して新しいものを返す」こと自体の利点は小さい。消費する形にしたのは、戻り値の型を変える(状態を型で表す)ためだけ。
-  - リポジトリは状態を問わない `Payslip`(状態は実行時に決まる)を返し、状態の確かめは usecase が `let PayslipState::Draft(draft) = payslip.into_state() else { .. }` で行う。確かめずに `payslip.finalize()` と書くとコンパイルエラー(E0599)になり、確かめてから取り出した `draft.finalize()` は通る。状態が違うときは `FailedPrecondition` を返し、存在しない(`NotFound`)と区別する。
+  - リポジトリは状態を問わない `Payslip` を返し、状態の確かめは usecase が `match` か `let Payslip::Draft(draft) = payslip else { .. }` で行う。確かめずに `payslip.finalize()` と書くとコンパイルエラー(E0599)になり、確かめてから取り出した `draft.finalize()` は通る。状態が違うときは `FailedPrecondition` を返し、存在しない(`NotFound`)と区別する。
   - `find_draft(id) -> Option<DraftPayslip>` のような状態ごとの取り出しはリポジトリに置かない。状態が違うのか存在しないのかが区別できず、状態が増えるたびにメソッドも増えるため。同じ確かめ方が複数のユースケースに出てきたら、`Payslip` に `into_draft()` のような取り出しを足す(今は新規作成直後の `finalize` だけなので未実装)。
 - **リポジトリは書き込み先を受け取り、トランザクションを張るかは usecase が決める**: ガイドの「1トランザクションで複数集約を更新しない」は、1つのユースケースで複数の集約を扱う場面が出ると守れない。制約は「コンテキストをまたいで1トランザクションで更新しない」に緩めた。
   - 採用した形:
