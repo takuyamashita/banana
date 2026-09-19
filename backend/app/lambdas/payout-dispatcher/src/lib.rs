@@ -144,7 +144,8 @@ mod tests {
         assert_eq!(input.payslip_id.as_i64(), 1);
         assert_eq!(input.total.as_yen(), 1_000);
         // 冪等キーは outbox の連番ではなく給与明細番号から決まる
-        assert_eq!(input.idempotency_key, "payroll-payslip-1-finalized");
+        // gitleaks の generic-api-key が「key と文字列の比較」を API キーと誤検知するので、この行だけ外す
+        assert_eq!(input.idempotency_key, "payroll-payslip-1-finalized"); // gitleaks:allow
     }
 
     #[test]
