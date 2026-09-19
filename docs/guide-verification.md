@@ -52,10 +52,12 @@
   - `PayslipEvent`・`PayrollEvent` に `#[must_use]` を付け、workspace の lints で `unused_must_use = "deny"` にした。`new.finalize()?;` のように `?` で包んで捨てた場合も検出されることを確認した。
 - **トランザクションはリポジトリの引数で渡す**: ガイドの「1トランザクションで複数集約を更新しない」は、1つのユースケースで複数の集約を扱う場面が出ると守れない。制約は「コンテキストをまたいで1トランザクションで更新しない」に緩めた。
   - 採用した形:
-    - `Transactions { type Tx; begin(); commit(tx) }` で tx を始める。
+    - `Transactions { begin() -> Tx; commit(tx) }` で tx を始める。
     - `repo.insert(&mut tx, ..)`・`outbox.append(&mut tx, ..)` のように、記録するたびに tx を渡す。
     - 取り出し(`find` など)はプール経由のまま。
-  - tx の型は関連型で、ユースケースと handler は `<T: Transactions>` を持つ。bootstrap で `MySqlTransactions`(Tx は sqlx の `Transaction<'static, MySql>`)に確定させる。型の取り違えはコンパイル時に分かる。
+  - `Tx` は中身を隠した箱(`Box<dyn Any + Send>`)にした。usecase・handler・bootstrap は型引数を持たず、`Arc<dyn …>` で組み立てる。infrastructure は `mysql_tx()` で箱から sqlx の `Transaction<'static, MySql>` を取り出す。
+    - 別の実装の `Tx`(フェイクなど)が渡されるのは組み立ての誤りで、記録せずに `Unavailable` を返す(単体テストで確認)。この誤りはコンパイル時には分からないが、DB を通るテスト(API テスト・スモークテスト)で必ず見つかる。
+    - 先に、tx の型を関連型(`type Tx`)にする形で実装した。型の取り違えはコンパイル時に分かるが、ユースケースと handler に型引数 `<T: Transactions>` が広がり、読み書きしにくかったのでやめた。
   - 途中で次の2つも試した。
     - スコープ(Unit of Work)方式: スコープから記録先(`tx.payslips().insert(..)`)を借りる形。型引数は広がらないが、記録先がどのトランザクションを使っているかが読み取りにくかった。
     - `tx.insert(&payslip)` を型ごとの `Insert<T>` trait で呼び分ける形: `Box<dyn …>` 越しでも型推論が効くことは実験で確認したが、採らなかった。
@@ -81,7 +83,7 @@
 | 対象                                                                                            | 方法                                                     | 結果                             |
 | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------- | -------------------------------- |
 | Rust の lint(fmt・clippy pedantic・cargo-deny・依存ルール)                                      | `mise run lint:rust`                                     | 通過                             |
-| domain・usecase の単体テスト、DB 結合テスト(testcontainers)、API テスト(tonic クライアント)     | `mise run test:rust`                                     | 31件通過                         |
+| domain・usecase の単体テスト、DB 結合テスト(testcontainers)、API テスト(tonic クライアント)     | `mise run test:rust`                                     | 32件通過                         |
 | フロントの lint・型・コンポーネントテスト・ビルド                                               | `mise run lint:ts`・`test:ts`・`pnpm --filter web build` | 通過(2件)                        |
 | gRPC の主要シナリオ(認証・認可・二重確定・入力検証・金額計算)                                   | `scripts/smoke-test.sh`                                  | 16件通過                         |
 | outbox → relay → ElasticMQ → consumer(再配信の冪等性を含む)                                     | local_poller・`cargo lambda invoke`                      | 期待どおり                       |
