@@ -139,9 +139,23 @@
 - **Cognito でログアウトしても IdP のセッションが残った**: `signoutRedirect` が失敗するとブラウザのセッションだけ消していたので、共用の端末では次の人がパスワードなしで前の人としてログインできた。リフレッシュトークンを失効させてから IdP のセッションも終わらせ、Cognito の宛先(`/logout`・`/oauth2/revoke`・`logout_uri`)は Terraform が config.json に書く。Keycloak ではログアウト後の再ログインでパスワードを聞かれることを E2E で確かめた(Cognito では未確認)。
 - **worktree:remove が別の worktree を消しうる**: `feature/x` と `feature-x`(日本語だけの名前はどれも `---`)が同じディレクトリになり、remove はブランチを確かめずに compose のデータを先に消していた。ブランチの一致とコミットしていない変更がないことを確かめてから、worktree を外して compose を消す。
 
+## 観点別レビューで見つかった、AWS で最初の1回から動かない箇所(2026-09-19)
+
+AWS には apply していないので、手元で再現できる形と静的な検査(validate・tflint・trivy・actionlint)で確かめた。
+
+- **Lambda の zip に設定ファイルが入らない**: `cargo lambda build --output-format zip` の zip はバイナリだけで、`config/dev.toml` を読めずに起動時に必ず失敗する。`cargo lambda invoke` はリポジトリ直下で動くので気づかなかった。環境ごとの toml もバイナリに埋め込み(`APP_CONFIG_DIR` を指定したときだけファイルを読む)、空のディレクトリから Lambda のバイナリを起動して設定を読めることを確かめた。server のイメージからも `COPY config` を外し、ファイルなしで server と migrate が起動することを確かめた。
+- **振込 API のキーを渡す経路がない**: Secrets Manager から読むのは DB の接続文字列だけで、stg/prd は空のキーで振込 API を呼ぶ(全件 401)。`secrets.payout_api_key_secret_id` を足し、Terraform がシークレットの箱と Lambda の読み取り権限を作る(値は手で入れる)。キーがなければ起動時に止まることを確かめた。
+- **Terraform の出力を toml に手で転記していた**: `REPLACE_ME` のままのイメージが出る。issuer・Cognito の ID・キュー URL・CORS の許可元・シークレット ID は、Terraform がタスク定義と Lambda の環境変数(`APP__*`)に入れる形にした。
+- **migrate のイメージを差し替えられない**: `run-task` の `containerOverrides` に `image` はなく、AWS CLI の引数検証で弾かれる(公式の AWS CLI コンテナで確かめた)。今のタスク定義のイメージだけを替えたリビジョンを登録して流す。`describe-task-definition` の出力をそのまま渡すと登録時に受け付けない項目(`compatibilities`・`registeredAt` など)があるので、jq で落とす(`.github/deploy/migrate-task-definition.jq`。変換した JSON が引数検証を通ることも確かめた)。network の設定は GitHub 変数の手書きをやめ、Terraform の出力から読む。
+- **`ci.tfvars` がどこにもない**: plan・apply・`mise run tf-plan` がすべて失敗する。秘密でない環境ごとの値は `envs/<env>/terraform.tfvars` にコミットし、デプロイのたびに変わる値(`image_tag`・`lambda_artifact_key`)だけを `-var` で渡す。
+- **同じ版の再実行とロールバックができない**: ECR のタグは IMMUTABLE なのに、毎回ビルドし直して同じ sha で push していた。
+- **「同じ成果物を昇格させる」が実装されていなかった**: 環境ごとにビルドし直していた。build ジョブで1回だけ作り(Actions の artifact)、dev → stg → prod を承認付きで順に進める形にした(環境ごとの手順は `deploy-environment.yml`)。ECR・S3 に同じ版があれば置き直さないので、再実行とロールバック(古い版のタグから実行)もできる。デプロイできるのは main かタグだけにし、apply の後はサービスが安定するまで待つ。
+- **Performance Insights を db.t4g.micro・small で有効にしていた**: AWS のドキュメントでは対象外で、dev・stg の RDS が作れない(apply していないので実際のエラーは未確認)。変数にして prod だけ有効にした。
+- あわせて、Lambda の SQS トリガーに同時実行の上限(`maximum_concurrency`)を付け、Lambda の DB 接続数を 2 にした。月末に一斉に確定したとき、RDS の接続数を使い切らないようにするため。
+
 ## この環境では確かめていないこと
 
-- AWS への `terraform apply` と実際のデプロイ(`deploy` ワークフロー)。Terraform は validate・tflint・trivy まで。
+- AWS への `terraform apply` と実際のデプロイ(`deploy`・`deploy-environment` ワークフロー)。Terraform は validate・tflint・trivy まで、ワークフローは actionlint と、使っている AWS CLI の引数検証・jq の変換まで。最初の1回に要る Terraform の外の準備(state・成果物のバケット、OIDC のロール、証明書)も未確認。
 - Cognito での動作(クレーム mapper はユニットテストあり、UserDirectory はコードのみ)。Cognito の OIDC ディスカバリには `end_session_endpoint` がないため、ログアウトは失敗時にローカルのセッションだけ消す実装にした(未検証)。
 - GitHub Actions のうち frontend・proto・infra・deploy ワークフローの実行(backend・e2e は GitHub 上で成功済み。actionlint は全ワークフローで通過)。
 - トレースの中身と送信。telemetry crate は OTLP の送信先を初期化するだけで、リクエストや処理のスパンを作る箇所がない。そのため E2E で server を動かした後も、Jaeger に server のサービスが出ない(2026-09-19 のレビューで確認)。ADOT collector 経由の X-Ray 送信も未確認。
@@ -157,6 +171,7 @@
 | outbox → relay → ElasticMQ → consumer(再配信の冪等性を含む)                                                                                               | local_poller(振込依頼の記録まで)・ElasticMQ の DLQ(5回で移る)・`cargo lambda invoke`         | 期待どおり                                                 |
 | ブラウザの一連の流れ(Keycloak ログイン・ログアウト・初回パスワード変更・給与明細の作成と確定・本人だけが確定済みの明細を見られる・作成中は本人に見えない) | `mise run e2e`(Playwright)                                                                   | 4件通過(ログアウト後の再ログインを含む)                    |
 | worktree での並行開発(main とスロット 1 の worktree で依存サービス・server・Vite を別に立てる)                                                            | `mise run worktree:new`・両方で同時に `mise run e2e`・worktree 側で smoke・`worktree:remove` | 両方 3件通過、smoke 23件通過、コンテナ・ボリュームも片付く |
-| server イメージ(cargo-chef・distroless)                                                                                                                   | ビルド・起動・`/health`・SIGTERM・イメージ内 migrate                                         | 62MB、0.05秒でグレースフルに停止                           |
+| server イメージ(cargo-chef・distroless)                                                                                                                   | ビルド・起動・`/health`・SIGTERM・イメージ内 migrate・設定ファイルなしで起動                 | 62MB、0.05秒でグレースフルに停止                           |
 | Terraform(3環境)                                                                                                                                          | validate・tflint・trivy                                                                      | 通過                                                       |
+| デプロイのワークフロー(migrate のタスク定義の登録・古い overrides が弾かれること)                                                                         | actionlint・AWS CLI コンテナでの引数検証・jq の変換                                          | 通過(AWS への実行は未確認)                                 |
 | ワークフロー                                                                                                                                              | actionlint                                                                                   | 通過                                                       |
