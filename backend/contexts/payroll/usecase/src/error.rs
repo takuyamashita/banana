@@ -33,10 +33,7 @@ pub enum UseCaseError {
 
 impl From<PayslipError> for UseCaseError {
     fn from(err: PayslipError) -> Self {
-        match err {
-            PayslipError::AlreadyFinalized => Self::FailedPrecondition(err.to_string()),
-            _ => Self::InvalidInput(err.to_string()),
-        }
+        Self::InvalidInput(err.to_string())
     }
 }
 

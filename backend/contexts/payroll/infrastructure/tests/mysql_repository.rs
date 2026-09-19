@@ -4,7 +4,7 @@
 #![allow(clippy::unwrap_used)]
 
 use payroll_domain::payslip::{
-    NewPayslip, PayPeriod, PayslipId, PayslipLine, PayslipStatus, WorkMinutes,
+    DraftPayslip, NewPayslip, PayPeriod, PayslipId, PayslipLine, PayslipStatus, WorkMinutes,
 };
 use payroll_domain::project::{NewProject, ProjectId, ProjectName};
 use payroll_domain::staff::{DisplayName, NewStaff, StaffId};
@@ -18,7 +18,7 @@ use payroll_usecase::ports::events::{EventOutbox, PayrollEvent};
 use payroll_usecase::ports::repository::{
     PayslipRepository, ProjectRepository, RepositoryError, StaffRepository,
 };
-use platform_kernel::{Email, Money, UserId};
+use platform_kernel::{Email, Money, Unsaved, UserId};
 use sqlx::MySqlPool;
 use testcontainers_modules::mysql::Mysql;
 use testcontainers_modules::testcontainers::runners::AsyncRunner;
@@ -59,7 +59,7 @@ async fn seed(db: &TestDb) -> (StaffId, ProjectId) {
     (staff, project)
 }
 
-fn draft(staff: StaffId, project: ProjectId, month: u8) -> NewPayslip {
+fn draft(staff: StaffId, project: ProjectId, month: u8) -> DraftPayslip<Unsaved> {
     let lines = vec![
         PayslipLine::new(
             project,
@@ -76,10 +76,10 @@ fn draft(staff: StaffId, project: ProjectId, month: u8) -> NewPayslip {
 }
 
 /// 給与確定のユースケースと同じく、給与明細とその出来事を1つのトランザクションで記録する
-async fn finalize(db: &TestDb, mut payslip: NewPayslip) -> Result<PayslipId, RepositoryError> {
-    let finalized = payslip.finalize().unwrap();
+async fn finalize(db: &TestDb, draft: DraftPayslip<Unsaved>) -> Result<PayslipId, RepositoryError> {
+    let (payslip, finalized) = draft.finalize();
     let mut tx = MySqlDatabase::new(db.pool.clone()).transaction().await?;
-    let id = MySqlPayslipRepository::new(db.pool.clone()).insert(&mut tx, &payslip).await?;
+    let id = MySqlPayslipRepository::new(db.pool.clone()).insert(&mut tx, &payslip.into()).await?;
     MySqlEventOutbox.append(&mut tx, PayrollEvent::Payslip { id, event: finalized }).await?;
     tx.commit().await?;
     Ok(id)
@@ -120,8 +120,8 @@ async fn records_are_discarded_when_the_transaction_is_not_committed() {
     let (staff, project) = seed(&db).await;
     let repo = MySqlPayslipRepository::new(db.pool.clone());
 
-    let mut payslip = draft(staff, project, 9);
-    let finalized = payslip.finalize().unwrap();
+    let (payslip, finalized) = draft(staff, project, 9).finalize();
+    let payslip = payslip.into();
     {
         let mut tx = MySqlDatabase::new(db.pool.clone()).transaction().await.unwrap();
         // 給与明細の insert は内側で SAVEPOINT を張って確定する。外側を捨てればそれも消える
@@ -144,7 +144,7 @@ async fn payslip_written_outside_a_transaction_is_kept_whole() {
     let repo = MySqlPayslipRepository::new(db.pool.clone());
 
     let mut conn = MySqlDatabase::new(db.pool.clone()).connection().await.unwrap();
-    let id = repo.insert(&mut conn, &draft(staff, project, 9)).await.unwrap();
+    let id = repo.insert(&mut conn, &draft(staff, project, 9).into()).await.unwrap();
     drop(conn);
 
     // 接続に書いた給与明細は、明細行まで一緒に確定している

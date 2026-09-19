@@ -53,11 +53,11 @@ impl FinalizePayslipUseCase {
             return Err(UseCaseError::Conflict("この月の給与明細は既に確定しています".into()));
         }
 
-        let mut payslip = NewPayslip::draft(input.staff_id, input.period, input.lines)?;
-        let finalized = payslip.finalize()?;
+        let draft = NewPayslip::draft(input.staff_id, input.period, input.lines)?;
+        let (payslip, finalized) = draft.finalize();
 
         let mut tx = self.db.transaction().await?;
-        let id = self.payslips.insert(&mut tx, &payslip).await?;
+        let id = self.payslips.insert(&mut tx, &payslip.into()).await?;
         self.outbox.append(&mut tx, PayrollEvent::Payslip { id, event: finalized }).await?;
         tx.commit().await?;
 

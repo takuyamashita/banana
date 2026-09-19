@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use platform_kernel::{Money, Unsaved};
 
 use super::{PayPeriod, PayslipError, PayslipId, PayslipLine};
@@ -29,11 +31,19 @@ pub enum PayslipEvent {
     },
 }
 
-/// 給与明細。派遣社員1人の、ある1か月分の給与を表す。
+/// 作成中。内容を確かめている段階で、まだ支給額として確定していない
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Draft;
+
+/// 確定済み。支給額が決まり、以後は変更できない。振込の対象になる
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Finalized;
+
+/// ある状態にある給与明細。派遣社員1人の、ある1か月分の給与を表す。
 ///
 /// 同じ派遣社員・同じ月の給与明細は、有効なものが常に1つだけ存在する。
 #[derive(Debug)]
-pub struct Payslip<Id = PayslipId> {
+pub struct PayslipIn<State, Id = PayslipId> {
     /// 給与明細番号
     id: Id,
     /// 給与を受け取る派遣社員
@@ -43,24 +53,26 @@ pub struct Payslip<Id = PayslipId> {
     /// 案件ごとの稼働と時給。1件以上ある
     lines: Vec<PayslipLine>,
     /// 作成中か、確定済みか
-    status: PayslipStatus,
+    state: PhantomData<State>,
 }
 
-/// まだ登録していない給与明細
-pub type NewPayslip = Payslip<Unsaved>;
+/// 作成中の給与明細
+pub type DraftPayslip<Id = PayslipId> = PayslipIn<Draft, Id>;
 
-impl<Id> Payslip<Id> {
+/// 確定済みの給与明細
+pub type FinalizedPayslip<Id = PayslipId> = PayslipIn<Finalized, Id>;
+
+impl<State, Id> PayslipIn<State, Id> {
     fn with_id(
         id: Id,
         staff_id: StaffId,
         period: PayPeriod,
         lines: Vec<PayslipLine>,
-        status: PayslipStatus,
     ) -> Result<Self, PayslipError> {
         if lines.is_empty() {
             return Err(PayslipError::EmptyLines);
         }
-        Ok(Self { id, staff_id, period, lines, status })
+        Ok(Self { id, staff_id, period, lines, state: PhantomData })
     }
 
     #[must_use]
@@ -78,29 +90,83 @@ impl<Id> Payslip<Id> {
         &self.lines
     }
 
-    #[must_use]
-    pub fn status(&self) -> PayslipStatus {
-        self.status
-    }
-
     /// 支給額。各明細行の金額(それぞれ円未満切り捨て済み)の合計
     #[must_use]
     pub fn total(&self) -> Money {
         self.lines.iter().map(PayslipLine::amount).fold(Money::ZERO, |acc, m| acc + m)
     }
+}
 
-    /// 給与明細を確定し、支給額を決める。確定できるのは作成中のものだけ。
-    /// 確定したという出来事を返す
-    pub fn finalize(&mut self) -> Result<PayslipEvent, PayslipError> {
-        if self.status != PayslipStatus::Draft {
-            return Err(PayslipError::AlreadyFinalized);
-        }
-        self.status = PayslipStatus::Finalized;
-        Ok(PayslipEvent::Finalized {
+impl<State> PayslipIn<State, PayslipId> {
+    #[must_use]
+    pub fn id(&self) -> PayslipId {
+        self.id
+    }
+}
+
+impl<Id> DraftPayslip<Id> {
+    /// 給与明細を確定し、支給額を決める。確定した給与明細と、確定したという出来事を返す
+    pub fn finalize(self) -> (FinalizedPayslip<Id>, PayslipEvent) {
+        let event = PayslipEvent::Finalized {
             staff_id: self.staff_id,
             period: self.period,
             total: self.total(),
-        })
+        };
+        let Self { id, staff_id, period, lines, state: _ } = self;
+        (PayslipIn { id, staff_id, period, lines, state: PhantomData }, event)
+    }
+}
+
+/// 給与明細。作成中か確定済みのどちらか
+#[derive(Debug)]
+pub enum Payslip<Id = PayslipId> {
+    Draft(DraftPayslip<Id>),
+    Finalized(FinalizedPayslip<Id>),
+}
+
+/// まだ登録していない給与明細
+pub type NewPayslip = Payslip<Unsaved>;
+
+impl<Id> Payslip<Id> {
+    #[must_use]
+    pub fn staff_id(&self) -> StaffId {
+        match self {
+            Self::Draft(p) => p.staff_id(),
+            Self::Finalized(p) => p.staff_id(),
+        }
+    }
+
+    #[must_use]
+    pub fn period(&self) -> PayPeriod {
+        match self {
+            Self::Draft(p) => p.period(),
+            Self::Finalized(p) => p.period(),
+        }
+    }
+
+    #[must_use]
+    pub fn lines(&self) -> &[PayslipLine] {
+        match self {
+            Self::Draft(p) => p.lines(),
+            Self::Finalized(p) => p.lines(),
+        }
+    }
+
+    /// 支給額。各明細行の金額(それぞれ円未満切り捨て済み)の合計
+    #[must_use]
+    pub fn total(&self) -> Money {
+        match self {
+            Self::Draft(p) => p.total(),
+            Self::Finalized(p) => p.total(),
+        }
+    }
+
+    #[must_use]
+    pub fn status(&self) -> PayslipStatus {
+        match self {
+            Self::Draft(_) => PayslipStatus::Draft,
+            Self::Finalized(_) => PayslipStatus::Finalized,
+        }
     }
 }
 
@@ -110,8 +176,8 @@ impl Payslip<Unsaved> {
         staff_id: StaffId,
         period: PayPeriod,
         lines: Vec<PayslipLine>,
-    ) -> Result<Self, PayslipError> {
-        Self::with_id(Unsaved, staff_id, period, lines, PayslipStatus::Draft)
+    ) -> Result<DraftPayslip<Unsaved>, PayslipError> {
+        PayslipIn::with_id(Unsaved, staff_id, period, lines)
     }
 }
 
@@ -124,12 +190,32 @@ impl Payslip<PayslipId> {
         lines: Vec<PayslipLine>,
         status: PayslipStatus,
     ) -> Result<Self, PayslipError> {
-        Self::with_id(id, staff_id, period, lines, status)
+        Ok(match status {
+            PayslipStatus::Draft => Self::Draft(PayslipIn::with_id(id, staff_id, period, lines)?),
+            PayslipStatus::Finalized => {
+                Self::Finalized(PayslipIn::with_id(id, staff_id, period, lines)?)
+            }
+        })
     }
 
     #[must_use]
     pub fn id(&self) -> PayslipId {
-        self.id
+        match self {
+            Self::Draft(p) => p.id(),
+            Self::Finalized(p) => p.id(),
+        }
+    }
+}
+
+impl<Id> From<DraftPayslip<Id>> for Payslip<Id> {
+    fn from(payslip: DraftPayslip<Id>) -> Self {
+        Self::Draft(payslip)
+    }
+}
+
+impl<Id> From<FinalizedPayslip<Id>> for Payslip<Id> {
+    fn from(payslip: FinalizedPayslip<Id>) -> Self {
+        Self::Finalized(payslip)
     }
 }
 
@@ -161,19 +247,20 @@ mod tests {
     }
 
     #[test]
-    fn finalize_returns_the_event_and_can_happen_once() {
+    fn finalize_returns_the_finalized_payslip_and_the_event() {
         let period = PayPeriod::new(2026, 9).unwrap();
-        let mut p = NewPayslip::draft(staff(), period, vec![line(600, 1_500)]).unwrap();
+        let draft = NewPayslip::draft(staff(), period, vec![line(600, 1_500)]).unwrap();
+
+        let (finalized, event) = draft.finalize();
 
         assert_eq!(
-            p.finalize(),
-            Ok(PayslipEvent::Finalized {
+            event,
+            PayslipEvent::Finalized {
                 staff_id: staff(),
                 period,
                 total: Money::from_yen(15_000).unwrap()
-            })
+            }
         );
-        assert_eq!(p.status(), PayslipStatus::Finalized);
-        assert_eq!(p.finalize(), Err(PayslipError::AlreadyFinalized));
+        assert_eq!(Payslip::from(finalized).status(), PayslipStatus::Finalized);
     }
 }
