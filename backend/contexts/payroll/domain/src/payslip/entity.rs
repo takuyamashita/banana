@@ -22,9 +22,16 @@ pub struct Draft;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Finalized;
 
-/// 給与明細の内容。作成中でも確定済みでも変わらず持つ情報
+/// 支給額。各明細行の金額(それぞれ円未満切り捨て済み)の合計
+fn total_of(lines: &[PayslipLine]) -> Money {
+    lines.iter().map(PayslipLine::amount).fold(Money::ZERO, |acc, m| acc + m)
+}
+
+/// ある状態にある給与明細。派遣社員1人の、ある1か月分の給与を表す。
+///
+/// 同じ派遣社員・同じ月の給与明細は、有効なものが常に1つだけ存在する。
 #[derive(Debug)]
-struct PayslipContent<Id> {
+pub struct PayslipIn<State, Id = PayslipId> {
     /// 給与明細番号
     id: Id,
     /// 給与を受け取る派遣社員
@@ -33,21 +40,6 @@ struct PayslipContent<Id> {
     period: PayPeriod,
     /// 案件ごとの稼働と時給。1件以上ある
     lines: Vec<PayslipLine>,
-}
-
-impl<Id> PayslipContent<Id> {
-    /// 支給額。各明細行の金額(それぞれ円未満切り捨て済み)の合計
-    fn total(&self) -> Money {
-        self.lines.iter().map(PayslipLine::amount).fold(Money::ZERO, |acc, m| acc + m)
-    }
-}
-
-/// ある状態にある給与明細。派遣社員1人の、ある1か月分の給与を表す。
-///
-/// 同じ派遣社員・同じ月の給与明細は、有効なものが常に1つだけ存在する。
-#[derive(Debug)]
-pub struct PayslipIn<State, Id = PayslipId> {
-    content: PayslipContent<Id>,
     /// 作成中か、確定済みか
     state: PhantomData<State>,
 }
@@ -68,39 +60,35 @@ impl<State, Id> PayslipIn<State, Id> {
         if lines.is_empty() {
             return Err(PayslipError::EmptyLines);
         }
-        Ok(Self::with_content(PayslipContent { id, staff_id, period, lines }))
-    }
-
-    fn with_content(content: PayslipContent<Id>) -> Self {
-        Self { content, state: PhantomData }
+        Ok(Self { id, staff_id, period, lines, state: PhantomData })
     }
 
     #[must_use]
     pub fn staff_id(&self) -> StaffId {
-        self.content.staff_id
+        self.staff_id
     }
 
     #[must_use]
     pub fn period(&self) -> PayPeriod {
-        self.content.period
+        self.period
     }
 
     #[must_use]
     pub fn lines(&self) -> &[PayslipLine] {
-        &self.content.lines
+        &self.lines
     }
 
     /// 支給額。各明細行の金額(それぞれ円未満切り捨て済み)の合計
     #[must_use]
     pub fn total(&self) -> Money {
-        self.content.total()
+        total_of(&self.lines)
     }
 }
 
 impl<State> PayslipIn<State, PayslipId> {
     #[must_use]
     pub fn id(&self) -> PayslipId {
-        self.content.id
+        self.id
     }
 }
 
@@ -108,11 +96,12 @@ impl<Id> DraftPayslip<Id> {
     /// 給与明細を確定し、支給額を決める。確定した給与明細と、確定したという出来事を返す
     pub fn finalize(self) -> (FinalizedPayslip<Id>, PayslipEvent) {
         let event = PayslipEvent::Finalized {
-            staff_id: self.staff_id(),
-            period: self.period(),
+            staff_id: self.staff_id,
+            period: self.period,
             total: self.total(),
         };
-        (PayslipIn::with_content(self.content), event)
+        let Self { id, staff_id, period, lines, state: _ } = self;
+        (PayslipIn { id, staff_id, period, lines, state: PhantomData }, event)
     }
 }
 
@@ -127,33 +116,36 @@ pub enum Payslip<Id = PayslipId> {
 pub type NewPayslip = Payslip<Unsaved>;
 
 impl<Id> Payslip<Id> {
-    fn content(&self) -> &PayslipContent<Id> {
+    #[must_use]
+    pub fn staff_id(&self) -> StaffId {
         match self {
-            Self::Draft(PayslipIn { content, .. }) | Self::Finalized(PayslipIn { content, .. }) => {
-                content
+            Self::Draft(PayslipIn { staff_id, .. })
+            | Self::Finalized(PayslipIn { staff_id, .. }) => *staff_id,
+        }
+    }
+
+    #[must_use]
+    pub fn period(&self) -> PayPeriod {
+        match self {
+            Self::Draft(PayslipIn { period, .. }) | Self::Finalized(PayslipIn { period, .. }) => {
+                *period
             }
         }
     }
 
     #[must_use]
-    pub fn staff_id(&self) -> StaffId {
-        self.content().staff_id
-    }
-
-    #[must_use]
-    pub fn period(&self) -> PayPeriod {
-        self.content().period
-    }
-
-    #[must_use]
     pub fn lines(&self) -> &[PayslipLine] {
-        &self.content().lines
+        match self {
+            Self::Draft(PayslipIn { lines, .. }) | Self::Finalized(PayslipIn { lines, .. }) => {
+                lines
+            }
+        }
     }
 
     /// 支給額。各明細行の金額(それぞれ円未満切り捨て済み)の合計
     #[must_use]
     pub fn total(&self) -> Money {
-        self.content().total()
+        total_of(self.lines())
     }
 
     #[must_use]
@@ -195,7 +187,9 @@ impl Payslip<PayslipId> {
 
     #[must_use]
     pub fn id(&self) -> PayslipId {
-        self.content().id
+        match self {
+            Self::Draft(PayslipIn { id, .. }) | Self::Finalized(PayslipIn { id, .. }) => *id,
+        }
     }
 }
 
