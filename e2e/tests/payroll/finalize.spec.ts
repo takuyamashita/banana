@@ -26,6 +26,8 @@ test("管理者が作成して確定した給与明細を、本人がログイ�
   await payslips.finalize(2026, 9);
   await expect(adminPage.getByText(/給与明細 #\d+ を確定しました。/)).toBeVisible();
   await expect(adminPage.getByText(/確定済み/)).toBeVisible();
+  // 確定済みにはもう確定のボタンが出ない
+  await expect(adminPage.getByRole("button", { name: "2026年9月分を確定する" })).toHaveCount(0);
 
   // 同じ月の給与明細はもう作れない
   await payslips.create(`${staff.displayName}(${staff.email})`, 2026, 9, [
@@ -57,4 +59,30 @@ test("他の派遣社員の給与明細は見えない", async ({ browser }) => 
   await new LoginPage(page).login(other.email, other.temporaryPassword, "New-pass-12345");
   await expect(page.getByText("まだ確定した給与明細はありません。")).toBeVisible();
   await expect(page.getByTestId("payslip-total")).toHaveCount(0);
+});
+
+test("作成中の給与明細は本人に見えず、確定すると見える", async ({ browser }) => {
+  const api = await adminApi();
+  const staff = await seedStaff(api);
+  const project = await seedProject(api);
+  const { payslipId } = await api.payroll.createPayslip({
+    staffId: staff.staffId,
+    payYear: 2026,
+    payMonth: 9,
+    lines: [{ projectId: project.projectId, workMinutes: 600, hourlyRate: 1200n }],
+  });
+
+  // 作成中の間は、本人の画面に出ない
+  const page = await (await browser.newContext()).newPage();
+  await new LoginPage(page).login(staff.email, staff.temporaryPassword, "New-pass-12345");
+  await expect(page.getByText("まだ確定した給与明細はありません。")).toBeVisible();
+  await expect(page.getByTestId("payslip-total")).toHaveCount(0);
+
+  // 管理者が確定すると、本人の画面に出る(ログインはタブの sessionStorage に残っている)
+  await api.payroll.finalizePayslip({ payslipId });
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "自分の給与明細" })).toBeVisible();
+  // 600分×1200円/60 = 12,000円
+  await expect(page.getByTestId("payslip-total")).toHaveText("￥12,000");
+  await expect(page.getByText(/確定済み/)).toBeVisible();
 });

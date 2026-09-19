@@ -106,14 +106,14 @@
 
 ## 確認済みの動作
 
-| 対象                                                                                            | 方法                                                     | 結果                             |
-| ----------------------------------------------------------------------------------------------- | -------------------------------------------------------- | -------------------------------- |
-| Rust の lint(fmt・clippy pedantic・cargo-deny・依存ルール)                                      | `mise run lint:rust`                                     | 通過                             |
-| domain・usecase の単体テスト、DB 結合テスト(testcontainers)、API テスト(tonic クライアント)     | `mise run test:rust`                                     | 38件通過                         |
-| フロントの lint・型・コンポーネントテスト・ビルド                                               | `mise run lint:ts`・`test:ts`・`pnpm --filter web build` | 通過(2件)                        |
-| gRPC の主要シナリオ(認証・認可・二重確定・入力検証・金額計算)                                   | `scripts/smoke-test.sh`                                  | 23件通過                         |
-| outbox → relay → ElasticMQ → consumer(再配信の冪等性を含む)                                     | local_poller・`cargo lambda invoke`                      | 期待どおり                       |
-| ブラウザの一連の流れ(Keycloak ログイン・初回パスワード変更・給与確定・本人だけが明細を見られる) | `mise run e2e`(Playwright)                               | 2件通過(3回反復でも安定)         |
-| server イメージ(cargo-chef・distroless)                                                         | ビルド・起動・`/health`・SIGTERM・イメージ内 migrate     | 62MB、0.05秒でグレースフルに停止 |
-| Terraform(3環境)                                                                                | validate・tflint・trivy                                  | 通過                             |
-| ワークフロー                                                                                    | actionlint                                               | 通過                             |
+| 対象                                                                                                                                          | 方法                                                     | 結果                             |
+| --------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- | -------------------------------- |
+| Rust の lint(fmt・clippy pedantic・cargo-deny・依存ルール)                                                                                    | `mise run lint:rust`                                     | 通過                             |
+| domain・usecase の単体テスト、DB 結合テスト(testcontainers)、API テスト(tonic クライアント)                                                   | `mise run test:rust`                                     | 38件通過                         |
+| フロントの lint・型・コンポーネントテスト・ビルド                                                                                             | `mise run lint:ts`・`test:ts`・`pnpm --filter web build` | 通過(2件)                        |
+| gRPC の主要シナリオ(認証・認可・二重確定・入力検証・金額計算)                                                                                 | `scripts/smoke-test.sh`                                  | 23件通過                         |
+| outbox → relay → ElasticMQ → consumer(再配信の冪等性を含む)                                                                                   | local_poller・`cargo lambda invoke`                      | 期待どおり                       |
+| ブラウザの一連の流れ(Keycloak ログイン・初回パスワード変更・給与明細の作成と確定・本人だけが確定済みの明細を見られる・作成中は本人に見えない) | `mise run e2e`(Playwright)                               | 3件通過(3回反復でも安定)         |
+| server イメージ(cargo-chef・distroless)                                                                                                       | ビルド・起動・`/health`・SIGTERM・イメージ内 migrate     | 62MB、0.05秒でグレースフルに停止 |
+| Terraform(3環境)                                                                                                                              | validate・tflint・trivy                                  | 通過                             |
+| ワークフロー                                                                                                                                  | actionlint                                               | 通過                             |
