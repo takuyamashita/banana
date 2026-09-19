@@ -2,17 +2,19 @@ syntax = "proto3";
 
 package acme.payroll.v1;
 
-// 給与明細の確定と参照
+// 給与明細の作成・確定と参照
 service PayrollService {
-  // 派遣社員の月次給与を確定する。管理者のみ
+  // 派遣社員の月次給与明細を作成中として作る。管理者のみ
+  rpc CreatePayslip(CreatePayslipRequest) returns (CreatePayslipResponse);
+  // 作成中の給与明細を確定する。管理者のみ
   rpc FinalizePayslip(FinalizePayslipRequest) returns (FinalizePayslipResponse);
-  // 給与明細を1件取得する。管理者か、明細の本人のみ
+  // 給与明細を1件取得する。管理者か、明細の本人のみ(本人は確定済みだけ)
   rpc GetPayslip(GetPayslipRequest) returns (GetPayslipResponse);
-  // 派遣社員の給与明細を一覧する。管理者か、本人のみ
+  // 派遣社員の給与明細を一覧する。管理者か、本人のみ(本人は確定済みだけ)
   rpc ListPayslips(ListPayslipsRequest) returns (ListPayslipsResponse);
 }
 
-message FinalizePayslipRequest {
+message CreatePayslipRequest {
   int64 staff_id = 1;
   int32 pay_year = 2;
   int32 pay_month = 3;
@@ -25,9 +27,15 @@ message PayslipLineInput {
   int64 hourly_rate = 3;
 }
 
-message FinalizePayslipResponse {
+message CreatePayslipResponse {
   int64 payslip_id = 1;
 }
+
+message FinalizePayslipRequest {
+  int64 payslip_id = 1;
+}
+
+message FinalizePayslipResponse {}
 
 message GetPayslipRequest {
   int64 payslip_id = 1;

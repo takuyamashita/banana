@@ -14,7 +14,10 @@ use payroll_domain::payslip::{
 use payroll_domain::project::ProjectId;
 use payroll_domain::staff::{DisplayName, NewStaff, Staff, StaffId};
 use payroll_usecase::UseCaseError;
-use payroll_usecase::payslip::{FinalizePayslipInput, FinalizePayslipUseCase, GetPayslipUseCase};
+use payroll_usecase::payslip::{
+    CreatePayslipInput, CreatePayslipUseCase, FinalizePayslipUseCase, GetPayslipUseCase,
+    ListPayslipsUseCase,
+};
 use payroll_usecase::ports::clock::Clock;
 use payroll_usecase::ports::database::{Database, Db, DbHandle, Transaction};
 use payroll_usecase::ports::events::{EventOutbox, PayrollEvent};
@@ -136,6 +139,13 @@ fn fake(db: &mut Db) -> &mut FakeDb {
     db.downcast_mut::<FakeDb>().unwrap()
 }
 
+fn finalized_at<Id>(payslip: &Payslip<Id>) -> Option<OffsetDateTime> {
+    match payslip {
+        Payslip::Draft(_) => None,
+        Payslip::Finalized(p) => Some(p.finalized_at()),
+    }
+}
+
 struct FakePayslips(Arc<World>);
 
 #[async_trait]
@@ -148,21 +158,29 @@ impl PayslipRepository for FakePayslips {
         Ok(self.0.records().payslips.iter().filter(|r| r.1 == staff_id).map(to_payslip).collect())
     }
 
+    async fn find_for_update(
+        &self,
+        db: &mut Db,
+        id: PayslipId,
+    ) -> Result<Option<Payslip>, RepositoryError> {
+        Ok(fake(db).write(|r| r.payslips.iter().find(|row| row.0 == id).map(to_payslip)))
+    }
+
     async fn insert(&self, db: &mut Db, new: &NewPayslip) -> Result<PayslipId, RepositoryError> {
         Ok(fake(db).write(|r| {
             let id = PayslipId::from_i64(next_id(r.payslips.len())).unwrap();
             let c = new.content();
-            let finalized_at = match new {
-                Payslip::Draft(_) => None,
-                Payslip::Finalized(p) => Some(p.finalized_at()),
-            };
-            r.payslips.push((id, c.staff_id(), c.period(), c.lines().to_vec(), finalized_at));
+            r.payslips.push((id, c.staff_id(), c.period(), c.lines().to_vec(), finalized_at(new)));
             id
         }))
     }
 
-    async fn update(&self, _db: &mut Db, _payslip: &Payslip) -> Result<(), RepositoryError> {
-        unimplemented!()
+    async fn update(&self, db: &mut Db, payslip: &Payslip) -> Result<(), RepositoryError> {
+        fake(db).write(|r| {
+            let row = r.payslips.iter_mut().find(|row| row.0 == payslip.content().id()).unwrap();
+            row.4 = finalized_at(payslip);
+        });
+        Ok(())
     }
 }
 
@@ -240,10 +258,17 @@ impl UserDirectory for FakeDirectory {
 
 // ---- ヘルパー ----
 
+fn create_usecase(world: &Arc<World>) -> CreatePayslipUseCase {
+    CreatePayslipUseCase::new(
+        Arc::new(FakePayslips(world.clone())),
+        Arc::new(FakeStaff(world.clone())),
+        Arc::new(FakeDatabase(world.clone())),
+    )
+}
+
 fn finalize_usecase(world: &Arc<World>) -> FinalizePayslipUseCase {
     FinalizePayslipUseCase::new(
         Arc::new(FakePayslips(world.clone())),
-        Arc::new(FakeStaff(world.clone())),
         Arc::new(FakeOutbox(world.clone())),
         Arc::new(FakeDatabase(world.clone())),
         Arc::new(FixedClock),
@@ -258,8 +283,8 @@ fn line() -> PayslipLine {
     )
 }
 
-fn input(staff: i64, month: u8) -> FinalizePayslipInput {
-    FinalizePayslipInput {
+fn input(staff: i64, month: u8) -> CreatePayslipInput {
+    CreatePayslipInput {
         staff_id: StaffId::from_i64(staff).unwrap(),
         period: PayPeriod::new(2026, month).unwrap(),
         lines: vec![line()],
@@ -273,13 +298,44 @@ fn user(sub: &str, roles: &[Role]) -> AuthenticatedUser {
 // ---- テスト ----
 
 #[tokio::test]
-async fn finalize_records_the_payslip_and_its_event_together() {
+async fn create_makes_a_draft_payslip() {
     let world = Arc::new(World::with_staff(&[(1, "taro")]));
 
-    let id = finalize_usecase(&world).execute(input(1, 9)).await.unwrap();
+    create_usecase(&world).execute(input(1, 9)).await.unwrap();
 
     let records = world.records();
     assert_eq!(records.payslips.len(), 1);
+    // 作成中なので確定日時はなく、出来事もまだない
+    assert_eq!(records.payslips[0].4, None);
+    assert!(records.events.is_empty());
+}
+
+#[tokio::test]
+async fn create_rejects_unknown_staff() {
+    let world = Arc::new(World::default());
+    let err = create_usecase(&world).execute(input(1, 9)).await.unwrap_err();
+    assert!(matches!(err, UseCaseError::InvalidInput(_)));
+}
+
+#[tokio::test]
+async fn create_rejects_same_month_twice() {
+    let world = Arc::new(World::with_staff(&[(1, "taro")]));
+    let usecase = create_usecase(&world);
+
+    usecase.execute(input(1, 9)).await.unwrap();
+    let err = usecase.execute(input(1, 9)).await.unwrap_err();
+    assert!(matches!(err, UseCaseError::Conflict(_)));
+    usecase.execute(input(1, 10)).await.unwrap();
+}
+
+#[tokio::test]
+async fn finalize_records_the_finalized_payslip_and_its_event_together() {
+    let world = Arc::new(World::with_staff(&[(1, "taro")]));
+    let id = create_usecase(&world).execute(input(1, 9)).await.unwrap();
+
+    finalize_usecase(&world).execute(id).await.unwrap();
+
+    let records = world.records();
     // 確定日時は時計の今
     assert_eq!(records.payslips[0].4, Some(NOW));
     assert!(matches!(
@@ -290,41 +346,47 @@ async fn finalize_records_the_payslip_and_its_event_together() {
 }
 
 #[tokio::test]
-async fn finalize_keeps_nothing_when_the_event_cannot_be_recorded() {
+async fn finalize_keeps_the_draft_when_the_event_cannot_be_recorded() {
     let world = Arc::new(World { fail_event_append: true, ..World::with_staff(&[(1, "taro")]) });
+    let id = create_usecase(&world).execute(input(1, 9)).await.unwrap();
 
-    let err = finalize_usecase(&world).execute(input(1, 9)).await.unwrap_err();
+    let err = finalize_usecase(&world).execute(id).await.unwrap_err();
 
     assert!(matches!(err, UseCaseError::Unavailable(_)));
     let records = world.records();
-    assert!(records.payslips.is_empty());
+    assert_eq!(records.payslips[0].4, None);
     assert!(records.events.is_empty());
 }
 
 #[tokio::test]
-async fn finalize_rejects_unknown_staff() {
-    let world = Arc::new(World::default());
-    let err = finalize_usecase(&world).execute(input(1, 9)).await.unwrap_err();
-    assert!(matches!(err, UseCaseError::InvalidInput(_)));
+async fn finalize_rejects_a_finalized_payslip() {
+    let world = Arc::new(World::with_staff(&[(1, "taro")]));
+    let id = create_usecase(&world).execute(input(1, 9)).await.unwrap();
+    let finalize = finalize_usecase(&world);
+
+    finalize.execute(id).await.unwrap();
+    let err = finalize.execute(id).await.unwrap_err();
+
+    assert!(matches!(err, UseCaseError::FailedPrecondition(_)));
+    assert_eq!(world.records().events.len(), 1);
 }
 
 #[tokio::test]
-async fn finalize_rejects_same_month_twice() {
+async fn finalize_rejects_unknown_payslip() {
     let world = Arc::new(World::with_staff(&[(1, "taro")]));
-    let usecase = finalize_usecase(&world);
-
-    usecase.execute(input(1, 9)).await.unwrap();
-    let err = usecase.execute(input(1, 9)).await.unwrap_err();
-    assert!(matches!(err, UseCaseError::Conflict(_)));
-    usecase.execute(input(1, 10)).await.unwrap();
+    let err = finalize_usecase(&world).execute(PayslipId::from_i64(99).unwrap()).await.unwrap_err();
+    assert!(matches!(err, UseCaseError::NotFound));
 }
 
 #[tokio::test]
 async fn only_admin_or_owner_can_view_payslip() {
     let world = Arc::new(World::with_staff(&[(1, "taro"), (2, "hanako")]));
-    let id = finalize_usecase(&world).execute(input(1, 9)).await.unwrap();
-    let get =
-        GetPayslipUseCase::new(Arc::new(FakePayslips(world.clone())), Arc::new(FakeStaff(world)));
+    let id = create_usecase(&world).execute(input(1, 9)).await.unwrap();
+    finalize_usecase(&world).execute(id).await.unwrap();
+    let get = GetPayslipUseCase::new(
+        Arc::new(FakePayslips(world.clone())),
+        Arc::new(FakeStaff(world.clone())),
+    );
 
     assert!(get.execute(&user("admin", &[Role::Admin]), id).await.is_ok());
     assert!(get.execute(&user("taro", &[]), id).await.is_ok());
@@ -337,6 +399,29 @@ async fn only_admin_or_owner_can_view_payslip() {
         get.execute(&user("stranger", &[Role::Staff]), id).await,
         Err(UseCaseError::NotFound)
     ));
+}
+
+#[tokio::test]
+async fn staff_cannot_see_draft_payslips() {
+    let world = Arc::new(World::with_staff(&[(1, "taro")]));
+    let finalized = create_usecase(&world).execute(input(1, 9)).await.unwrap();
+    finalize_usecase(&world).execute(finalized).await.unwrap();
+    let draft = create_usecase(&world).execute(input(1, 10)).await.unwrap();
+    let get = GetPayslipUseCase::new(
+        Arc::new(FakePayslips(world.clone())),
+        Arc::new(FakeStaff(world.clone())),
+    );
+    let list =
+        ListPayslipsUseCase::new(Arc::new(FakePayslips(world.clone())), Arc::new(FakeStaff(world)));
+    let (admin, taro) = (user("admin", &[Role::Admin]), user("taro", &[]));
+    let staff_id = StaffId::from_i64(1).unwrap();
+
+    // 本人には作成中の給与明細は存在しないものとして扱う
+    assert!(matches!(get.execute(&taro, draft).await, Err(UseCaseError::NotFound)));
+    assert_eq!(list.execute(&taro, staff_id).await.unwrap().len(), 1);
+    // 管理者はどちらも見られる
+    assert!(get.execute(&admin, draft).await.is_ok());
+    assert_eq!(list.execute(&admin, staff_id).await.unwrap().len(), 2);
 }
 
 #[tokio::test]

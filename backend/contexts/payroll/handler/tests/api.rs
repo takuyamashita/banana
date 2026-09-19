@@ -18,7 +18,9 @@ use payroll_infrastructure::query::{MySqlProjectQuery, MySqlStaffQuery};
 use payroll_infrastructure::repository::{
     MySqlPayslipRepository, MySqlProjectRepository, MySqlStaffRepository,
 };
-use payroll_usecase::payslip::{FinalizePayslipUseCase, GetPayslipUseCase, ListPayslipsUseCase};
+use payroll_usecase::payslip::{
+    CreatePayslipUseCase, FinalizePayslipUseCase, GetPayslipUseCase, ListPayslipsUseCase,
+};
 use payroll_usecase::ports::user_directory::{UserDirectory, UserDirectoryError};
 use payroll_usecase::project::{CreateProjectUseCase, ListProjectsUseCase};
 use payroll_usecase::staff::{CreateStaffUseCase, GetMeUseCase, ListStaffUseCase};
@@ -85,9 +87,9 @@ async fn api() -> Api {
 
     let router = tonic::service::Routes::new(
         proto::payroll_service_server::PayrollServiceServer::new(PayrollServiceHandler::new(
+            CreatePayslipUseCase::new(payslips.clone(), staff.clone(), db.clone()),
             FinalizePayslipUseCase::new(
                 payslips.clone(),
-                staff.clone(),
                 Arc::new(MySqlEventOutbox),
                 db.clone(),
                 Arc::new(SystemClock),
@@ -148,8 +150,8 @@ async fn setup(api: &Api) -> (i64, i64, i64) {
     (taro.staff_id, hanako.staff_id, project.project_id)
 }
 
-fn finalize_request(staff_id: i64, project_id: i64, month: i32) -> proto::FinalizePayslipRequest {
-    proto::FinalizePayslipRequest {
+fn create_request(staff_id: i64, project_id: i64, month: i32) -> proto::CreatePayslipRequest {
+    proto::CreatePayslipRequest {
         staff_id,
         pay_year: 2026,
         pay_month: month,
@@ -157,28 +159,50 @@ fn finalize_request(staff_id: i64, project_id: i64, month: i32) -> proto::Finali
     }
 }
 
+/// 管理者として作成して確定し、給与明細番号を返す
+async fn create_and_finalize(
+    client: &mut PayrollServiceClient<Channel>,
+    req: proto::CreatePayslipRequest,
+) -> i64 {
+    let id = client.create_payslip(admin(req)).await.unwrap().into_inner().payslip_id;
+    client.finalize_payslip(admin(proto::FinalizePayslipRequest { payslip_id: id })).await.unwrap();
+    id
+}
+
 #[tokio::test]
-async fn finalize_requires_admin() {
+async fn create_and_finalize_require_admin() {
     let api = api().await;
     let (taro, _, project) = setup(&api).await;
     let mut client = PayrollServiceClient::new(api.channel.clone());
 
     let unauthenticated =
-        client.finalize_payslip(finalize_request(taro, project, 9)).await.unwrap_err();
+        client.create_payslip(create_request(taro, project, 9)).await.unwrap_err();
     assert_eq!(unauthenticated.code(), Code::Unauthenticated);
 
     let staff = client
-        .finalize_payslip(as_user(
-            finalize_request(taro, project, 9),
-            "sub-taro@example.com",
-            "staff",
-        ))
+        .create_payslip(as_user(create_request(taro, project, 9), "sub-taro@example.com", "staff"))
         .await
         .unwrap_err();
     assert_eq!(staff.code(), Code::PermissionDenied);
 
-    let ok = client.finalize_payslip(admin(finalize_request(taro, project, 9))).await.unwrap();
-    assert!(ok.into_inner().payslip_id > 0);
+    let id = client
+        .create_payslip(admin(create_request(taro, project, 9)))
+        .await
+        .unwrap()
+        .into_inner()
+        .payslip_id;
+    let finalize = || proto::FinalizePayslipRequest { payslip_id: id };
+
+    let staff = client
+        .finalize_payslip(as_user(finalize(), "sub-taro@example.com", "staff"))
+        .await
+        .unwrap_err();
+    assert_eq!(staff.code(), Code::PermissionDenied);
+
+    client.finalize_payslip(admin(finalize())).await.unwrap();
+    // 確定済みはもう一度確定できない
+    let again = client.finalize_payslip(admin(finalize())).await.unwrap_err();
+    assert_eq!(again.code(), Code::FailedPrecondition);
 }
 
 #[tokio::test]
@@ -187,9 +211,8 @@ async fn out_of_range_month_is_invalid_argument() {
     let (taro, _, project) = setup(&api).await;
     let mut client = PayrollServiceClient::new(api.channel.clone());
 
-    // as u8 なら 257 → 1 に化けて1月分として確定されてしまう値
-    let err =
-        client.finalize_payslip(admin(finalize_request(taro, project, 257))).await.unwrap_err();
+    // as u8 なら 257 → 1 に化けて1月分として作られてしまう値
+    let err = client.create_payslip(admin(create_request(taro, project, 257))).await.unwrap_err();
     assert_eq!(err.code(), Code::InvalidArgument);
 }
 
@@ -198,12 +221,7 @@ async fn payslip_is_visible_only_to_admin_and_owner() {
     let api = api().await;
     let (taro, _, project) = setup(&api).await;
     let mut client = PayrollServiceClient::new(api.channel.clone());
-    let id = client
-        .finalize_payslip(admin(finalize_request(taro, project, 9)))
-        .await
-        .unwrap()
-        .into_inner()
-        .payslip_id;
+    let id = create_and_finalize(&mut client, create_request(taro, project, 9)).await;
     let get = || proto::GetPayslipRequest { payslip_id: id };
 
     let own = client.get_payslip(as_user(get(), "sub-taro@example.com", "staff")).await.unwrap();

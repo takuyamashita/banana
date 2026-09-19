@@ -7,7 +7,7 @@ export function PayslipView({ payslip, projectName }: { payslip: Payslip; projec
     <div className="payslip" aria-label={`${payslip.payYear}年${payslip.payMonth}月分の給与明細`}>
       <p>
         {payslip.payYear}年{payslip.payMonth}月分 ・{" "}
-        {payslip.status === PayslipStatus.FINALIZED ? "確定済み" : "下書き"} ・ 合計{" "}
+        {payslip.status === PayslipStatus.FINALIZED ? "確定済み" : "作成中"} ・ 合計{" "}
         <strong data-testid="payslip-total">{yen.format(payslip.totalYen)}</strong>
       </p>
       <table>

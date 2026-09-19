@@ -35,6 +35,13 @@ pub trait PayslipRepository: Send + Sync {
     async fn find(&self, id: PayslipId) -> Result<Option<Payslip>, RepositoryError>;
     /// 派遣社員の有効な給与明細を、新しい月から順に返す
     async fn list_by_staff(&self, staff_id: StaffId) -> Result<Vec<Payslip>, RepositoryError>;
+    /// 給与明細番号で給与明細を探し、同じトランザクションが終わるまで他から変更されないようにする。
+    /// 読んだ内容を確かめてから書き戻すとき(確定など)に使う
+    async fn find_for_update(
+        &self,
+        db: &mut Db,
+        id: PayslipId,
+    ) -> Result<Option<Payslip>, RepositoryError>;
     /// 新しい給与明細を登録し、振られた給与明細番号を返す
     async fn insert(&self, db: &mut Db, new: &NewPayslip) -> Result<PayslipId, RepositoryError>;
     /// 登録済みの給与明細の変更(状態の変化など)を記録する

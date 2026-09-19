@@ -60,16 +60,28 @@ check "同じメールの再登録は AlreadyExists" "AlreadyExists" \
   "$(call "$ADMIN" StaffService/CreateStaff "{\"email\":\"$TARO\",\"display_name\":\"x\",\"temporary_password\":\"Temp-pass-1\"}")"
 
 LINES="[{\"project_id\":$PROJECT_ID,\"work_minutes\":9600,\"hourly_rate\":1501},{\"project_id\":$PROJECT_ID,\"work_minutes\":100,\"hourly_rate\":1500}]"
-PAYSLIP_ID=$(call "$ADMIN" PayrollService/FinalizePayslip "{\"staff_id\":$TARO_ID,\"pay_year\":2026,\"pay_month\":9,\"lines\":$LINES}" | jq -r .payslipId)
-check "給与確定" "" "$PAYSLIP_ID"
-check "二重確定は AlreadyExists" "AlreadyExists" \
-  "$(call "$ADMIN" PayrollService/FinalizePayslip "{\"staff_id\":$TARO_ID,\"pay_year\":2026,\"pay_month\":9,\"lines\":$LINES}")"
+CREATE="{\"staff_id\":$TARO_ID,\"pay_year\":2026,\"pay_month\":9,\"lines\":$LINES}"
+PAYSLIP_ID=$(call "$ADMIN" PayrollService/CreatePayslip "$CREATE" | jq -r .payslipId)
+check "給与明細の作成" "" "$PAYSLIP_ID"
+check "作成直後は作成中" "PAYSLIP_STATUS_DRAFT" \
+  "$(call "$ADMIN" PayrollService/GetPayslip "{\"payslip_id\":$PAYSLIP_ID}")"
+check "同じ月の作成は AlreadyExists" "AlreadyExists" "$(call "$ADMIN" PayrollService/CreatePayslip "$CREATE")"
 check "月=257 は InvalidArgument(as キャストなら1月になる)" "InvalidArgument" \
-  "$(call "$ADMIN" PayrollService/FinalizePayslip "{\"staff_id\":$TARO_ID,\"pay_year\":2026,\"pay_month\":257,\"lines\":$LINES}")"
+  "$(call "$ADMIN" PayrollService/CreatePayslip "{\"staff_id\":$TARO_ID,\"pay_year\":2026,\"pay_month\":257,\"lines\":$LINES}")"
 check "14分の稼働は InvalidArgument" "InvalidArgument" \
-  "$(call "$ADMIN" PayrollService/FinalizePayslip "{\"staff_id\":$TARO_ID,\"pay_year\":2026,\"pay_month\":10,\"lines\":[{\"project_id\":$PROJECT_ID,\"work_minutes\":14,\"hourly_rate\":1000}]}")"
+  "$(call "$ADMIN" PayrollService/CreatePayslip "{\"staff_id\":$TARO_ID,\"pay_year\":2026,\"pay_month\":10,\"lines\":[{\"project_id\":$PROJECT_ID,\"work_minutes\":14,\"hourly_rate\":1000}]}")"
 check "存在しない派遣社員は InvalidArgument" "InvalidArgument" \
-  "$(call "$ADMIN" PayrollService/FinalizePayslip "{\"staff_id\":999999,\"pay_year\":2026,\"pay_month\":9,\"lines\":$LINES}")"
+  "$(call "$ADMIN" PayrollService/CreatePayslip "{\"staff_id\":999999,\"pay_year\":2026,\"pay_month\":9,\"lines\":$LINES}")"
+
+call "$ADMIN" PayrollService/FinalizePayslip "{\"payslip_id\":$PAYSLIP_ID}" >/dev/null
+check "確定すると確定済み" "PAYSLIP_STATUS_FINALIZED" \
+  "$(call "$ADMIN" PayrollService/GetPayslip "{\"payslip_id\":$PAYSLIP_ID}")"
+check "二重確定は FailedPrecondition" "FailedPrecondition" \
+  "$(call "$ADMIN" PayrollService/FinalizePayslip "{\"payslip_id\":$PAYSLIP_ID}")"
+check "存在しない給与明細の確定は NotFound" "NotFound" \
+  "$(call "$ADMIN" PayrollService/FinalizePayslip "{\"payslip_id\":999999}")"
+# 本人に見えないことを確かめるための、作成中のままの10月分
+DRAFT_ID=$(call "$ADMIN" PayrollService/CreatePayslip "{\"staff_id\":$TARO_ID,\"pay_year\":2026,\"pay_month\":10,\"lines\":$LINES}" | jq -r .payslipId)
 
 # 9600分×1501円/60 = 240,160円、100分→90分×1500円/60 = 2,250円
 check "合計は円未満切り捨て・15分単位" '"totalYen": "242410"' \
@@ -87,8 +99,14 @@ check "他人の明細は NotFound" "NotFound" \
   "$(call "$HANAKO_TOKEN" PayrollService/GetPayslip "{\"payslip_id\":$PAYSLIP_ID}")"
 check "他人の一覧は NotFound" "NotFound" \
   "$(call "$HANAKO_TOKEN" PayrollService/ListPayslips "{\"staff_id\":$TARO_ID}")"
-check "派遣社員は給与確定できない" "PermissionDenied" \
-  "$(call "$TARO_TOKEN" PayrollService/FinalizePayslip "{\"staff_id\":$TARO_ID,\"pay_year\":2026,\"pay_month\":11,\"lines\":$LINES}")"
+check "本人にも作成中の明細は NotFound" "NotFound" \
+  "$(call "$TARO_TOKEN" PayrollService/GetPayslip "{\"payslip_id\":$DRAFT_ID}")"
+TARO_LIST=$(call "$TARO_TOKEN" PayrollService/ListPayslips "{\"staff_id\":$TARO_ID}" | jq -r '[.payslips[].payslipId] | join(",")')
+check "本人の一覧は確定済みだけ(作成中の明細は出ない)" "ids=$PAYSLIP_ID." "ids=$TARO_LIST."
+check "派遣社員は給与明細を作成できない" "PermissionDenied" \
+  "$(call "$TARO_TOKEN" PayrollService/CreatePayslip "{\"staff_id\":$TARO_ID,\"pay_year\":2026,\"pay_month\":11,\"lines\":$LINES}")"
+check "派遣社員は給与明細を確定できない" "PermissionDenied" \
+  "$(call "$TARO_TOKEN" PayrollService/FinalizePayslip "{\"payslip_id\":$DRAFT_ID}")"
 
 echo
 echo "passed: $PASS, failed: $FAIL"

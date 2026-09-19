@@ -4,7 +4,8 @@ use payroll_domain::payslip::{
 use payroll_domain::project::ProjectId;
 use payroll_domain::staff::StaffId;
 use payroll_usecase::payslip::{
-    FinalizePayslipInput, FinalizePayslipUseCase, GetPayslipUseCase, ListPayslipsUseCase,
+    CreatePayslipInput, CreatePayslipUseCase, FinalizePayslipUseCase, GetPayslipUseCase,
+    ListPayslipsUseCase,
 };
 use platform_gen::acme::payroll::v1 as proto;
 use platform_kernel::Money;
@@ -14,6 +15,7 @@ use crate::auth::{current_user, require_admin};
 use crate::error::{invalid_argument, to_status};
 
 pub struct PayrollServiceHandler {
+    create_payslip: CreatePayslipUseCase,
     finalize_payslip: FinalizePayslipUseCase,
     get_payslip: GetPayslipUseCase,
     list_payslips: ListPayslipsUseCase,
@@ -22,21 +24,22 @@ pub struct PayrollServiceHandler {
 impl PayrollServiceHandler {
     #[must_use]
     pub fn new(
+        create_payslip: CreatePayslipUseCase,
         finalize_payslip: FinalizePayslipUseCase,
         get_payslip: GetPayslipUseCase,
         list_payslips: ListPayslipsUseCase,
     ) -> Self {
-        Self { finalize_payslip, get_payslip, list_payslips }
+        Self { create_payslip, finalize_payslip, get_payslip, list_payslips }
     }
 }
 
 #[tonic::async_trait]
 impl proto::payroll_service_server::PayrollService for PayrollServiceHandler {
-    async fn finalize_payslip(
+    async fn create_payslip(
         &self,
-        request: Request<proto::FinalizePayslipRequest>,
-    ) -> Result<Response<proto::FinalizePayslipResponse>, Status> {
-        // 給与の確定は管理者だけ。認証・認可の判定はhandler層の仕事。
+        request: Request<proto::CreatePayslipRequest>,
+    ) -> Result<Response<proto::CreatePayslipResponse>, Status> {
+        // 給与明細の作成は管理者だけ。認証・認可の判定はhandler層の仕事。
         // AuthenticatedUser は認証ミドルウェアが extensions に載せている
         require_admin(&request)?;
 
@@ -62,12 +65,25 @@ impl proto::payroll_service_server::PayrollService for PayrollServiceHandler {
             .collect::<Result<Vec<_>, _>>()?;
 
         let payslip_id = self
-            .finalize_payslip
-            .execute(FinalizePayslipInput { staff_id, period, lines })
+            .create_payslip
+            .execute(CreatePayslipInput { staff_id, period, lines })
             .await
             .map_err(to_status)?;
 
-        Ok(Response::new(proto::FinalizePayslipResponse { payslip_id: payslip_id.as_i64() }))
+        Ok(Response::new(proto::CreatePayslipResponse { payslip_id: payslip_id.as_i64() }))
+    }
+
+    async fn finalize_payslip(
+        &self,
+        request: Request<proto::FinalizePayslipRequest>,
+    ) -> Result<Response<proto::FinalizePayslipResponse>, Status> {
+        // 給与の確定は管理者だけ
+        require_admin(&request)?;
+        let id = PayslipId::from_i64(request.get_ref().payslip_id).map_err(invalid_argument)?;
+
+        self.finalize_payslip.execute(id).await.map_err(to_status)?;
+
+        Ok(Response::new(proto::FinalizePayslipResponse {}))
     }
 
     async fn get_payslip(

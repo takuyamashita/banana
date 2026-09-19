@@ -6,14 +6,15 @@ export interface LineValues {
   hourlyRate: number;
 }
 
-export class FinalizePage {
+/// 管理者が給与明細を作成し、確定する画面
+export class PayslipPage {
   constructor(private readonly page: Page) {}
 
   async open() {
-    await this.page.getByRole("button", { name: "給与確定" }).click();
+    await this.page.getByRole("button", { name: "給与明細" }).click();
   }
 
-  async finalize(staffLabel: string, year: number, month: number, lines: LineValues[]) {
+  async create(staffLabel: string, year: number, month: number, lines: LineValues[]) {
     await this.page.getByLabel("派遣社員").selectOption({ label: staffLabel });
     await this.page.getByLabel("年", { exact: true }).fill(String(year));
     await this.page.getByLabel("月", { exact: true }).fill(String(month));
@@ -24,6 +25,10 @@ export class FinalizePage {
       await fieldset.getByLabel("稼働(分)").fill(String(line.minutes));
       await fieldset.getByLabel("時給(円)").fill(String(line.hourlyRate));
     }
-    await this.page.getByRole("button", { name: "確定する" }).click();
+    await this.page.getByRole("button", { name: "作成する" }).click();
+  }
+
+  async finalize(year: number, month: number) {
+    await this.page.getByRole("button", { name: `${year}年${month}月分を確定する` }).click();
   }
 }

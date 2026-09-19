@@ -160,6 +160,32 @@ async fn payslip_written_outside_a_transaction_is_kept_whole() {
 }
 
 #[tokio::test]
+async fn draft_read_for_update_can_be_finalized_and_written_back() {
+    let db = db().await;
+    let (staff, project) = seed(&db).await;
+    let repo = MySqlPayslipRepository::new(db.pool.clone());
+    let database = MySqlDatabase::new(db.pool.clone());
+
+    let mut conn = database.connection().await.unwrap();
+    let id = repo.insert(&mut conn, &draft(staff, project, 9).into()).await.unwrap();
+    drop(conn);
+
+    // 給与確定のユースケースと同じく、ロックして読み、作成中を確定して書き戻す
+    let mut tx = database.transaction().await.unwrap();
+    let Some(Payslip::Draft(draft)) = repo.find_for_update(&mut tx, id).await.unwrap() else {
+        panic!("作成中のはず");
+    };
+    let (finalized, _event) = draft.finalize(FINALIZED_AT);
+    repo.update(&mut tx, &finalized.into()).await.unwrap();
+    tx.commit().await.unwrap();
+
+    let found = repo.find(id).await.unwrap().unwrap();
+    let Payslip::Finalized(finalized) = &found else { panic!("確定済みのはず: {found:?}") };
+    assert_eq!(finalized.finalized_at(), FINALIZED_AT);
+    assert_eq!(found.content().lines().len(), 2);
+}
+
+#[tokio::test]
 async fn second_active_payslip_for_same_month_violates_unique_key() {
     let db = db().await;
     let (staff, project) = seed(&db).await;

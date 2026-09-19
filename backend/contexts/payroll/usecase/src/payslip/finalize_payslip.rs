@@ -1,31 +1,19 @@
 use std::sync::Arc;
 
-use payroll_domain::payslip::{PayPeriod, Payslip, PayslipId, PayslipLine};
-use payroll_domain::staff::StaffId;
+use payroll_domain::payslip::{Payslip, PayslipId};
 
 use crate::UseCaseError;
 use crate::ports::clock::Clock;
 use crate::ports::database::Database;
 use crate::ports::events::{EventOutbox, PayrollEvent};
-use crate::ports::repository::{PayslipRepository, StaffRepository};
+use crate::ports::repository::PayslipRepository;
 
-/// 給与確定で管理者が入力する内容
-pub struct FinalizePayslipInput {
-    /// 給与を確定する派遣社員
-    pub staff_id: StaffId,
-    /// 対象月
-    pub period: PayPeriod,
-    /// 案件ごとの稼働と時給
-    pub lines: Vec<PayslipLine>,
-}
-
-/// 管理者が、派遣社員1人の1か月分の給与を確定する。
+/// 管理者が、作成中の給与明細を確定する。
 ///
 /// 確定した給与明細は変更できず、支給額が決まったことが振込に伝わる。
-/// 同じ派遣社員・同じ月の給与は1回しか確定できない
+/// 確定できるのは作成中の給与明細だけで、1つの給与明細は1回しか確定できない
 pub struct FinalizePayslipUseCase {
     payslips: Arc<dyn PayslipRepository>,
-    staff: Arc<dyn StaffRepository>,
     outbox: Arc<dyn EventOutbox>,
     db: Arc<dyn Database>,
     clock: Arc<dyn Clock>,
@@ -35,35 +23,31 @@ impl FinalizePayslipUseCase {
     #[must_use]
     pub fn new(
         payslips: Arc<dyn PayslipRepository>,
-        staff: Arc<dyn StaffRepository>,
         outbox: Arc<dyn EventOutbox>,
         db: Arc<dyn Database>,
         clock: Arc<dyn Clock>,
     ) -> Self {
-        Self { payslips, staff, outbox, db, clock }
+        Self { payslips, outbox, db, clock }
     }
 
-    /// 給与を確定し、振られた給与明細番号を返す。
+    /// 給与明細を今の日時で確定する。
     ///
-    /// 派遣社員が登録されていなければ `InvalidInput`、その月の給与が確定済みなら `Conflict`、
-    /// 明細行がない・稼働時間が不正などの業務ルール違反なら `InvalidInput` になる
-    pub async fn execute(&self, input: FinalizePayslipInput) -> Result<PayslipId, UseCaseError> {
-        if self.staff.find(input.staff_id).await?.is_none() {
-            return Err(UseCaseError::InvalidInput("派遣社員が存在しません".into()));
-        }
-        let existing = self.payslips.list_by_staff(input.staff_id).await?;
-        if existing.iter().any(|p| p.content().period() == input.period) {
-            return Err(UseCaseError::Conflict("この月の給与明細は既に確定しています".into()));
-        }
-
-        let draft = Payslip::draft(input.staff_id, input.period, input.lines)?;
-        let (payslip, finalized) = draft.finalize(self.clock.now());
-
+    /// 給与明細がなければ `NotFound`、既に確定済みなら `FailedPrecondition` になる。
+    /// 同じ給与明細を同時に確定しようとしても、確定されるのは1回だけ
+    pub async fn execute(&self, id: PayslipId) -> Result<(), UseCaseError> {
         let mut tx = self.db.transaction().await?;
-        let id = self.payslips.insert(&mut tx, &payslip.into()).await?;
-        self.outbox.append(&mut tx, PayrollEvent::Payslip { id, event: finalized }).await?;
-        tx.commit().await?;
+        let payslip =
+            self.payslips.find_for_update(&mut tx, id).await?.ok_or(UseCaseError::NotFound)?;
+        let Payslip::Draft(draft) = payslip else {
+            return Err(UseCaseError::FailedPrecondition(
+                "確定済みの給与明細は確定できません".into(),
+            ));
+        };
 
-        Ok(id)
+        let (finalized, event) = draft.finalize(self.clock.now());
+        self.payslips.update(&mut tx, &finalized.into()).await?;
+        self.outbox.append(&mut tx, PayrollEvent::Payslip { id, event }).await?;
+        tx.commit().await?;
+        Ok(())
     }
 }

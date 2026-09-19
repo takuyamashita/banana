@@ -58,7 +58,7 @@
     - `enum Payslip<Id> { Draft, Finalized }` は状態を問わない給与明細で、`content()` と `status()` を持つ。呼び出し側は `payslip.content().lines()` のように1段たどって読む。
     - 型引数は登録(番号)の軸だけ。
   - 他のプロダクトや文献を調べて決めた(2026-09-19)。
-    - 状態ごとのレコードを sum type でまとめ、共通データを共通のレコードにするのは、F# の Scott Wlaschin(*Designing with types*・*Domain Modeling Made Functional*)の形。Rust 公式入門書の `DraftPost`・`Post` の例、corrode の記事(状態は基本 enum、typestate は型引数で読みにくくなる)とも合う。
+    - 状態ごとのレコードを sum type でまとめ、共通データを共通のレコードにするのは、F# の Scott Wlaschin(_Designing with types_・_Domain Modeling Made Functional_)の形。Rust 公式入門書の `DraftPost`・`Post` の例、corrode の記事(状態は基本 enum、typestate は型引数で読みにくくなる)とも合う。
     - 実運用のプロダクト(Lemmy・zero2prod・cqrs-es の例)は、1つの構造体に状態のフィールド(bool や status 列)を持ち、実行時に確かめる形が最も多い。
     - typestate + 保存用の enum の組み合わせを勧める記事もあるが、保存される集約では必ず enum を経由するので、アクセサが2か所になる。
   - 途中で試してやめた形:

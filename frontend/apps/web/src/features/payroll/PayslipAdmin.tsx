@@ -1,6 +1,6 @@
-import type { Payslip, Project, Staff } from "@platform/api-client";
+import { PayslipStatus, type Payslip, type Project, type Staff } from "@platform/api-client";
 import { Alert, Button, Card, Field } from "@platform/ui";
-import { useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 
 import { errorMessage, useApi } from "../../lib/api";
 import { PayslipView } from "./PayslipView";
@@ -13,8 +13,8 @@ interface LineInput {
 
 const emptyLine: LineInput = { projectId: "", workMinutes: "", hourlyRate: "" };
 
-/// 管理者が派遣社員の月次給与を確定する画面
-export function FinalizePayslipForm() {
+/// 管理者が派遣社員の月次給与明細を作成し、内容を確かめてから確定する画面
+export function PayslipAdmin() {
   const api = useApi();
   const [staff, setStaff] = useState<Staff[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -22,9 +22,10 @@ export function FinalizePayslipForm() {
   const [year, setYear] = useState(String(new Date().getFullYear()));
   const [month, setMonth] = useState(String(new Date().getMonth() + 1));
   const [lines, setLines] = useState<LineInput[]>([{ ...emptyLine }]);
+  const [payslips, setPayslips] = useState<Payslip[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<Payslip | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     Promise.all([api.staff.listStaff({}), api.project.listProjects({})])
@@ -35,19 +36,50 @@ export function FinalizePayslipForm() {
       .catch((err: unknown) => setError(errorMessage(err)));
   }, [api]);
 
+  const reload = useCallback(
+    async (id: string) => {
+      if (!id) return;
+      const res = await api.payroll.listPayslips({ staffId: BigInt(id) });
+      setPayslips(res.payslips);
+    },
+    [api],
+  );
+
+  useEffect(() => {
+    if (!staffId) return;
+    api.payroll
+      .listPayslips({ staffId: BigInt(staffId) })
+      .then((res) => setPayslips(res.payslips))
+      .catch((err: unknown) => setError(errorMessage(err)));
+  }, [api, staffId]);
+
+  // 派遣社員を選ぶまでは一覧を出さない
+  const shown = staffId ? payslips : [];
+
   const updateLine = (index: number, patch: Partial<LineInput>) =>
     setLines((prev) => prev.map((line, i) => (i === index ? { ...line, ...patch } : line)));
 
   const projectName = (id: bigint) => projects.find((p) => p.projectId === id)?.name ?? `#${id}`;
 
-  async function submit(event: FormEvent) {
-    event.preventDefault();
+  async function run(action: () => Promise<string>) {
     setError(null);
-    setResult(null);
-    setSubmitting(true);
+    setNotice(null);
+    setBusy(true);
     try {
+      setNotice(await action());
+      await reload(staffId);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function create(event: FormEvent) {
+    event.preventDefault();
+    void run(async () => {
       // 入力の検証はサーバー(domain)が行う。ここでは型の変換だけ
-      const { payslipId } = await api.payroll.finalizePayslip({
+      const { payslipId } = await api.payroll.createPayslip({
         staffId: BigInt(staffId || 0),
         payYear: Number(year),
         payMonth: Number(month),
@@ -57,30 +89,33 @@ export function FinalizePayslipForm() {
           hourlyRate: BigInt(l.hourlyRate || 0),
         })),
       });
-      const { payslip } = await api.payroll.getPayslip({ payslipId });
-      setResult(payslip ?? null);
       setLines([{ ...emptyLine }]);
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setSubmitting(false);
-    }
+      return `給与明細 #${payslipId} を作成しました。内容を確かめて確定してください。`;
+    });
+  }
+
+  function finalize(payslip: Payslip) {
+    void run(async () => {
+      await api.payroll.finalizePayslip({ payslipId: payslip.payslipId });
+      return `給与明細 #${payslip.payslipId} を確定しました。`;
+    });
   }
 
   return (
-    <Card title="給与確定">
-      <form onSubmit={(e) => void submit(e)}>
-        <div className="ui-field">
-          <label htmlFor="finalize-staff">派遣社員</label>
-          <select id="finalize-staff" value={staffId} onChange={(e) => setStaffId(e.target.value)} required>
-            <option value="">選択してください</option>
-            {staff.map((s) => (
-              <option key={String(s.staffId)} value={String(s.staffId)}>
-                {s.displayName}({s.email})
-              </option>
-            ))}
-          </select>
-        </div>
+    <Card title="給与明細">
+      <div className="ui-field">
+        <label htmlFor="payslip-staff">派遣社員</label>
+        <select id="payslip-staff" value={staffId} onChange={(e) => setStaffId(e.target.value)} required>
+          <option value="">選択してください</option>
+          {staff.map((s) => (
+            <option key={String(s.staffId)} value={String(s.staffId)}>
+              {s.displayName}({s.email})
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <form onSubmit={create} aria-label="給与明細の作成">
         <div className="row">
           <Field label="年" type="number" value={year} onChange={(e) => setYear(e.target.value)} required />
           <Field label="月" type="number" value={month} onChange={(e) => setMonth(e.target.value)} required />
@@ -128,19 +163,25 @@ export function FinalizePayslipForm() {
           <Button variant="secondary" onClick={() => setLines((prev) => [...prev, { ...emptyLine }])}>
             明細を追加
           </Button>
-          <Button type="submit" disabled={submitting}>
-            確定する
+          <Button type="submit" disabled={busy}>
+            作成する
           </Button>
         </div>
       </form>
 
       {error && <Alert>{error}</Alert>}
-      {result && (
-        <>
-          <Alert tone="success">給与明細 #{String(result.payslipId)} を確定しました。</Alert>
-          <PayslipView payslip={result} projectName={projectName} />
-        </>
-      )}
+      {notice && <Alert tone="success">{notice}</Alert>}
+
+      {shown.map((p) => (
+        <section key={String(p.payslipId)} className="payslip-item">
+          <PayslipView payslip={p} projectName={projectName} />
+          {p.status === PayslipStatus.DRAFT && (
+            <Button disabled={busy} onClick={() => finalize(p)}>
+              {`${p.payYear}年${p.payMonth}月分を確定する`}
+            </Button>
+          )}
+        </section>
+      ))}
     </Card>
   );
 }

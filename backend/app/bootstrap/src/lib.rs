@@ -20,7 +20,8 @@ use payroll_infrastructure::repository::{
     MySqlPayslipRepository, MySqlProjectRepository, MySqlStaffRepository,
 };
 use payroll_usecase::payslip::{
-    FinalizePayslipUseCase, GetPayslipUseCase, ListPayslipsUseCase, RequestPayoutUseCase,
+    CreatePayslipUseCase, FinalizePayslipUseCase, GetPayslipUseCase, ListPayslipsUseCase,
+    RequestPayoutUseCase,
 };
 use payroll_usecase::ports::database::Database;
 use payroll_usecase::ports::events::EventOutbox;
@@ -131,9 +132,9 @@ pub fn build_handlers(pool: &MySqlPool, user_directory: Arc<dyn UserDirectory>) 
 
     Handlers {
         payroll: PayrollServiceHandler::new(
+            CreatePayslipUseCase::new(payslips.clone(), staff.clone(), db.clone()),
             FinalizePayslipUseCase::new(
                 payslips.clone(),
-                staff.clone(),
                 outbox,
                 db.clone(),
                 Arc::new(SystemClock),

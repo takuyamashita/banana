@@ -3,7 +3,7 @@ import { Alert, Button } from "@platform/ui";
 import type { User } from "oidc-client-ts";
 import { useEffect, useMemo, useState } from "react";
 
-import { FinalizePayslipForm } from "./features/payroll/FinalizePayslipForm";
+import { PayslipAdmin } from "./features/payroll/PayslipAdmin";
 import { MyPayslips } from "./features/payroll/MyPayslips";
 import { ProjectPanel } from "./features/project/ProjectPanel";
 import { StaffPanel } from "./features/staff/StaffPanel";
@@ -11,14 +11,14 @@ import { ApiProvider, errorMessage } from "./lib/api";
 import { createUserManager, restoreSession, signOut } from "./lib/auth";
 import type { RuntimeConfig } from "./lib/config";
 
-type AdminTab = "finalize" | "staff" | "project";
+type AdminTab = "payslips" | "staff" | "project";
 
 export function App({ config }: { config: RuntimeConfig }) {
   const manager = useMemo(() => createUserManager(config), [config]);
   const [user, setUser] = useState<User | null | undefined>(undefined);
   const [me, setMe] = useState<GetMeResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<AdminTab>("finalize");
+  const [tab, setTab] = useState<AdminTab>("payslips");
 
   const clients = useMemo(
     () =>
@@ -77,7 +77,7 @@ export function App({ config }: { config: RuntimeConfig }) {
             <nav className="tabs" aria-label="管理メニュー">
               {(
                 [
-                  ["finalize", "給与確定"],
+                  ["payslips", "給与明細"],
                   ["staff", "派遣社員"],
                   ["project", "案件"],
                 ] as const
@@ -87,7 +87,7 @@ export function App({ config }: { config: RuntimeConfig }) {
                 </Button>
               ))}
             </nav>
-            {tab === "finalize" && <FinalizePayslipForm />}
+            {tab === "payslips" && <PayslipAdmin />}
             {tab === "staff" && <StaffPanel />}
             {tab === "project" && <ProjectPanel />}
           </>

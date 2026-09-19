@@ -10,12 +10,12 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file acme/payroll/v1/payroll.proto.
  */
 export const file_acme_payroll_v1_payroll: GenFile = /*@__PURE__*/
-  fileDesc("Ch1hY21lL3BheXJvbGwvdjEvcGF5cm9sbC5wcm90bxIPYWNtZS5wYXlyb2xsLnYxIoEBChZGaW5hbGl6ZVBheXNsaXBSZXF1ZXN0EhAKCHN0YWZmX2lkGAEgASgDEhAKCHBheV95ZWFyGAIgASgFEhEKCXBheV9tb250aBgDIAEoBRIwCgVsaW5lcxgEIAMoCzIhLmFjbWUucGF5cm9sbC52MS5QYXlzbGlwTGluZUlucHV0IlEKEFBheXNsaXBMaW5lSW5wdXQSEgoKcHJvamVjdF9pZBgBIAEoAxIUCgx3b3JrX21pbnV0ZXMYAiABKA0SEwoLaG91cmx5X3JhdGUYAyABKAMiLQoXRmluYWxpemVQYXlzbGlwUmVzcG9uc2USEgoKcGF5c2xpcF9pZBgBIAEoAyInChFHZXRQYXlzbGlwUmVxdWVzdBISCgpwYXlzbGlwX2lkGAEgASgDIj8KEkdldFBheXNsaXBSZXNwb25zZRIpCgdwYXlzbGlwGAEgASgLMhguYWNtZS5wYXlyb2xsLnYxLlBheXNsaXAiJwoTTGlzdFBheXNsaXBzUmVxdWVzdBIQCghzdGFmZl9pZBgBIAEoAyJCChRMaXN0UGF5c2xpcHNSZXNwb25zZRIqCghwYXlzbGlwcxgBIAMoCzIYLmFjbWUucGF5cm9sbC52MS5QYXlzbGlwIsQBCgdQYXlzbGlwEhIKCnBheXNsaXBfaWQYASABKAMSEAoIc3RhZmZfaWQYAiABKAMSEAoIcGF5X3llYXIYAyABKAUSEQoJcGF5X21vbnRoGAQgASgFEi4KBnN0YXR1cxgFIAEoDjIeLmFjbWUucGF5cm9sbC52MS5QYXlzbGlwU3RhdHVzEhEKCXRvdGFsX3llbhgGIAEoAxIrCgVsaW5lcxgHIAMoCzIcLmFjbWUucGF5cm9sbC52MS5QYXlzbGlwTGluZSJgCgtQYXlzbGlwTGluZRISCgpwcm9qZWN0X2lkGAEgASgDEhQKDHdvcmtfbWludXRlcxgCIAEoDRITCgtob3VybHlfcmF0ZRgDIAEoAxISCgphbW91bnRfeWVuGAQgASgDKmcKDVBheXNsaXBTdGF0dXMSHgoaUEFZU0xJUF9TVEFUVVNfVU5TUEVDSUZJRUQQABIYChRQQVlTTElQX1NUQVRVU19EUkFGVBABEhwKGFBBWVNMSVBfU1RBVFVTX0ZJTkFMSVpFRBACMqoCCg5QYXlyb2xsU2VydmljZRJkCg9GaW5hbGl6ZVBheXNsaXASJy5hY21lLnBheXJvbGwudjEuRmluYWxpemVQYXlzbGlwUmVxdWVzdBooLmFjbWUucGF5cm9sbC52MS5GaW5hbGl6ZVBheXNsaXBSZXNwb25zZRJVCgpHZXRQYXlzbGlwEiIuYWNtZS5wYXlyb2xsLnYxLkdldFBheXNsaXBSZXF1ZXN0GiMuYWNtZS5wYXlyb2xsLnYxLkdldFBheXNsaXBSZXNwb25zZRJbCgxMaXN0UGF5c2xpcHMSJC5hY21lLnBheXJvbGwudjEuTGlzdFBheXNsaXBzUmVxdWVzdBolLmFjbWUucGF5cm9sbC52MS5MaXN0UGF5c2xpcHNSZXNwb25zZWIGcHJvdG8z");
+  fileDesc("Ch1hY21lL3BheXJvbGwvdjEvcGF5cm9sbC5wcm90bxIPYWNtZS5wYXlyb2xsLnYxIn8KFENyZWF0ZVBheXNsaXBSZXF1ZXN0EhAKCHN0YWZmX2lkGAEgASgDEhAKCHBheV95ZWFyGAIgASgFEhEKCXBheV9tb250aBgDIAEoBRIwCgVsaW5lcxgEIAMoCzIhLmFjbWUucGF5cm9sbC52MS5QYXlzbGlwTGluZUlucHV0IlEKEFBheXNsaXBMaW5lSW5wdXQSEgoKcHJvamVjdF9pZBgBIAEoAxIUCgx3b3JrX21pbnV0ZXMYAiABKA0SEwoLaG91cmx5X3JhdGUYAyABKAMiKwoVQ3JlYXRlUGF5c2xpcFJlc3BvbnNlEhIKCnBheXNsaXBfaWQYASABKAMiLAoWRmluYWxpemVQYXlzbGlwUmVxdWVzdBISCgpwYXlzbGlwX2lkGAEgASgDIhkKF0ZpbmFsaXplUGF5c2xpcFJlc3BvbnNlIicKEUdldFBheXNsaXBSZXF1ZXN0EhIKCnBheXNsaXBfaWQYASABKAMiPwoSR2V0UGF5c2xpcFJlc3BvbnNlEikKB3BheXNsaXAYASABKAsyGC5hY21lLnBheXJvbGwudjEuUGF5c2xpcCInChNMaXN0UGF5c2xpcHNSZXF1ZXN0EhAKCHN0YWZmX2lkGAEgASgDIkIKFExpc3RQYXlzbGlwc1Jlc3BvbnNlEioKCHBheXNsaXBzGAEgAygLMhguYWNtZS5wYXlyb2xsLnYxLlBheXNsaXAixAEKB1BheXNsaXASEgoKcGF5c2xpcF9pZBgBIAEoAxIQCghzdGFmZl9pZBgCIAEoAxIQCghwYXlfeWVhchgDIAEoBRIRCglwYXlfbW9udGgYBCABKAUSLgoGc3RhdHVzGAUgASgOMh4uYWNtZS5wYXlyb2xsLnYxLlBheXNsaXBTdGF0dXMSEQoJdG90YWxfeWVuGAYgASgDEisKBWxpbmVzGAcgAygLMhwuYWNtZS5wYXlyb2xsLnYxLlBheXNsaXBMaW5lImAKC1BheXNsaXBMaW5lEhIKCnByb2plY3RfaWQYASABKAMSFAoMd29ya19taW51dGVzGAIgASgNEhMKC2hvdXJseV9yYXRlGAMgASgDEhIKCmFtb3VudF95ZW4YBCABKAMqZwoNUGF5c2xpcFN0YXR1cxIeChpQQVlTTElQX1NUQVRVU19VTlNQRUNJRklFRBAAEhgKFFBBWVNMSVBfU1RBVFVTX0RSQUZUEAESHAoYUEFZU0xJUF9TVEFUVVNfRklOQUxJWkVEEAIyigMKDlBheXJvbGxTZXJ2aWNlEl4KDUNyZWF0ZVBheXNsaXASJS5hY21lLnBheXJvbGwudjEuQ3JlYXRlUGF5c2xpcFJlcXVlc3QaJi5hY21lLnBheXJvbGwudjEuQ3JlYXRlUGF5c2xpcFJlc3BvbnNlEmQKD0ZpbmFsaXplUGF5c2xpcBInLmFjbWUucGF5cm9sbC52MS5GaW5hbGl6ZVBheXNsaXBSZXF1ZXN0GiguYWNtZS5wYXlyb2xsLnYxLkZpbmFsaXplUGF5c2xpcFJlc3BvbnNlElUKCkdldFBheXNsaXASIi5hY21lLnBheXJvbGwudjEuR2V0UGF5c2xpcFJlcXVlc3QaIy5hY21lLnBheXJvbGwudjEuR2V0UGF5c2xpcFJlc3BvbnNlElsKDExpc3RQYXlzbGlwcxIkLmFjbWUucGF5cm9sbC52MS5MaXN0UGF5c2xpcHNSZXF1ZXN0GiUuYWNtZS5wYXlyb2xsLnYxLkxpc3RQYXlzbGlwc1Jlc3BvbnNlYgZwcm90bzM");
 
 /**
- * @generated from message acme.payroll.v1.FinalizePayslipRequest
+ * @generated from message acme.payroll.v1.CreatePayslipRequest
  */
-export type FinalizePayslipRequest = Message<"acme.payroll.v1.FinalizePayslipRequest"> & {
+export type CreatePayslipRequest = Message<"acme.payroll.v1.CreatePayslipRequest"> & {
   /**
    * @generated from field: int64 staff_id = 1;
    */
@@ -38,10 +38,10 @@ export type FinalizePayslipRequest = Message<"acme.payroll.v1.FinalizePayslipReq
 };
 
 /**
- * Describes the message acme.payroll.v1.FinalizePayslipRequest.
- * Use `create(FinalizePayslipRequestSchema)` to create a new message.
+ * Describes the message acme.payroll.v1.CreatePayslipRequest.
+ * Use `create(CreatePayslipRequestSchema)` to create a new message.
  */
-export const FinalizePayslipRequestSchema: GenMessage<FinalizePayslipRequest> = /*@__PURE__*/
+export const CreatePayslipRequestSchema: GenMessage<CreatePayslipRequest> = /*@__PURE__*/
   messageDesc(file_acme_payroll_v1_payroll, 0);
 
 /**
@@ -72,9 +72,9 @@ export const PayslipLineInputSchema: GenMessage<PayslipLineInput> = /*@__PURE__*
   messageDesc(file_acme_payroll_v1_payroll, 1);
 
 /**
- * @generated from message acme.payroll.v1.FinalizePayslipResponse
+ * @generated from message acme.payroll.v1.CreatePayslipResponse
  */
-export type FinalizePayslipResponse = Message<"acme.payroll.v1.FinalizePayslipResponse"> & {
+export type CreatePayslipResponse = Message<"acme.payroll.v1.CreatePayslipResponse"> & {
   /**
    * @generated from field: int64 payslip_id = 1;
    */
@@ -82,11 +82,41 @@ export type FinalizePayslipResponse = Message<"acme.payroll.v1.FinalizePayslipRe
 };
 
 /**
+ * Describes the message acme.payroll.v1.CreatePayslipResponse.
+ * Use `create(CreatePayslipResponseSchema)` to create a new message.
+ */
+export const CreatePayslipResponseSchema: GenMessage<CreatePayslipResponse> = /*@__PURE__*/
+  messageDesc(file_acme_payroll_v1_payroll, 2);
+
+/**
+ * @generated from message acme.payroll.v1.FinalizePayslipRequest
+ */
+export type FinalizePayslipRequest = Message<"acme.payroll.v1.FinalizePayslipRequest"> & {
+  /**
+   * @generated from field: int64 payslip_id = 1;
+   */
+  payslipId: bigint;
+};
+
+/**
+ * Describes the message acme.payroll.v1.FinalizePayslipRequest.
+ * Use `create(FinalizePayslipRequestSchema)` to create a new message.
+ */
+export const FinalizePayslipRequestSchema: GenMessage<FinalizePayslipRequest> = /*@__PURE__*/
+  messageDesc(file_acme_payroll_v1_payroll, 3);
+
+/**
+ * @generated from message acme.payroll.v1.FinalizePayslipResponse
+ */
+export type FinalizePayslipResponse = Message<"acme.payroll.v1.FinalizePayslipResponse"> & {
+};
+
+/**
  * Describes the message acme.payroll.v1.FinalizePayslipResponse.
  * Use `create(FinalizePayslipResponseSchema)` to create a new message.
  */
 export const FinalizePayslipResponseSchema: GenMessage<FinalizePayslipResponse> = /*@__PURE__*/
-  messageDesc(file_acme_payroll_v1_payroll, 2);
+  messageDesc(file_acme_payroll_v1_payroll, 4);
 
 /**
  * @generated from message acme.payroll.v1.GetPayslipRequest
@@ -103,7 +133,7 @@ export type GetPayslipRequest = Message<"acme.payroll.v1.GetPayslipRequest"> & {
  * Use `create(GetPayslipRequestSchema)` to create a new message.
  */
 export const GetPayslipRequestSchema: GenMessage<GetPayslipRequest> = /*@__PURE__*/
-  messageDesc(file_acme_payroll_v1_payroll, 3);
+  messageDesc(file_acme_payroll_v1_payroll, 5);
 
 /**
  * @generated from message acme.payroll.v1.GetPayslipResponse
@@ -120,7 +150,7 @@ export type GetPayslipResponse = Message<"acme.payroll.v1.GetPayslipResponse"> &
  * Use `create(GetPayslipResponseSchema)` to create a new message.
  */
 export const GetPayslipResponseSchema: GenMessage<GetPayslipResponse> = /*@__PURE__*/
-  messageDesc(file_acme_payroll_v1_payroll, 4);
+  messageDesc(file_acme_payroll_v1_payroll, 6);
 
 /**
  * @generated from message acme.payroll.v1.ListPayslipsRequest
@@ -137,7 +167,7 @@ export type ListPayslipsRequest = Message<"acme.payroll.v1.ListPayslipsRequest">
  * Use `create(ListPayslipsRequestSchema)` to create a new message.
  */
 export const ListPayslipsRequestSchema: GenMessage<ListPayslipsRequest> = /*@__PURE__*/
-  messageDesc(file_acme_payroll_v1_payroll, 5);
+  messageDesc(file_acme_payroll_v1_payroll, 7);
 
 /**
  * @generated from message acme.payroll.v1.ListPayslipsResponse
@@ -154,7 +184,7 @@ export type ListPayslipsResponse = Message<"acme.payroll.v1.ListPayslipsResponse
  * Use `create(ListPayslipsResponseSchema)` to create a new message.
  */
 export const ListPayslipsResponseSchema: GenMessage<ListPayslipsResponse> = /*@__PURE__*/
-  messageDesc(file_acme_payroll_v1_payroll, 6);
+  messageDesc(file_acme_payroll_v1_payroll, 8);
 
 /**
  * @generated from message acme.payroll.v1.Payslip
@@ -201,7 +231,7 @@ export type Payslip = Message<"acme.payroll.v1.Payslip"> & {
  * Use `create(PayslipSchema)` to create a new message.
  */
 export const PayslipSchema: GenMessage<Payslip> = /*@__PURE__*/
-  messageDesc(file_acme_payroll_v1_payroll, 7);
+  messageDesc(file_acme_payroll_v1_payroll, 9);
 
 /**
  * @generated from message acme.payroll.v1.PayslipLine
@@ -233,7 +263,7 @@ export type PayslipLine = Message<"acme.payroll.v1.PayslipLine"> & {
  * Use `create(PayslipLineSchema)` to create a new message.
  */
 export const PayslipLineSchema: GenMessage<PayslipLine> = /*@__PURE__*/
-  messageDesc(file_acme_payroll_v1_payroll, 8);
+  messageDesc(file_acme_payroll_v1_payroll, 10);
 
 /**
  * @generated from enum acme.payroll.v1.PayslipStatus
@@ -262,13 +292,23 @@ export const PayslipStatusSchema: GenEnum<PayslipStatus> = /*@__PURE__*/
   enumDesc(file_acme_payroll_v1_payroll, 0);
 
 /**
- * 給与明細の確定と参照
+ * 給与明細の作成・確定と参照
  *
  * @generated from service acme.payroll.v1.PayrollService
  */
 export const PayrollService: GenService<{
   /**
-   * 派遣社員の月次給与を確定する。管理者のみ
+   * 派遣社員の月次給与明細を作成中として作る。管理者のみ
+   *
+   * @generated from rpc acme.payroll.v1.PayrollService.CreatePayslip
+   */
+  createPayslip: {
+    methodKind: "unary";
+    input: typeof CreatePayslipRequestSchema;
+    output: typeof CreatePayslipResponseSchema;
+  },
+  /**
+   * 作成中の給与明細を確定する。管理者のみ
    *
    * @generated from rpc acme.payroll.v1.PayrollService.FinalizePayslip
    */
@@ -278,7 +318,7 @@ export const PayrollService: GenService<{
     output: typeof FinalizePayslipResponseSchema;
   },
   /**
-   * 給与明細を1件取得する。管理者か、明細の本人のみ
+   * 給与明細を1件取得する。管理者か、明細の本人のみ(本人は確定済みだけ)
    *
    * @generated from rpc acme.payroll.v1.PayrollService.GetPayslip
    */
@@ -288,7 +328,7 @@ export const PayrollService: GenService<{
     output: typeof GetPayslipResponseSchema;
   },
   /**
-   * 派遣社員の給与明細を一覧する。管理者か、本人のみ
+   * 派遣社員の給与明細を一覧する。管理者か、本人のみ(本人は確定済みだけ)
    *
    * @generated from rpc acme.payroll.v1.PayrollService.ListPayslips
    */

@@ -76,6 +76,30 @@ impl PayslipRepository for MySqlPayslipRepository {
         assemble(rows)
     }
 
+    async fn find_for_update(
+        &self,
+        db: &mut Db,
+        id: PayslipId,
+    ) -> Result<Option<Payslip>, RepositoryError> {
+        let conn = mysql(db)?;
+        let rows = sqlx::query_as!(
+            JoinedRow,
+            "select p.id, p.staff_id, p.pay_year, p.pay_month, p.status, p.finalized_at,
+                    l.project_id, l.work_minutes, l.hourly_rate
+             from payslips p
+             join payslip_lines l on l.payslip_id = p.id
+             where p.id = ?
+             order by l.id
+             for update",
+            id.as_i64(),
+        )
+        .fetch_all(&mut *conn)
+        .await
+        .map_err(db_err)?;
+
+        Ok(assemble(rows)?.pop())
+    }
+
     async fn insert(&self, db: &mut Db, new: &NewPayslip) -> Result<PayslipId, RepositoryError> {
         // 給与明細と明細行は必ず一緒に書く。渡された書き込み先がトランザクションなら、その中の
         // SAVEPOINT になる
