@@ -3,31 +3,26 @@ use std::sync::Arc;
 use payroll_domain::project::{NewProject, ProjectId, ProjectName};
 
 use crate::UseCaseError;
+use crate::ports::database::Database;
 use crate::ports::queries::{ProjectQuery, ProjectView};
 use crate::ports::repository::ProjectRepository;
-use crate::ports::transaction::Transactions;
 
 /// 管理者が案件を登録する
 pub struct CreateProjectUseCase {
     repository: Arc<dyn ProjectRepository>,
-    transactions: Arc<dyn Transactions>,
+    db: Arc<dyn Database>,
 }
 
 impl CreateProjectUseCase {
     #[must_use]
-    pub fn new(
-        repository: Arc<dyn ProjectRepository>,
-        transactions: Arc<dyn Transactions>,
-    ) -> Self {
-        Self { repository, transactions }
+    pub fn new(repository: Arc<dyn ProjectRepository>, db: Arc<dyn Database>) -> Self {
+        Self { repository, db }
     }
 
     /// 案件を登録し、振られた案件番号を返す
     pub async fn execute(&self, name: ProjectName) -> Result<ProjectId, UseCaseError> {
-        let mut tx = self.transactions.begin().await?;
-        let id = self.repository.insert(&mut tx, &NewProject::new(name)).await?;
-        self.transactions.commit(tx).await?;
-        Ok(id)
+        let mut db = self.db.connection().await?;
+        Ok(self.repository.insert(&mut db, &NewProject::new(name)).await?)
     }
 }
 

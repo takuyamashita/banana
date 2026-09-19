@@ -4,13 +4,14 @@ use payroll_domain::payslip::{
 };
 use payroll_domain::project::ProjectId;
 use payroll_domain::staff::StaffId;
+use payroll_usecase::ports::database::Db;
 use payroll_usecase::ports::repository::{PayslipRepository, RepositoryError};
-use payroll_usecase::ports::transaction::Tx;
 use platform_kernel::Money;
+use sqlx::Connection as _;
 use sqlx::mysql::MySqlPool;
 
+use crate::database::mysql;
 use crate::db::{corrupted, db_err};
-use crate::transaction::mysql_tx;
 
 pub struct MySqlPayslipRepository {
     pool: MySqlPool,
@@ -73,8 +74,10 @@ impl PayslipRepository for MySqlPayslipRepository {
         assemble(rows)
     }
 
-    async fn insert(&self, tx: &mut Tx, new: &NewPayslip) -> Result<PayslipId, RepositoryError> {
-        let tx = mysql_tx(tx)?;
+    async fn insert(&self, db: &mut Db, new: &NewPayslip) -> Result<PayslipId, RepositoryError> {
+        // 給与明細と明細行は必ず一緒に書く。渡された書き込み先がトランザクションなら、その中の
+        // SAVEPOINT になる
+        let mut tx = mysql(db)?.begin().await.map_err(db_err)?;
         let result = sqlx::query!(
             "insert into payslips (staff_id, pay_year, pay_month, status, finalized_at)
              values (?, ?, ?, ?, if(? = 'finalized', current_timestamp(6), null))",
@@ -84,7 +87,7 @@ impl PayslipRepository for MySqlPayslipRepository {
             encode_status(new.status()),
             encode_status(new.status()),
         )
-        .execute(&mut **tx)
+        .execute(&mut *tx)
         .await
         .map_err(db_err)?;
 
@@ -101,16 +104,17 @@ impl PayslipRepository for MySqlPayslipRepository {
                 line.work_minutes().as_minutes(),
                 line.hourly_rate().as_yen(),
             )
-            .execute(&mut **tx)
+            .execute(&mut *tx)
             .await
             .map_err(db_err)?;
         }
 
+        tx.commit().await.map_err(db_err)?;
         Ok(payslip_id)
     }
 
-    async fn update(&self, tx: &mut Tx, payslip: &Payslip) -> Result<(), RepositoryError> {
-        let tx = mysql_tx(tx)?;
+    async fn update(&self, db: &mut Db, payslip: &Payslip) -> Result<(), RepositoryError> {
+        let conn = mysql(db)?;
         sqlx::query!(
             "update payslips
              set status = ?,
@@ -120,7 +124,7 @@ impl PayslipRepository for MySqlPayslipRepository {
             encode_status(payslip.status()),
             payslip.id().as_i64(),
         )
-        .execute(&mut **tx)
+        .execute(&mut *conn)
         .await
         .map_err(db_err)?;
         Ok(())

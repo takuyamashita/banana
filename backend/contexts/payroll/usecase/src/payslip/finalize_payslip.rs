@@ -4,9 +4,9 @@ use payroll_domain::payslip::{NewPayslip, PayPeriod, PayslipId, PayslipLine};
 use payroll_domain::staff::StaffId;
 
 use crate::UseCaseError;
+use crate::ports::database::Database;
 use crate::ports::events::{EventOutbox, PayrollEvent};
 use crate::ports::repository::{PayslipRepository, StaffRepository};
-use crate::ports::transaction::Transactions;
 
 /// 給与確定で管理者が入力する内容
 pub struct FinalizePayslipInput {
@@ -26,7 +26,7 @@ pub struct FinalizePayslipUseCase {
     payslips: Arc<dyn PayslipRepository>,
     staff: Arc<dyn StaffRepository>,
     outbox: Arc<dyn EventOutbox>,
-    transactions: Arc<dyn Transactions>,
+    db: Arc<dyn Database>,
 }
 
 impl FinalizePayslipUseCase {
@@ -35,9 +35,9 @@ impl FinalizePayslipUseCase {
         payslips: Arc<dyn PayslipRepository>,
         staff: Arc<dyn StaffRepository>,
         outbox: Arc<dyn EventOutbox>,
-        transactions: Arc<dyn Transactions>,
+        db: Arc<dyn Database>,
     ) -> Self {
-        Self { payslips, staff, outbox, transactions }
+        Self { payslips, staff, outbox, db }
     }
 
     /// 給与を確定し、振られた給与明細番号を返す。
@@ -56,10 +56,10 @@ impl FinalizePayslipUseCase {
         let mut payslip = NewPayslip::draft(input.staff_id, input.period, input.lines)?;
         let finalized = payslip.finalize()?;
 
-        let mut tx = self.transactions.begin().await?;
+        let mut tx = self.db.transaction().await?;
         let id = self.payslips.insert(&mut tx, &payslip).await?;
         self.outbox.append(&mut tx, PayrollEvent::Payslip { id, event: finalized }).await?;
-        self.transactions.commit(tx).await?;
+        tx.commit().await?;
 
         Ok(id)
     }

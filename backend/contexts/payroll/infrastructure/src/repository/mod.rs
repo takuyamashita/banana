@@ -1,4 +1,4 @@
-//! 記録と取り出しの MySQL 実装。記録はトランザクション(Tx)を受け取って書く
+//! 記録と取り出しの MySQL 実装。記録は受け取った書き込み先(Db)に書く
 
 mod payslip_repository;
 mod project_repository;

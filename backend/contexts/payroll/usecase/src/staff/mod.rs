@@ -5,9 +5,9 @@ use platform_kernel::AuthenticatedUser;
 use platform_kernel::Email;
 
 use crate::UseCaseError;
+use crate::ports::database::Database;
 use crate::ports::queries::{StaffQuery, StaffView};
 use crate::ports::repository::StaffRepository;
-use crate::ports::transaction::Transactions;
 use crate::ports::user_directory::UserDirectory;
 
 /// 派遣社員の登録で管理者が入力する内容
@@ -26,7 +26,7 @@ pub struct CreateStaffInput {
 /// 同じメールアドレスの派遣社員は登録できない
 pub struct CreateStaffUseCase {
     staff_repository: Arc<dyn StaffRepository>,
-    transactions: Arc<dyn Transactions>,
+    db: Arc<dyn Database>,
     user_directory: Arc<dyn UserDirectory>,
 }
 
@@ -34,10 +34,10 @@ impl CreateStaffUseCase {
     #[must_use]
     pub fn new(
         staff_repository: Arc<dyn StaffRepository>,
-        transactions: Arc<dyn Transactions>,
+        db: Arc<dyn Database>,
         user_directory: Arc<dyn UserDirectory>,
     ) -> Self {
-        Self { staff_repository, transactions, user_directory }
+        Self { staff_repository, db, user_directory }
     }
 
     /// 派遣社員を登録し、振られた派遣社員番号を返す。
@@ -64,10 +64,8 @@ impl CreateStaffUseCase {
     }
 
     async fn register(&self, new: &NewStaff) -> Result<StaffId, UseCaseError> {
-        let mut tx = self.transactions.begin().await?;
-        let id = self.staff_repository.insert(&mut tx, new).await?;
-        self.transactions.commit(tx).await?;
-        Ok(id)
+        let mut db = self.db.connection().await?;
+        Ok(self.staff_repository.insert(&mut db, new).await?)
     }
 }
 

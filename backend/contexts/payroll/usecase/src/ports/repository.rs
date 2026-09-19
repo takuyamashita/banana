@@ -1,9 +1,9 @@
 //! 案件・派遣社員・給与明細の記録と取り出し。
 //!
-//! 記録(`insert`・`update`)は [`Transactions`] で始めたトランザクション(`tx`)を受け取り、
-//! 同じトランザクションの記録はまとめて確定するか、まとめて取り消される。
+//! 記録(`insert`・`update`)は書き込み先([`Db`])を受け取る。同じトランザクションに書いた記録は、
+//! まとめて確定するか、まとめて取り消される。
 //!
-//! [`Transactions`]: super::transaction::Transactions
+//! [`Db`]: super::database::Db
 
 use async_trait::async_trait;
 use payroll_domain::payslip::{NewPayslip, Payslip, PayslipId};
@@ -12,7 +12,7 @@ use payroll_domain::staff::{NewStaff, Staff, StaffId};
 use platform_kernel::{Email, UserId};
 use thiserror::Error;
 
-use super::transaction::Tx;
+use super::database::Db;
 
 /// 記録・取り出しができなかった理由
 #[derive(Debug, Error)]
@@ -36,9 +36,9 @@ pub trait PayslipRepository: Send + Sync {
     /// 派遣社員の有効な給与明細を、新しい月から順に返す
     async fn list_by_staff(&self, staff_id: StaffId) -> Result<Vec<Payslip>, RepositoryError>;
     /// 新しい給与明細を登録し、振られた給与明細番号を返す
-    async fn insert(&self, tx: &mut Tx, new: &NewPayslip) -> Result<PayslipId, RepositoryError>;
+    async fn insert(&self, db: &mut Db, new: &NewPayslip) -> Result<PayslipId, RepositoryError>;
     /// 登録済みの給与明細の変更(状態の変化など)を記録する
-    async fn update(&self, tx: &mut Tx, payslip: &Payslip) -> Result<(), RepositoryError>;
+    async fn update(&self, db: &mut Db, payslip: &Payslip) -> Result<(), RepositoryError>;
 }
 
 /// 派遣社員の記録と取り出し
@@ -51,12 +51,12 @@ pub trait StaffRepository: Send + Sync {
     /// メールアドレスで派遣社員を探す
     async fn find_by_email(&self, email: &Email) -> Result<Option<Staff>, RepositoryError>;
     /// 新しい派遣社員を登録し、振られた派遣社員番号を返す
-    async fn insert(&self, tx: &mut Tx, new: &NewStaff) -> Result<StaffId, RepositoryError>;
+    async fn insert(&self, db: &mut Db, new: &NewStaff) -> Result<StaffId, RepositoryError>;
 }
 
 /// 案件の記録
 #[async_trait]
 pub trait ProjectRepository: Send + Sync {
     /// 新しい案件を登録し、振られた案件番号を返す
-    async fn insert(&self, tx: &mut Tx, new: &NewProject) -> Result<ProjectId, RepositoryError>;
+    async fn insert(&self, db: &mut Db, new: &NewProject) -> Result<ProjectId, RepositoryError>;
 }

@@ -3,6 +3,7 @@
 // allow-unwrap-in-tests は #[test] 関数の中にしか効かず、tests/ のフェイクや補助関数は対象外
 #![allow(clippy::unwrap_used)]
 
+use std::any::Any;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -15,9 +16,9 @@ use payroll_domain::project::ProjectId;
 use payroll_domain::staff::{DisplayName, NewStaff, Staff, StaffId};
 use payroll_usecase::UseCaseError;
 use payroll_usecase::payslip::{FinalizePayslipInput, FinalizePayslipUseCase, GetPayslipUseCase};
+use payroll_usecase::ports::database::{Database, Db, DbHandle, Transaction};
 use payroll_usecase::ports::events::{EventOutbox, PayrollEvent};
 use payroll_usecase::ports::repository::{PayslipRepository, RepositoryError, StaffRepository};
-use payroll_usecase::ports::transaction::{Transactions, Tx};
 use payroll_usecase::ports::user_directory::{UserDirectory, UserDirectoryError};
 use payroll_usecase::staff::{CreateStaffInput, CreateStaffUseCase};
 use platform_kernel::{AuthenticatedUser, Email, Money, Role, UserId};
@@ -78,28 +79,54 @@ fn to_staff(r: &StaffRow) -> Staff {
     Staff::reconstruct(r.0, r.1.clone(), r.2.clone(), DisplayName::new("x").unwrap())
 }
 
-/// フェイクのトランザクション。記録は commit まで手元に溜め、commit で丸ごと反映する
-struct FakeTx {
-    pending: Records,
+/// フェイクの書き込み先。トランザクションは commit まで記録を手元に溜めて commit で丸ごと反映し、
+/// 接続は書いた時点で反映する
+enum FakeDb {
+    Transaction { world: Arc<World>, pending: Records },
+    Connection(Arc<World>),
 }
 
-struct FakeTransactions(Arc<World>);
+impl FakeDb {
+    fn write<R>(&mut self, f: impl FnOnce(&mut Records) -> R) -> R {
+        match self {
+            Self::Transaction { pending, .. } => f(pending),
+            Self::Connection(world) => f(&mut world.committed.lock().unwrap()),
+        }
+    }
+}
 
 #[async_trait]
-impl Transactions for FakeTransactions {
-    async fn begin(&self) -> Result<Tx, RepositoryError> {
-        Ok(Tx::new(FakeTx { pending: self.0.records() }))
+impl DbHandle for FakeDb {
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
     }
 
-    async fn commit(&self, tx: Tx) -> Result<(), RepositoryError> {
-        let Ok(tx) = tx.into_inner::<FakeTx>() else { panic!("フェイク以外の Tx") };
-        *self.0.committed.lock().unwrap() = tx.pending;
+    async fn commit(self: Box<Self>) -> Result<(), RepositoryError> {
+        if let Self::Transaction { world, pending } = *self {
+            *world.committed.lock().unwrap() = pending;
+        }
         Ok(())
     }
 }
 
-fn fake(tx: &mut Tx) -> &mut FakeTx {
-    tx.downcast_mut::<FakeTx>().unwrap()
+struct FakeDatabase(Arc<World>);
+
+#[async_trait]
+impl Database for FakeDatabase {
+    async fn transaction(&self) -> Result<Transaction, RepositoryError> {
+        Ok(Transaction::new(FakeDb::Transaction {
+            world: self.0.clone(),
+            pending: self.0.records(),
+        }))
+    }
+
+    async fn connection(&self) -> Result<Db, RepositoryError> {
+        Ok(Db::new(FakeDb::Connection(self.0.clone())))
+    }
+}
+
+fn fake(db: &mut Db) -> &mut FakeDb {
+    db.downcast_mut::<FakeDb>().unwrap()
 }
 
 struct FakePayslips(Arc<World>);
@@ -114,14 +141,15 @@ impl PayslipRepository for FakePayslips {
         Ok(self.0.records().payslips.iter().filter(|r| r.1 == staff_id).map(to_payslip).collect())
     }
 
-    async fn insert(&self, tx: &mut Tx, new: &NewPayslip) -> Result<PayslipId, RepositoryError> {
-        let rows = &mut fake(tx).pending.payslips;
-        let id = PayslipId::from_i64(next_id(rows.len())).unwrap();
-        rows.push((id, new.staff_id(), new.period(), new.lines().to_vec()));
-        Ok(id)
+    async fn insert(&self, db: &mut Db, new: &NewPayslip) -> Result<PayslipId, RepositoryError> {
+        Ok(fake(db).write(|r| {
+            let id = PayslipId::from_i64(next_id(r.payslips.len())).unwrap();
+            r.payslips.push((id, new.staff_id(), new.period(), new.lines().to_vec()));
+            id
+        }))
     }
 
-    async fn update(&self, _tx: &mut Tx, _payslip: &Payslip) -> Result<(), RepositoryError> {
+    async fn update(&self, _db: &mut Db, _payslip: &Payslip) -> Result<(), RepositoryError> {
         unimplemented!()
     }
 }
@@ -142,14 +170,15 @@ impl StaffRepository for FakeStaff {
         Ok(self.0.records().staff.iter().find(|r| &r.2 == email).map(to_staff))
     }
 
-    async fn insert(&self, tx: &mut Tx, new: &NewStaff) -> Result<StaffId, RepositoryError> {
+    async fn insert(&self, db: &mut Db, new: &NewStaff) -> Result<StaffId, RepositoryError> {
         if self.0.fail_staff_insert {
             return Err(RepositoryError::Unavailable("db down".into()));
         }
-        let rows = &mut fake(tx).pending.staff;
-        let id = StaffId::from_i64(next_id(rows.len())).unwrap();
-        rows.push((id, new.user_id().clone(), new.email().clone()));
-        Ok(id)
+        Ok(fake(db).write(|r| {
+            let id = StaffId::from_i64(next_id(r.staff.len())).unwrap();
+            r.staff.push((id, new.user_id().clone(), new.email().clone()));
+            id
+        }))
     }
 }
 
@@ -157,11 +186,11 @@ struct FakeOutbox(Arc<World>);
 
 #[async_trait]
 impl EventOutbox for FakeOutbox {
-    async fn append(&self, tx: &mut Tx, event: PayrollEvent) -> Result<(), RepositoryError> {
+    async fn append(&self, db: &mut Db, event: PayrollEvent) -> Result<(), RepositoryError> {
         if self.0.fail_event_append {
             return Err(RepositoryError::Unavailable("db down".into()));
         }
-        fake(tx).pending.events.push(event);
+        fake(db).write(|r| r.events.push(event));
         Ok(())
     }
 }
@@ -193,7 +222,7 @@ fn finalize_usecase(world: &Arc<World>) -> FinalizePayslipUseCase {
         Arc::new(FakePayslips(world.clone())),
         Arc::new(FakeStaff(world.clone())),
         Arc::new(FakeOutbox(world.clone())),
-        Arc::new(FakeTransactions(world.clone())),
+        Arc::new(FakeDatabase(world.clone())),
     )
 }
 
@@ -290,7 +319,7 @@ async fn create_staff_disables_user_when_registration_fails() {
     let directory = Arc::new(FakeDirectory::default());
     let usecase = CreateStaffUseCase::new(
         Arc::new(FakeStaff(world.clone())),
-        Arc::new(FakeTransactions(world)),
+        Arc::new(FakeDatabase(world)),
         directory.clone(),
     );
 

@@ -8,43 +8,42 @@ use payroll_domain::payslip::{
 };
 use payroll_domain::project::{NewProject, ProjectId, ProjectName};
 use payroll_domain::staff::{DisplayName, NewStaff, StaffId};
+use payroll_infrastructure::database::MySqlDatabase;
 use payroll_infrastructure::messaging::outbox::MySqlEventOutbox;
 use payroll_infrastructure::repository::{
     MySqlPayslipRepository, MySqlProjectRepository, MySqlStaffRepository,
 };
-use payroll_infrastructure::transaction::MySqlTransactions;
+use payroll_usecase::ports::database::Database;
 use payroll_usecase::ports::events::{EventOutbox, PayrollEvent};
 use payroll_usecase::ports::repository::{
     PayslipRepository, ProjectRepository, RepositoryError, StaffRepository,
 };
-use payroll_usecase::ports::transaction::Transactions;
 use platform_kernel::{Email, Money, UserId};
 use sqlx::MySqlPool;
 use testcontainers_modules::mysql::Mysql;
 use testcontainers_modules::testcontainers::runners::AsyncRunner;
 use testcontainers_modules::testcontainers::{ContainerAsync, ImageExt};
 
-struct Db {
+struct TestDb {
     pool: MySqlPool,
     _container: ContainerAsync<Mysql>,
 }
 
-async fn db() -> Db {
+async fn db() -> TestDb {
     let container = Mysql::default().with_tag("8.4").start().await.unwrap();
     let port = container.get_host_port_ipv4(3306).await.unwrap();
     // testcontainers の MySQL は root・パスワードなし・DB "test"
     let url = format!("mysql://root@127.0.0.1:{port}/test");
     let pool = payroll_infrastructure::connect(&url, 5).await.unwrap();
     payroll_infrastructure::MIGRATOR.run(&pool).await.unwrap();
-    Db { pool, _container: container }
+    TestDb { pool, _container: container }
 }
 
-async fn seed(db: &Db) -> (StaffId, ProjectId) {
-    let txs = MySqlTransactions::new(db.pool.clone());
-    let mut tx = txs.begin().await.unwrap();
+async fn seed(db: &TestDb) -> (StaffId, ProjectId) {
+    let mut conn = MySqlDatabase::new(db.pool.clone()).connection().await.unwrap();
     let staff = MySqlStaffRepository::new(db.pool.clone())
         .insert(
-            &mut tx,
+            &mut conn,
             &NewStaff::new(
                 UserId::parse("sub-1").unwrap(),
                 Email::parse("taro@example.com").unwrap(),
@@ -54,10 +53,9 @@ async fn seed(db: &Db) -> (StaffId, ProjectId) {
         .await
         .unwrap();
     let project = MySqlProjectRepository
-        .insert(&mut tx, &NewProject::new(ProjectName::new("案件A").unwrap()))
+        .insert(&mut conn, &NewProject::new(ProjectName::new("案件A").unwrap()))
         .await
         .unwrap();
-    txs.commit(tx).await.unwrap();
     (staff, project)
 }
 
@@ -78,13 +76,12 @@ fn draft(staff: StaffId, project: ProjectId, month: u8) -> NewPayslip {
 }
 
 /// 給与確定のユースケースと同じく、給与明細とその出来事を1つのトランザクションで記録する
-async fn finalize(db: &Db, mut payslip: NewPayslip) -> Result<PayslipId, RepositoryError> {
+async fn finalize(db: &TestDb, mut payslip: NewPayslip) -> Result<PayslipId, RepositoryError> {
     let finalized = payslip.finalize().unwrap();
-    let txs = MySqlTransactions::new(db.pool.clone());
-    let mut tx = txs.begin().await?;
+    let mut tx = MySqlDatabase::new(db.pool.clone()).transaction().await?;
     let id = MySqlPayslipRepository::new(db.pool.clone()).insert(&mut tx, &payslip).await?;
     MySqlEventOutbox.append(&mut tx, PayrollEvent::Payslip { id, event: finalized }).await?;
-    txs.commit(tx).await?;
+    tx.commit().await?;
     Ok(id)
 }
 
@@ -126,8 +123,8 @@ async fn records_are_discarded_when_the_transaction_is_not_committed() {
     let mut payslip = draft(staff, project, 9);
     let finalized = payslip.finalize().unwrap();
     {
-        let txs = MySqlTransactions::new(db.pool.clone());
-        let mut tx = txs.begin().await.unwrap();
+        let mut tx = MySqlDatabase::new(db.pool.clone()).transaction().await.unwrap();
+        // 給与明細の insert は内側で SAVEPOINT を張って確定する。外側を捨てればそれも消える
         let id = repo.insert(&mut tx, &payslip).await.unwrap();
         MySqlEventOutbox
             .append(&mut tx, PayrollEvent::Payslip { id, event: finalized })
@@ -138,6 +135,21 @@ async fn records_are_discarded_when_the_transaction_is_not_committed() {
 
     assert!(repo.list_by_staff(staff).await.unwrap().is_empty());
     assert_eq!(outbox_count(&db.pool).await, 0);
+}
+
+#[tokio::test]
+async fn payslip_written_outside_a_transaction_is_kept_whole() {
+    let db = db().await;
+    let (staff, project) = seed(&db).await;
+    let repo = MySqlPayslipRepository::new(db.pool.clone());
+
+    let mut conn = MySqlDatabase::new(db.pool.clone()).connection().await.unwrap();
+    let id = repo.insert(&mut conn, &draft(staff, project, 9)).await.unwrap();
+    drop(conn);
+
+    // 接続に書いた給与明細は、明細行まで一緒に確定している
+    let found = repo.find(id).await.unwrap().unwrap();
+    assert_eq!(found.lines().len(), 2);
 }
 
 #[tokio::test]
