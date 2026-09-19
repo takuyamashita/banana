@@ -33,6 +33,7 @@ use testcontainers_modules::testcontainers::{ContainerAsync, ImageExt};
 use time::OffsetDateTime;
 use time::macros::datetime;
 use tokio::sync::Barrier;
+use tokio_util::sync::CancellationToken;
 
 struct TestDb {
     pool: MySqlPool,
@@ -622,12 +623,12 @@ async fn relay_sends_only_while_it_holds_the_lock() {
     // 他のインスタンスがロックを持っている間は、送らずに 0 件で終わる
     let mut other = db.pool.acquire().await.unwrap();
     sqlx::query("select get_lock('payroll_outbox_relay', 0)").execute(&mut *other).await.unwrap();
-    assert_eq!(relay_once(&db.pool, &sqs, "queue").await.unwrap(), 0);
+    assert_eq!(relay_once(&db.pool, &sqs, "queue", &CancellationToken::new()).await.unwrap(), 0);
     sqlx::query("select release_lock('payroll_outbox_relay')").execute(&mut *other).await.unwrap();
     drop(other);
 
     // ロックが空けば送ろうとする。送れなかった出来事は、試行回数とエラーを残して未送信のまま残る
-    assert_eq!(relay_once(&db.pool, &sqs, "queue").await.unwrap(), 0);
+    assert_eq!(relay_once(&db.pool, &sqs, "queue", &CancellationToken::new()).await.unwrap(), 0);
     assert_eq!(unpublished_count(&db.pool).await, 1);
     let (attempts, has_error): (i32, bool) =
         sqlx::query_as("select attempts, last_error is not null from outbox")
@@ -675,4 +676,22 @@ async fn payout_is_recorded_once_per_payslip_with_its_outcome() {
         Payout::new(payslip, staff, amount, PayoutOutcome::Accepted { receipt: "R-2".into() });
     let err = repo.insert(&mut conn, &again).await.unwrap_err();
     assert!(matches!(err, RepositoryError::Conflict(_)));
+}
+
+#[tokio::test]
+async fn relay_stops_before_the_next_row_when_asked_to_stop() {
+    let db = db().await;
+    let (staff, project) = seed(&db).await;
+    create_and_finalize(&db, staff, project, 9).await;
+    create_and_finalize(&db, staff, project, 10).await;
+    let stop = CancellationToken::new();
+    stop.cancel();
+
+    // 止められていれば、1件も送ろうとしない(送れなかった回数も増えない)
+    assert_eq!(relay_once(&db.pool, &unreachable_sqs(), "queue", &stop).await.unwrap(), 0);
+    let attempts: i64 = sqlx::query_scalar("select cast(sum(attempts) as signed) from outbox")
+        .fetch_one(&db.pool)
+        .await
+        .unwrap();
+    assert_eq!((unpublished_count(&db.pool).await, attempts), (2, 0));
 }

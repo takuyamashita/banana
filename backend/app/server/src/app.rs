@@ -56,12 +56,77 @@ async fn request_timeout(request: Request, next: Next) -> Response {
     }
 }
 
+/// 起動し終えたもの。止めるときに使う
+struct Started {
+    listener: tokio::net::TcpListener,
+    app: Router,
+    pool: MySqlPool,
+    relay: tokio::task::JoinHandle<()>,
+    cancel: CancellationToken,
+}
+
 pub async fn run(config: AppConfig) -> anyhow::Result<()> {
+    // 止める合図は最初に受け取れるようにする。コンテナでは server が PID 1 で、PID 1 はハンドラのない
+    // シグナルを無視するので、起動の途中(設定の確認・DB への接続)で SIGTERM が来ると、SIGKILL まで止まらない。
+    // 起動の途中で合図が来たら、起動をやめてすぐに終わる
+    let mut shutdown = Box::pin(shutdown_signal()?);
+    let Started { listener, app, pool, relay, cancel } = tokio::select! {
+        started = start(&config) => started?,
+        () = &mut shutdown => {
+            tracing::info!("shutdown signal received during startup");
+            return Ok(());
+        }
+    };
+    tracing::info!(addr = %config.server.addr, env = %config.env, "server started");
+
+    // SIGTERMを受けたら新規リクエストを止め、処理中のリクエストと relay を終えてから停止する。
+    // 待つのはシグナルから shutdown_grace_seconds まで。ECS の stopTimeout(30秒)より短くし、
+    // 強制終了される前に自分で止まる
+    let grace = Duration::from_secs(config.server.shutdown_grace_seconds);
+    let deadline = Arc::new(OnceLock::new());
+    let server = axum::serve(listener, app).with_graceful_shutdown({
+        let (cancel, deadline) = (cancel.clone(), deadline.clone());
+        async move {
+            shutdown.await;
+            tracing::info!("shutdown signal received");
+            let _ = deadline.set(Instant::now() + grace);
+            cancel.cancel();
+        }
+    });
+    let drain_limit = {
+        let (cancel, deadline) = (cancel.clone(), deadline.clone());
+        async move {
+            cancel.cancelled().await;
+            tokio::time::sleep_until(deadline.get().copied().unwrap_or_else(Instant::now)).await;
+        }
+    };
+    tokio::select! {
+        result = server => result?,
+        () = drain_limit => tracing::warn!("requests did not finish within the grace period"),
+    }
+
+    // relay が今送っている1件を終えるのを待つ。時間内に終わらなければ打ち切る(送れなかった出来事は次の起動で送る)
+    let deadline = deadline.get().copied().unwrap_or_else(|| Instant::now() + grace);
+    let mut relay = relay;
+    if tokio::time::timeout_at(deadline, &mut relay).await.is_err() {
+        tracing::warn!("relay did not stop within the grace period, aborting");
+        relay.abort();
+    }
+    // 貸し出し中の接続が返らないと待ち続けるので、閉じるのにも上限を置く
+    if tokio::time::timeout(Duration::from_secs(2), pool.close()).await.is_err() {
+        tracing::warn!("database pool did not close in time");
+    }
+    tracing::info!("server stopped");
+    Ok(())
+}
+
+/// 設定を確かめ、DB に接続し、ルーティングと relay を用意して、待ち受けを始める
+async fn start(config: &AppConfig) -> anyhow::Result<Started> {
     config.validate_for_server()?;
     let aws = bootstrap::aws_config().await;
-    let pool = bootstrap::connect_db(&config, &aws).await?;
-    let handlers = bootstrap::build_handlers(&pool, bootstrap::build_user_directory(&config, &aws));
-    let verifier = bootstrap::build_verifier(&config);
+    let pool = bootstrap::connect_db(config, &aws).await?;
+    let handlers = bootstrap::build_handlers(&pool, bootstrap::build_user_directory(config, &aws));
+    let verifier = bootstrap::build_verifier(config);
 
     // gRPC-Webを有効にしてブラウザ(Connect-ES)から直接叩けるようにする。
     // 認証ミドルウェアがJWTを検証し、AuthenticatedUser を extensions に載せる
@@ -101,7 +166,7 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
     let cancel = CancellationToken::new();
     let relay = tokio::spawn(payroll_infrastructure::messaging::relay::run(
         pool.clone(),
-        bootstrap::sqs_client(&config, &aws),
+        bootstrap::sqs_client(config, &aws),
         config.messaging.queue_url.clone(),
         Duration::from_millis(config.messaging.relay_interval_ms),
         cancel.clone(),
@@ -110,47 +175,8 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind(&config.server.addr)
         .await
         .with_context(|| format!("failed to bind {}", config.server.addr))?;
-    tracing::info!(addr = %config.server.addr, env = %config.env, "server started");
 
-    // SIGTERMを受けたら新規リクエストを止め、処理中のリクエストと relay を終えてから停止する。
-    // 待つのはシグナルから shutdown_grace_seconds まで。ECS の stopTimeout(30秒)より短くし、
-    // 強制終了される前に自分で止まる
-    let grace = Duration::from_secs(config.server.shutdown_grace_seconds);
-    let deadline = Arc::new(OnceLock::new());
-    let server = axum::serve(listener, app).with_graceful_shutdown({
-        let (cancel, deadline) = (cancel.clone(), deadline.clone());
-        async move {
-            shutdown_signal().await;
-            tracing::info!("shutdown signal received");
-            let _ = deadline.set(Instant::now() + grace);
-            cancel.cancel();
-        }
-    });
-    let drain_limit = {
-        let (cancel, deadline) = (cancel.clone(), deadline.clone());
-        async move {
-            cancel.cancelled().await;
-            tokio::time::sleep_until(deadline.get().copied().unwrap_or_else(Instant::now)).await;
-        }
-    };
-    tokio::select! {
-        result = server => result?,
-        () = drain_limit => tracing::warn!("requests did not finish within the grace period"),
-    }
-
-    // relay が今の周を終えるのを待つ。時間内に終わらなければ打ち切る(送れなかった出来事は次の起動で送る)
-    let deadline = deadline.get().copied().unwrap_or_else(|| Instant::now() + grace);
-    let mut relay = relay;
-    if tokio::time::timeout_at(deadline, &mut relay).await.is_err() {
-        tracing::warn!("relay did not stop within the grace period, aborting");
-        relay.abort();
-    }
-    // 貸し出し中の接続が返らないと待ち続けるので、閉じるのにも上限を置く
-    if tokio::time::timeout(Duration::from_secs(2), pool.close()).await.is_err() {
-        tracing::warn!("database pool did not close in time");
-    }
-    tracing::info!("server stopped");
-    Ok(())
+    Ok(Started { listener, app, pool, relay, cancel })
 }
 
 async fn ready(State(pool): State<MySqlPool>) -> (StatusCode, &'static str) {
@@ -189,24 +215,25 @@ fn cors(origins: &[String]) -> anyhow::Result<CorsLayer> {
         .max_age(Duration::from_secs(3600)))
 }
 
-async fn shutdown_signal() {
-    let ctrl_c = async {
-        let _ = tokio::signal::ctrl_c().await;
-    };
+/// SIGTERM(ECS が止めるとき)か SIGINT(Ctrl+C)が来たら終わる future を返す。
+/// 受け取りは呼んだ時点で登録する(await するまで待たない)
+fn shutdown_signal() -> anyhow::Result<impl Future<Output = ()>> {
     #[cfg(unix)]
-    let terminate = async {
-        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
-            Ok(mut sig) => {
-                sig.recv().await;
+    {
+        use tokio::signal::unix::{SignalKind, signal};
+        let mut terminate = signal(SignalKind::terminate()).context("failed to listen SIGTERM")?;
+        let mut interrupt = signal(SignalKind::interrupt()).context("failed to listen SIGINT")?;
+        Ok(async move {
+            tokio::select! {
+                _ = terminate.recv() => {}
+                _ = interrupt.recv() => {}
             }
-            Err(_) => std::future::pending::<()>().await,
-        }
-    };
+        })
+    }
     #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
-
-    tokio::select! {
-        () = ctrl_c => {}
-        () = terminate => {}
+    {
+        Ok(async {
+            let _ = tokio::signal::ctrl_c().await;
+        })
     }
 }

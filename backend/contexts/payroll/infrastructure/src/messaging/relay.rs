@@ -30,11 +30,14 @@ const RELAY_LOCK: &str = "payroll_outbox_relay";
 /// 未送信の出来事を outbox の順に SQS へ送り、送った件数を返す。
 ///
 /// 送るのはロックを取れたインスタンスだけで、取れなかったときは何もせず 0 を返す。
-/// ロックは接続に結びつくので、プロセスが落ちて接続が切れれば外れる
+/// ロックは接続に結びつくので、プロセスが落ちて接続が切れれば外れる。
+///
+/// `stop` が止められたら、次の1件を送る前にやめる(停止を待たせない。送り終えた行は送信済みにしてある)
 pub async fn relay_once(
     pool: &MySqlPool,
     sqs: &SqsClient,
     queue_url: &str,
+    stop: &CancellationToken,
 ) -> Result<usize, RelayError> {
     let mut conn = pool.acquire().await?;
     let locked: Option<i64> =
@@ -43,7 +46,7 @@ pub async fn relay_once(
         return Ok(0);
     }
 
-    let sent = send_unpublished(&mut conn, sqs, queue_url).await;
+    let sent = send_unpublished(&mut conn, sqs, queue_url, stop).await;
 
     // 外せなかったロックを接続ごとプールに戻すと、以後どのインスタンスも送れなくなる。
     // 外せなかったときは接続を閉じる(閉じればロックも外れる)
@@ -59,6 +62,7 @@ async fn send_unpublished(
     conn: &mut MySqlConnection,
     sqs: &SqsClient,
     queue_url: &str,
+    stop: &CancellationToken,
 ) -> Result<usize, RelayError> {
     let rows = sqlx::query!(
         r#"select id, aggregate_type, aggregate_id, event_type, attempts, traceparent,
@@ -76,6 +80,10 @@ async fn send_unpublished(
     // 送れなかった出来事の集約。同じ集約の後ろの出来事は、それを送れるまで送らない(順序を保つ)
     let mut held_back = HashSet::new();
     for row in &rows {
+        if stop.is_cancelled() {
+            // 片付け(滞留の確認・古い行の削除)は次の起動に任せる
+            return Ok(sent);
+        }
         // 同じ集約の出来事は同じグループに入れ、キューの中でも順序を保つ
         let group = format!("{}-{}", row.aggregate_type, row.aggregate_id);
         if held_back.contains(&group) {
@@ -175,7 +183,7 @@ pub async fn run(
     cancel: CancellationToken,
 ) {
     loop {
-        match relay_once(&pool, &sqs, &queue_url).await {
+        match relay_once(&pool, &sqs, &queue_url, &cancel).await {
             Ok(0) => {}
             Ok(n) => tracing::info!(sent = n, "outbox relayed"),
             Err(err) => tracing::warn!(error = %err, "outbox relay failed"),
