@@ -1,23 +1,19 @@
-//! 一緒に確定させたい記録をまとめる単位
+//! 一緒に確定させたい記録をまとめる単位(トランザクション)
 
 use async_trait::async_trait;
 
-use super::events::EventOutbox;
-use super::repository::{PayslipStore, ProjectStore, RepositoryError, StaffStore};
+use super::repository::RepositoryError;
 
-/// 記録をまとめる単位を始める
+/// トランザクションを始め、確定させる。
+///
+/// 始めたトランザクション(`Tx`)を記録(`insert`・`update`・`append`)に渡すと、その記録は
+/// [`commit`](Self::commit) でまとめて確定する。確定せずに終わったトランザクション
+/// (途中で失敗したときなど)の記録は、すべて取り消される
 #[async_trait]
-pub trait Transactions: Send + Sync {
-    async fn begin(&self) -> Result<Box<dyn TransactionScope>, RepositoryError>;
-}
+pub trait Transactions: Send + Sync + 'static {
+    /// 始めたトランザクション
+    type Tx: Send + 'static;
 
-/// 記録をまとめる単位。中で行った記録は [`commit`](Self::commit) でまとめて確定する。
-/// 確定せずに終わったとき(途中で失敗したときなど)は、中の記録はすべて取り消される
-#[async_trait]
-pub trait TransactionScope: Send {
-    fn payslips(&mut self) -> Box<dyn PayslipStore + '_>;
-    fn staff(&mut self) -> Box<dyn StaffStore + '_>;
-    fn projects(&mut self) -> Box<dyn ProjectStore + '_>;
-    fn events(&mut self) -> Box<dyn EventOutbox + '_>;
-    async fn commit(self: Box<Self>) -> Result<(), RepositoryError>;
+    async fn begin(&self) -> Result<Self::Tx, RepositoryError>;
+    async fn commit(&self, tx: Self::Tx) -> Result<(), RepositoryError>;
 }

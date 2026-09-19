@@ -4,12 +4,12 @@ use payroll_domain::payslip::{
 };
 use payroll_domain::project::ProjectId;
 use payroll_domain::staff::StaffId;
-use payroll_usecase::ports::repository::{PayslipRepository, PayslipStore, RepositoryError};
+use payroll_usecase::ports::repository::{PayslipRepository, RepositoryError};
 use platform_kernel::Money;
 use sqlx::mysql::MySqlPool;
-use sqlx::{MySql, Transaction};
 
 use crate::db::{corrupted, db_err};
+use crate::transaction::MySqlTx;
 
 pub struct MySqlPayslipRepository {
     pool: MySqlPool,
@@ -35,7 +35,7 @@ struct JoinedRow {
 }
 
 #[async_trait]
-impl PayslipRepository for MySqlPayslipRepository {
+impl PayslipRepository<MySqlTx> for MySqlPayslipRepository {
     async fn find(&self, id: PayslipId) -> Result<Option<Payslip>, RepositoryError> {
         let rows = sqlx::query_as!(
             JoinedRow,
@@ -70,6 +70,61 @@ impl PayslipRepository for MySqlPayslipRepository {
         .map_err(db_err)?;
 
         assemble(rows)
+    }
+
+    async fn insert(
+        &self,
+        tx: &mut MySqlTx,
+        new: &NewPayslip,
+    ) -> Result<PayslipId, RepositoryError> {
+        let result = sqlx::query!(
+            "insert into payslips (staff_id, pay_year, pay_month, status, finalized_at)
+             values (?, ?, ?, ?, if(? = 'finalized', current_timestamp(6), null))",
+            new.staff_id().as_i64(),
+            new.period().year(),
+            new.period().month(),
+            encode_status(new.status()),
+            encode_status(new.status()),
+        )
+        .execute(&mut **tx)
+        .await
+        .map_err(db_err)?;
+
+        let payslip_id = i64::try_from(result.last_insert_id())
+            .map_err(corrupted)
+            .and_then(|id| PayslipId::from_i64(id).map_err(corrupted))?;
+
+        for line in new.lines() {
+            sqlx::query!(
+                "insert into payslip_lines (payslip_id, project_id, work_minutes, hourly_rate)
+                 values (?, ?, ?, ?)",
+                payslip_id.as_i64(),
+                line.project_id().as_i64(),
+                line.work_minutes().as_minutes(),
+                line.hourly_rate().as_yen(),
+            )
+            .execute(&mut **tx)
+            .await
+            .map_err(db_err)?;
+        }
+
+        Ok(payslip_id)
+    }
+
+    async fn update(&self, tx: &mut MySqlTx, payslip: &Payslip) -> Result<(), RepositoryError> {
+        sqlx::query!(
+            "update payslips
+             set status = ?,
+                 finalized_at = if(? = 'finalized', coalesce(finalized_at, current_timestamp(6)), null)
+             where id = ?",
+            encode_status(payslip.status()),
+            encode_status(payslip.status()),
+            payslip.id().as_i64(),
+        )
+        .execute(&mut **tx)
+        .await
+        .map_err(db_err)?;
+        Ok(())
     }
 }
 
@@ -123,70 +178,5 @@ fn encode_status(status: PayslipStatus) -> &'static str {
     match status {
         PayslipStatus::Draft => "draft",
         PayslipStatus::Finalized => "finalized",
-    }
-}
-
-/// トランザクションの中での給与明細の記録
-pub struct MySqlPayslipStore<'a> {
-    tx: &'a mut Transaction<'static, MySql>,
-}
-
-impl<'a> MySqlPayslipStore<'a> {
-    pub(crate) fn new(tx: &'a mut Transaction<'static, MySql>) -> Self {
-        Self { tx }
-    }
-}
-
-#[async_trait]
-impl PayslipStore for MySqlPayslipStore<'_> {
-    async fn insert(&mut self, new: &NewPayslip) -> Result<PayslipId, RepositoryError> {
-        let result = sqlx::query!(
-            "insert into payslips (staff_id, pay_year, pay_month, status, finalized_at)
-             values (?, ?, ?, ?, if(? = 'finalized', current_timestamp(6), null))",
-            new.staff_id().as_i64(),
-            new.period().year(),
-            new.period().month(),
-            encode_status(new.status()),
-            encode_status(new.status()),
-        )
-        .execute(&mut **self.tx)
-        .await
-        .map_err(db_err)?;
-
-        let payslip_id = i64::try_from(result.last_insert_id())
-            .map_err(corrupted)
-            .and_then(|id| PayslipId::from_i64(id).map_err(corrupted))?;
-
-        for line in new.lines() {
-            sqlx::query!(
-                "insert into payslip_lines (payslip_id, project_id, work_minutes, hourly_rate)
-                 values (?, ?, ?, ?)",
-                payslip_id.as_i64(),
-                line.project_id().as_i64(),
-                line.work_minutes().as_minutes(),
-                line.hourly_rate().as_yen(),
-            )
-            .execute(&mut **self.tx)
-            .await
-            .map_err(db_err)?;
-        }
-
-        Ok(payslip_id)
-    }
-
-    async fn update(&mut self, payslip: &Payslip) -> Result<(), RepositoryError> {
-        sqlx::query!(
-            "update payslips
-             set status = ?,
-                 finalized_at = if(? = 'finalized', coalesce(finalized_at, current_timestamp(6)), null)
-             where id = ?",
-            encode_status(payslip.status()),
-            encode_status(payslip.status()),
-            payslip.id().as_i64(),
-        )
-        .execute(&mut **self.tx)
-        .await
-        .map_err(db_err)?;
-        Ok(())
     }
 }

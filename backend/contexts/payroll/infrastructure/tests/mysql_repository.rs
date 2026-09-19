@@ -8,10 +8,15 @@ use payroll_domain::payslip::{
 };
 use payroll_domain::project::{NewProject, ProjectId, ProjectName};
 use payroll_domain::staff::{DisplayName, NewStaff, StaffId};
-use payroll_infrastructure::repository::MySqlPayslipRepository;
+use payroll_infrastructure::messaging::outbox::MySqlEventOutbox;
+use payroll_infrastructure::repository::{
+    MySqlPayslipRepository, MySqlProjectRepository, MySqlStaffRepository,
+};
 use payroll_infrastructure::transaction::MySqlTransactions;
-use payroll_usecase::ports::events::PayrollEvent;
-use payroll_usecase::ports::repository::{PayslipRepository, RepositoryError};
+use payroll_usecase::ports::events::{EventOutbox, PayrollEvent};
+use payroll_usecase::ports::repository::{
+    PayslipRepository, ProjectRepository, RepositoryError, StaffRepository,
+};
 use payroll_usecase::ports::transaction::Transactions;
 use platform_kernel::{Email, Money, UserId};
 use sqlx::MySqlPool;
@@ -34,20 +39,25 @@ async fn db() -> Db {
     Db { pool, _container: container }
 }
 
-async fn seed(txs: &MySqlTransactions) -> (StaffId, ProjectId) {
+async fn seed(db: &Db) -> (StaffId, ProjectId) {
+    let txs = MySqlTransactions::new(db.pool.clone());
     let mut tx = txs.begin().await.unwrap();
-    let staff = tx
-        .staff()
-        .insert(&NewStaff::new(
-            UserId::parse("sub-1").unwrap(),
-            Email::parse("taro@example.com").unwrap(),
-            DisplayName::new("派遣 太郎").unwrap(),
-        ))
+    let staff = MySqlStaffRepository::new(db.pool.clone())
+        .insert(
+            &mut tx,
+            &NewStaff::new(
+                UserId::parse("sub-1").unwrap(),
+                Email::parse("taro@example.com").unwrap(),
+                DisplayName::new("派遣 太郎").unwrap(),
+            ),
+        )
         .await
         .unwrap();
-    let project =
-        tx.projects().insert(&NewProject::new(ProjectName::new("案件A").unwrap())).await.unwrap();
-    tx.commit().await.unwrap();
+    let project = MySqlProjectRepository
+        .insert(&mut tx, &NewProject::new(ProjectName::new("案件A").unwrap()))
+        .await
+        .unwrap();
+    txs.commit(tx).await.unwrap();
     (staff, project)
 }
 
@@ -68,15 +78,13 @@ fn draft(staff: StaffId, project: ProjectId, month: u8) -> NewPayslip {
 }
 
 /// 給与確定のユースケースと同じく、給与明細とその出来事を1つのトランザクションで記録する
-async fn finalize(
-    txs: &MySqlTransactions,
-    mut payslip: NewPayslip,
-) -> Result<PayslipId, RepositoryError> {
+async fn finalize(db: &Db, mut payslip: NewPayslip) -> Result<PayslipId, RepositoryError> {
     let finalized = payslip.finalize().unwrap();
+    let txs = MySqlTransactions::new(db.pool.clone());
     let mut tx = txs.begin().await?;
-    let id = tx.payslips().insert(&payslip).await?;
-    tx.events().append(PayrollEvent::Payslip { id, event: finalized }).await?;
-    tx.commit().await?;
+    let id = MySqlPayslipRepository::new(db.pool.clone()).insert(&mut tx, &payslip).await?;
+    MySqlEventOutbox.append(&mut tx, PayrollEvent::Payslip { id, event: finalized }).await?;
+    txs.commit(tx).await?;
     Ok(id)
 }
 
@@ -89,11 +97,10 @@ async fn outbox_count(pool: &MySqlPool) -> i64 {
 #[tokio::test]
 async fn payslip_and_its_event_are_committed_together() {
     let db = db().await;
-    let txs = MySqlTransactions::new(db.pool.clone());
-    let (staff, project) = seed(&txs).await;
+    let (staff, project) = seed(&db).await;
     let repo = MySqlPayslipRepository::new(db.pool.clone());
 
-    let id = finalize(&txs, draft(staff, project, 9)).await.unwrap();
+    let id = finalize(&db, draft(staff, project, 9)).await.unwrap();
 
     let found = repo.find(id).await.unwrap().unwrap();
     assert_eq!(found.status(), PayslipStatus::Finalized);
@@ -111,18 +118,21 @@ async fn payslip_and_its_event_are_committed_together() {
 }
 
 #[tokio::test]
-async fn records_are_discarded_when_the_scope_is_not_committed() {
+async fn records_are_discarded_when_the_transaction_is_not_committed() {
     let db = db().await;
-    let txs = MySqlTransactions::new(db.pool.clone());
-    let (staff, project) = seed(&txs).await;
+    let (staff, project) = seed(&db).await;
     let repo = MySqlPayslipRepository::new(db.pool.clone());
 
     let mut payslip = draft(staff, project, 9);
     let finalized = payslip.finalize().unwrap();
     {
+        let txs = MySqlTransactions::new(db.pool.clone());
         let mut tx = txs.begin().await.unwrap();
-        let id = tx.payslips().insert(&payslip).await.unwrap();
-        tx.events().append(PayrollEvent::Payslip { id, event: finalized }).await.unwrap();
+        let id = repo.insert(&mut tx, &payslip).await.unwrap();
+        MySqlEventOutbox
+            .append(&mut tx, PayrollEvent::Payslip { id, event: finalized })
+            .await
+            .unwrap();
         // commit せずに捨てる
     }
 
@@ -133,28 +143,26 @@ async fn records_are_discarded_when_the_scope_is_not_committed() {
 #[tokio::test]
 async fn second_active_payslip_for_same_month_violates_unique_key() {
     let db = db().await;
-    let txs = MySqlTransactions::new(db.pool.clone());
-    let (staff, project) = seed(&txs).await;
+    let (staff, project) = seed(&db).await;
     let repo = MySqlPayslipRepository::new(db.pool.clone());
 
-    finalize(&txs, draft(staff, project, 9)).await.unwrap();
-    let err = finalize(&txs, draft(staff, project, 9)).await.unwrap_err();
+    finalize(&db, draft(staff, project, 9)).await.unwrap();
+    let err = finalize(&db, draft(staff, project, 9)).await.unwrap_err();
     assert!(matches!(err, RepositoryError::Conflict(_)));
     // 失敗したトランザクションの出来事は残らない
     assert_eq!(outbox_count(&db.pool).await, 1);
 
     // 別の月は入る
-    finalize(&txs, draft(staff, project, 10)).await.unwrap();
+    finalize(&db, draft(staff, project, 10)).await.unwrap();
     assert_eq!(repo.list_by_staff(staff).await.unwrap().len(), 2);
 }
 
 #[tokio::test]
 async fn corrupted_row_is_reported_not_panicked() {
     let db = db().await;
-    let txs = MySqlTransactions::new(db.pool.clone());
-    let (staff, project) = seed(&txs).await;
+    let (staff, project) = seed(&db).await;
     let repo = MySqlPayslipRepository::new(db.pool.clone());
-    let id = finalize(&txs, draft(staff, project, 9)).await.unwrap();
+    let id = finalize(&db, draft(staff, project, 9)).await.unwrap();
 
     sqlx::query("update payslips set status = 'paid' where id = ?")
         .bind(id.as_i64())

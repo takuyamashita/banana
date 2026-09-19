@@ -11,8 +11,11 @@ use axum::extract::Request;
 use axum::middleware::Next;
 use axum::response::Response;
 use payroll_handler::{PayrollServiceHandler, ProjectServiceHandler, StaffServiceHandler};
+use payroll_infrastructure::messaging::outbox::MySqlEventOutbox;
 use payroll_infrastructure::query::{MySqlProjectQuery, MySqlStaffQuery};
-use payroll_infrastructure::repository::{MySqlPayslipRepository, MySqlStaffRepository};
+use payroll_infrastructure::repository::{
+    MySqlPayslipRepository, MySqlProjectRepository, MySqlStaffRepository,
+};
 use payroll_infrastructure::transaction::MySqlTransactions;
 use payroll_usecase::payslip::{FinalizePayslipUseCase, GetPayslipUseCase, ListPayslipsUseCase};
 use payroll_usecase::ports::user_directory::{UserDirectory, UserDirectoryError};
@@ -81,7 +84,12 @@ async fn api() -> Api {
 
     let router = tonic::service::Routes::new(
         proto::payroll_service_server::PayrollServiceServer::new(PayrollServiceHandler::new(
-            FinalizePayslipUseCase::new(payslips.clone(), staff.clone(), transactions.clone()),
+            FinalizePayslipUseCase::new(
+                payslips.clone(),
+                staff.clone(),
+                Arc::new(MySqlEventOutbox),
+                transactions.clone(),
+            ),
             GetPayslipUseCase::new(payslips.clone(), staff.clone()),
             ListPayslipsUseCase::new(payslips, staff.clone()),
         )),
@@ -93,7 +101,7 @@ async fn api() -> Api {
     )))
     .add_service(proto::project_service_server::ProjectServiceServer::new(
         ProjectServiceHandler::new(
-            CreateProjectUseCase::new(transactions),
+            CreateProjectUseCase::new(Arc::new(MySqlProjectRepository), transactions),
             ListProjectsUseCase::new(Arc::new(MySqlProjectQuery::new(pool.clone()))),
         ),
     ))

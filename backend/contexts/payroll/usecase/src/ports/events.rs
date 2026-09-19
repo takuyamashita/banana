@@ -20,7 +20,7 @@ pub enum PayrollEvent {
 
 /// 出来事の記録先。記録した出来事は、後から後続の業務(振込など)に届けられる
 #[async_trait]
-pub trait EventOutbox: Send {
+pub trait EventOutbox<Tx: Send>: Send + Sync {
     /// 出来事を記録する。記録は、同じトランザクションの他の記録と一緒に確定する
-    async fn append(&mut self, event: PayrollEvent) -> Result<(), RepositoryError>;
+    async fn append(&self, tx: &mut Tx, event: PayrollEvent) -> Result<(), RepositoryError>;
 }

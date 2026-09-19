@@ -11,15 +11,13 @@ use payroll_domain::payslip::{
     NewPayslip, PayPeriod, Payslip, PayslipEvent, PayslipId, PayslipLine, PayslipStatus,
     WorkMinutes,
 };
-use payroll_domain::project::{NewProject, ProjectId};
+use payroll_domain::project::ProjectId;
 use payroll_domain::staff::{DisplayName, NewStaff, Staff, StaffId};
 use payroll_usecase::UseCaseError;
 use payroll_usecase::payslip::{FinalizePayslipInput, FinalizePayslipUseCase, GetPayslipUseCase};
 use payroll_usecase::ports::events::{EventOutbox, PayrollEvent};
-use payroll_usecase::ports::repository::{
-    PayslipRepository, PayslipStore, ProjectStore, RepositoryError, StaffRepository, StaffStore,
-};
-use payroll_usecase::ports::transaction::{TransactionScope, Transactions};
+use payroll_usecase::ports::repository::{PayslipRepository, RepositoryError, StaffRepository};
+use payroll_usecase::ports::transaction::Transactions;
 use payroll_usecase::ports::user_directory::{UserDirectory, UserDirectoryError};
 use payroll_usecase::staff::{CreateStaffInput, CreateStaffUseCase};
 use platform_kernel::{AuthenticatedUser, Email, Money, Role, UserId};
@@ -36,7 +34,6 @@ type StaffRow = (StaffId, UserId, Email);
 struct Records {
     payslips: Vec<PayslipRow>,
     staff: Vec<StaffRow>,
-    projects: Vec<ProjectId>,
     events: Vec<PayrollEvent>,
 }
 
@@ -81,10 +78,31 @@ fn to_staff(r: &StaffRow) -> Staff {
     Staff::reconstruct(r.0, r.1.clone(), r.2.clone(), DisplayName::new("x").unwrap())
 }
 
+/// フェイクのトランザクション。記録は commit まで手元に溜め、commit で丸ごと反映する
+struct FakeTx {
+    pending: Records,
+}
+
+struct FakeTransactions(Arc<World>);
+
+#[async_trait]
+impl Transactions for FakeTransactions {
+    type Tx = FakeTx;
+
+    async fn begin(&self) -> Result<FakeTx, RepositoryError> {
+        Ok(FakeTx { pending: self.0.records() })
+    }
+
+    async fn commit(&self, tx: FakeTx) -> Result<(), RepositoryError> {
+        *self.0.committed.lock().unwrap() = tx.pending;
+        Ok(())
+    }
+}
+
 struct FakePayslips(Arc<World>);
 
 #[async_trait]
-impl PayslipRepository for FakePayslips {
+impl PayslipRepository<FakeTx> for FakePayslips {
     async fn find(&self, id: PayslipId) -> Result<Option<Payslip>, RepositoryError> {
         Ok(self.0.records().payslips.iter().find(|r| r.0 == id).map(to_payslip))
     }
@@ -92,12 +110,27 @@ impl PayslipRepository for FakePayslips {
     async fn list_by_staff(&self, staff_id: StaffId) -> Result<Vec<Payslip>, RepositoryError> {
         Ok(self.0.records().payslips.iter().filter(|r| r.1 == staff_id).map(to_payslip).collect())
     }
+
+    async fn insert(
+        &self,
+        tx: &mut FakeTx,
+        new: &NewPayslip,
+    ) -> Result<PayslipId, RepositoryError> {
+        let rows = &mut tx.pending.payslips;
+        let id = PayslipId::from_i64(next_id(rows.len())).unwrap();
+        rows.push((id, new.staff_id(), new.period(), new.lines().to_vec()));
+        Ok(id)
+    }
+
+    async fn update(&self, _tx: &mut FakeTx, _payslip: &Payslip) -> Result<(), RepositoryError> {
+        unimplemented!()
+    }
 }
 
 struct FakeStaff(Arc<World>);
 
 #[async_trait]
-impl StaffRepository for FakeStaff {
+impl StaffRepository<FakeTx> for FakeStaff {
     async fn find(&self, id: StaffId) -> Result<Option<Staff>, RepositoryError> {
         Ok(self.0.records().staff.iter().find(|r| r.0 == id).map(to_staff))
     }
@@ -109,94 +142,27 @@ impl StaffRepository for FakeStaff {
     async fn find_by_email(&self, email: &Email) -> Result<Option<Staff>, RepositoryError> {
         Ok(self.0.records().staff.iter().find(|r| &r.2 == email).map(to_staff))
     }
-}
 
-struct FakeTransactions(Arc<World>);
-
-#[async_trait]
-impl Transactions for FakeTransactions {
-    async fn begin(&self) -> Result<Box<dyn TransactionScope>, RepositoryError> {
-        let pending = self.0.records();
-        Ok(Box::new(FakeScope { world: self.0.clone(), pending }))
-    }
-}
-
-/// commit までの記録を手元に溜め、commit で丸ごと反映する
-struct FakeScope {
-    world: Arc<World>,
-    pending: Records,
-}
-
-#[async_trait]
-impl TransactionScope for FakeScope {
-    fn payslips(&mut self) -> Box<dyn PayslipStore + '_> {
-        Box::new(Pending(self))
-    }
-
-    fn staff(&mut self) -> Box<dyn StaffStore + '_> {
-        Box::new(Pending(self))
-    }
-
-    fn projects(&mut self) -> Box<dyn ProjectStore + '_> {
-        Box::new(Pending(self))
-    }
-
-    fn events(&mut self) -> Box<dyn EventOutbox + '_> {
-        Box::new(Pending(self))
-    }
-
-    async fn commit(self: Box<Self>) -> Result<(), RepositoryError> {
-        *self.world.committed.lock().unwrap() = self.pending;
-        Ok(())
-    }
-}
-
-struct Pending<'a>(&'a mut FakeScope);
-
-#[async_trait]
-impl PayslipStore for Pending<'_> {
-    async fn insert(&mut self, new: &NewPayslip) -> Result<PayslipId, RepositoryError> {
-        let rows = &mut self.0.pending.payslips;
-        let id = PayslipId::from_i64(next_id(rows.len())).unwrap();
-        rows.push((id, new.staff_id(), new.period(), new.lines().to_vec()));
-        Ok(id)
-    }
-
-    async fn update(&mut self, _payslip: &Payslip) -> Result<(), RepositoryError> {
-        unimplemented!()
-    }
-}
-
-#[async_trait]
-impl StaffStore for Pending<'_> {
-    async fn insert(&mut self, new: &NewStaff) -> Result<StaffId, RepositoryError> {
-        if self.0.world.fail_staff_insert {
+    async fn insert(&self, tx: &mut FakeTx, new: &NewStaff) -> Result<StaffId, RepositoryError> {
+        if self.0.fail_staff_insert {
             return Err(RepositoryError::Unavailable("db down".into()));
         }
-        let rows = &mut self.0.pending.staff;
+        let rows = &mut tx.pending.staff;
         let id = StaffId::from_i64(next_id(rows.len())).unwrap();
         rows.push((id, new.user_id().clone(), new.email().clone()));
         Ok(id)
     }
 }
 
-#[async_trait]
-impl ProjectStore for Pending<'_> {
-    async fn insert(&mut self, _new: &NewProject) -> Result<ProjectId, RepositoryError> {
-        let rows = &mut self.0.pending.projects;
-        let id = ProjectId::from_i64(next_id(rows.len())).unwrap();
-        rows.push(id);
-        Ok(id)
-    }
-}
+struct FakeOutbox(Arc<World>);
 
 #[async_trait]
-impl EventOutbox for Pending<'_> {
-    async fn append(&mut self, event: PayrollEvent) -> Result<(), RepositoryError> {
-        if self.0.world.fail_event_append {
+impl EventOutbox<FakeTx> for FakeOutbox {
+    async fn append(&self, tx: &mut FakeTx, event: PayrollEvent) -> Result<(), RepositoryError> {
+        if self.0.fail_event_append {
             return Err(RepositoryError::Unavailable("db down".into()));
         }
-        self.0.pending.events.push(event);
+        tx.pending.events.push(event);
         Ok(())
     }
 }
@@ -223,10 +189,11 @@ impl UserDirectory for FakeDirectory {
 
 // ---- ヘルパー ----
 
-fn finalize_usecase(world: &Arc<World>) -> FinalizePayslipUseCase {
+fn finalize_usecase(world: &Arc<World>) -> FinalizePayslipUseCase<FakeTransactions> {
     FinalizePayslipUseCase::new(
         Arc::new(FakePayslips(world.clone())),
         Arc::new(FakeStaff(world.clone())),
+        Arc::new(FakeOutbox(world.clone())),
         Arc::new(FakeTransactions(world.clone())),
     )
 }
@@ -302,8 +269,10 @@ async fn finalize_rejects_same_month_twice() {
 async fn only_admin_or_owner_can_view_payslip() {
     let world = Arc::new(World::with_staff(&[(1, "taro"), (2, "hanako")]));
     let id = finalize_usecase(&world).execute(input(1, 9)).await.unwrap();
-    let get =
-        GetPayslipUseCase::new(Arc::new(FakePayslips(world.clone())), Arc::new(FakeStaff(world)));
+    let get = GetPayslipUseCase::<FakeTransactions>::new(
+        Arc::new(FakePayslips(world.clone())),
+        Arc::new(FakeStaff(world)),
+    );
 
     assert!(get.execute(&user("admin", &[Role::Admin]), id).await.is_ok());
     assert!(get.execute(&user("taro", &[]), id).await.is_ok());

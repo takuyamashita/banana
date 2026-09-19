@@ -12,16 +12,19 @@ use payroll_handler::{PayrollServiceHandler, ProjectServiceHandler, StaffService
 use payroll_infrastructure::external::{
     BankPayoutGateway, CognitoUserDirectory, KeycloakUserDirectory, LoggingPayoutGateway,
 };
+use payroll_infrastructure::messaging::outbox::MySqlEventOutbox;
 use payroll_infrastructure::query::{MySqlProjectQuery, MySqlStaffQuery};
-use payroll_infrastructure::repository::{MySqlPayslipRepository, MySqlStaffRepository};
-use payroll_infrastructure::transaction::MySqlTransactions;
+use payroll_infrastructure::repository::{
+    MySqlPayslipRepository, MySqlProjectRepository, MySqlStaffRepository,
+};
+use payroll_infrastructure::transaction::{MySqlTransactions, MySqlTx};
 use payroll_usecase::payslip::{
     FinalizePayslipUseCase, GetPayslipUseCase, ListPayslipsUseCase, RequestPayoutUseCase,
 };
+use payroll_usecase::ports::events::EventOutbox;
 use payroll_usecase::ports::payout_gateway::PayoutGateway;
 use payroll_usecase::ports::queries::{ProjectQuery, StaffQuery};
-use payroll_usecase::ports::repository::{PayslipRepository, StaffRepository};
-use payroll_usecase::ports::transaction::Transactions;
+use payroll_usecase::ports::repository::{PayslipRepository, ProjectRepository, StaffRepository};
 use payroll_usecase::ports::user_directory::UserDirectory;
 use payroll_usecase::project::{CreateProjectUseCase, ListProjectsUseCase};
 use payroll_usecase::staff::{CreateStaffUseCase, GetMeUseCase, ListStaffUseCase};
@@ -110,21 +113,30 @@ pub fn build_verifier(config: &AppConfig) -> Arc<OidcVerifier> {
 }
 
 pub struct Handlers {
-    pub payroll: PayrollServiceHandler,
-    pub staff: StaffServiceHandler,
-    pub project: ProjectServiceHandler,
+    pub payroll: PayrollServiceHandler<MySqlTransactions>,
+    pub staff: StaffServiceHandler<MySqlTransactions>,
+    pub project: ProjectServiceHandler<MySqlTransactions>,
 }
 
 pub fn build_handlers(pool: &MySqlPool, user_directory: Arc<dyn UserDirectory>) -> Handlers {
-    let payslips: Arc<dyn PayslipRepository> = Arc::new(MySqlPayslipRepository::new(pool.clone()));
-    let staff: Arc<dyn StaffRepository> = Arc::new(MySqlStaffRepository::new(pool.clone()));
-    let transactions: Arc<dyn Transactions> = Arc::new(MySqlTransactions::new(pool.clone()));
+    let payslips: Arc<dyn PayslipRepository<MySqlTx>> =
+        Arc::new(MySqlPayslipRepository::new(pool.clone()));
+    let staff: Arc<dyn StaffRepository<MySqlTx>> =
+        Arc::new(MySqlStaffRepository::new(pool.clone()));
+    let projects: Arc<dyn ProjectRepository<MySqlTx>> = Arc::new(MySqlProjectRepository);
+    let outbox: Arc<dyn EventOutbox<MySqlTx>> = Arc::new(MySqlEventOutbox);
+    let transactions = Arc::new(MySqlTransactions::new(pool.clone()));
     let staff_query: Arc<dyn StaffQuery> = Arc::new(MySqlStaffQuery::new(pool.clone()));
     let project_query: Arc<dyn ProjectQuery> = Arc::new(MySqlProjectQuery::new(pool.clone()));
 
     Handlers {
         payroll: PayrollServiceHandler::new(
-            FinalizePayslipUseCase::new(payslips.clone(), staff.clone(), transactions.clone()),
+            FinalizePayslipUseCase::new(
+                payslips.clone(),
+                staff.clone(),
+                outbox,
+                transactions.clone(),
+            ),
             GetPayslipUseCase::new(payslips.clone(), staff.clone()),
             ListPayslipsUseCase::new(payslips, staff.clone()),
         ),
@@ -134,7 +146,7 @@ pub fn build_handlers(pool: &MySqlPool, user_directory: Arc<dyn UserDirectory>) 
             GetMeUseCase::new(staff),
         ),
         project: ProjectServiceHandler::new(
-            CreateProjectUseCase::new(transactions),
+            CreateProjectUseCase::new(projects, transactions),
             ListProjectsUseCase::new(project_query),
         ),
     }

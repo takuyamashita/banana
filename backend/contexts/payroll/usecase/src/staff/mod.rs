@@ -24,17 +24,17 @@ pub struct CreateStaffInput {
 ///
 /// 派遣社員のログイン用アカウントを発行し、そのアカウントと雇用記録を結びつける。
 /// 同じメールアドレスの派遣社員は登録できない
-pub struct CreateStaffUseCase {
-    staff_repository: Arc<dyn StaffRepository>,
-    transactions: Arc<dyn Transactions>,
+pub struct CreateStaffUseCase<T: Transactions> {
+    staff_repository: Arc<dyn StaffRepository<T::Tx>>,
+    transactions: Arc<T>,
     user_directory: Arc<dyn UserDirectory>,
 }
 
-impl CreateStaffUseCase {
+impl<T: Transactions> CreateStaffUseCase<T> {
     #[must_use]
     pub fn new(
-        staff_repository: Arc<dyn StaffRepository>,
-        transactions: Arc<dyn Transactions>,
+        staff_repository: Arc<dyn StaffRepository<T::Tx>>,
+        transactions: Arc<T>,
         user_directory: Arc<dyn UserDirectory>,
     ) -> Self {
         Self { staff_repository, transactions, user_directory }
@@ -65,8 +65,8 @@ impl CreateStaffUseCase {
 
     async fn register(&self, new: &NewStaff) -> Result<StaffId, UseCaseError> {
         let mut tx = self.transactions.begin().await?;
-        let id = tx.staff().insert(new).await?;
-        tx.commit().await?;
+        let id = self.staff_repository.insert(&mut tx, new).await?;
+        self.transactions.commit(tx).await?;
         Ok(id)
     }
 }
@@ -89,13 +89,13 @@ impl ListStaffUseCase {
 
 /// ログイン中の利用者が、自分がどの派遣社員かを知る。
 /// 派遣社員として登録されていない利用者(管理者など)は `None` になる
-pub struct GetMeUseCase {
-    staff_repository: Arc<dyn StaffRepository>,
+pub struct GetMeUseCase<T: Transactions> {
+    staff_repository: Arc<dyn StaffRepository<T::Tx>>,
 }
 
-impl GetMeUseCase {
+impl<T: Transactions> GetMeUseCase<T> {
     #[must_use]
-    pub fn new(staff_repository: Arc<dyn StaffRepository>) -> Self {
+    pub fn new(staff_repository: Arc<dyn StaffRepository<T::Tx>>) -> Self {
         Self { staff_repository }
     }
 

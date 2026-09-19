@@ -1,26 +1,21 @@
 use async_trait::async_trait;
 use payroll_domain::project::{NewProject, ProjectId};
-use payroll_usecase::ports::repository::{ProjectStore, RepositoryError};
-use sqlx::{MySql, Transaction};
+use payroll_usecase::ports::repository::{ProjectRepository, RepositoryError};
 
 use crate::db::{corrupted, db_err};
+use crate::transaction::MySqlTx;
 
-/// トランザクションの中での案件の記録
-pub struct MySqlProjectStore<'a> {
-    tx: &'a mut Transaction<'static, MySql>,
-}
-
-impl<'a> MySqlProjectStore<'a> {
-    pub(crate) fn new(tx: &'a mut Transaction<'static, MySql>) -> Self {
-        Self { tx }
-    }
-}
+pub struct MySqlProjectRepository;
 
 #[async_trait]
-impl ProjectStore for MySqlProjectStore<'_> {
-    async fn insert(&mut self, new: &NewProject) -> Result<ProjectId, RepositoryError> {
+impl ProjectRepository<MySqlTx> for MySqlProjectRepository {
+    async fn insert(
+        &self,
+        tx: &mut MySqlTx,
+        new: &NewProject,
+    ) -> Result<ProjectId, RepositoryError> {
         let result = sqlx::query!("insert into projects (name) values (?)", new.name().as_str())
-            .execute(&mut **self.tx)
+            .execute(&mut **tx)
             .await
             .map_err(db_err)?;
 

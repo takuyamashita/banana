@@ -4,7 +4,7 @@ use payroll_domain::payslip::{NewPayslip, PayPeriod, PayslipId, PayslipLine};
 use payroll_domain::staff::StaffId;
 
 use crate::UseCaseError;
-use crate::ports::events::PayrollEvent;
+use crate::ports::events::{EventOutbox, PayrollEvent};
 use crate::ports::repository::{PayslipRepository, StaffRepository};
 use crate::ports::transaction::Transactions;
 
@@ -22,20 +22,22 @@ pub struct FinalizePayslipInput {
 ///
 /// 確定した給与明細は変更できず、支給額が決まったことが振込に伝わる。
 /// 同じ派遣社員・同じ月の給与は1回しか確定できない
-pub struct FinalizePayslipUseCase {
-    payslips: Arc<dyn PayslipRepository>,
-    staff: Arc<dyn StaffRepository>,
-    transactions: Arc<dyn Transactions>,
+pub struct FinalizePayslipUseCase<T: Transactions> {
+    payslips: Arc<dyn PayslipRepository<T::Tx>>,
+    staff: Arc<dyn StaffRepository<T::Tx>>,
+    outbox: Arc<dyn EventOutbox<T::Tx>>,
+    transactions: Arc<T>,
 }
 
-impl FinalizePayslipUseCase {
+impl<T: Transactions> FinalizePayslipUseCase<T> {
     #[must_use]
     pub fn new(
-        payslips: Arc<dyn PayslipRepository>,
-        staff: Arc<dyn StaffRepository>,
-        transactions: Arc<dyn Transactions>,
+        payslips: Arc<dyn PayslipRepository<T::Tx>>,
+        staff: Arc<dyn StaffRepository<T::Tx>>,
+        outbox: Arc<dyn EventOutbox<T::Tx>>,
+        transactions: Arc<T>,
     ) -> Self {
-        Self { payslips, staff, transactions }
+        Self { payslips, staff, outbox, transactions }
     }
 
     /// 給与を確定し、振られた給与明細番号を返す。
@@ -55,9 +57,9 @@ impl FinalizePayslipUseCase {
         let finalized = payslip.finalize()?;
 
         let mut tx = self.transactions.begin().await?;
-        let id = tx.payslips().insert(&payslip).await?;
-        tx.events().append(PayrollEvent::Payslip { id, event: finalized }).await?;
-        tx.commit().await?;
+        let id = self.payslips.insert(&mut tx, &payslip).await?;
+        self.outbox.append(&mut tx, PayrollEvent::Payslip { id, event: finalized }).await?;
+        self.transactions.commit(tx).await?;
 
         Ok(id)
     }

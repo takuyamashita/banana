@@ -4,24 +4,26 @@ use payroll_domain::project::{NewProject, ProjectId, ProjectName};
 
 use crate::UseCaseError;
 use crate::ports::queries::{ProjectQuery, ProjectView};
+use crate::ports::repository::ProjectRepository;
 use crate::ports::transaction::Transactions;
 
 /// 管理者が案件を登録する
-pub struct CreateProjectUseCase {
-    transactions: Arc<dyn Transactions>,
+pub struct CreateProjectUseCase<T: Transactions> {
+    repository: Arc<dyn ProjectRepository<T::Tx>>,
+    transactions: Arc<T>,
 }
 
-impl CreateProjectUseCase {
+impl<T: Transactions> CreateProjectUseCase<T> {
     #[must_use]
-    pub fn new(transactions: Arc<dyn Transactions>) -> Self {
-        Self { transactions }
+    pub fn new(repository: Arc<dyn ProjectRepository<T::Tx>>, transactions: Arc<T>) -> Self {
+        Self { repository, transactions }
     }
 
     /// 案件を登録し、振られた案件番号を返す
     pub async fn execute(&self, name: ProjectName) -> Result<ProjectId, UseCaseError> {
         let mut tx = self.transactions.begin().await?;
-        let id = tx.projects().insert(&NewProject::new(name)).await?;
-        tx.commit().await?;
+        let id = self.repository.insert(&mut tx, &NewProject::new(name)).await?;
+        self.transactions.commit(tx).await?;
         Ok(id)
     }
 }
