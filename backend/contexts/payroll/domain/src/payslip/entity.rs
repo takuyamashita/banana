@@ -22,11 +22,6 @@ pub struct Draft;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Finalized;
 
-/// 支給額。各明細行の金額(それぞれ円未満切り捨て済み)の合計
-fn total_of(lines: &[PayslipLine]) -> Money {
-    lines.iter().map(PayslipLine::amount).fold(Money::ZERO, |acc, m| acc + m)
-}
-
 /// ある状態にある給与明細。派遣社員1人の、ある1か月分の給与を表す。
 ///
 /// 同じ派遣社員・同じ月の給与明細は、有効なものが常に1つだけ存在する。
@@ -81,7 +76,7 @@ impl<State, Id> PayslipIn<State, Id> {
     /// 支給額。各明細行の金額(それぞれ円未満切り捨て済み)の合計
     #[must_use]
     pub fn total(&self) -> Money {
-        total_of(&self.lines)
+        self.lines.iter().map(PayslipLine::amount).fold(Money::ZERO, |acc, m| acc + m)
     }
 }
 
@@ -115,37 +110,35 @@ pub enum Payslip<Id = PayslipId> {
 /// まだ登録していない給与明細
 pub type NewPayslip = Payslip<Unsaved>;
 
+macro_rules! each_state {
+    ($payslip:expr, $p:ident => $body:expr) => {
+        match $payslip {
+            Payslip::Draft($p) => $body,
+            Payslip::Finalized($p) => $body,
+        }
+    };
+}
+
 impl<Id> Payslip<Id> {
     #[must_use]
     pub fn staff_id(&self) -> StaffId {
-        match self {
-            Self::Draft(PayslipIn { staff_id, .. })
-            | Self::Finalized(PayslipIn { staff_id, .. }) => *staff_id,
-        }
+        each_state!(self, p => p.staff_id())
     }
 
     #[must_use]
     pub fn period(&self) -> PayPeriod {
-        match self {
-            Self::Draft(PayslipIn { period, .. }) | Self::Finalized(PayslipIn { period, .. }) => {
-                *period
-            }
-        }
+        each_state!(self, p => p.period())
     }
 
     #[must_use]
     pub fn lines(&self) -> &[PayslipLine] {
-        match self {
-            Self::Draft(PayslipIn { lines, .. }) | Self::Finalized(PayslipIn { lines, .. }) => {
-                lines
-            }
-        }
+        each_state!(self, p => p.lines())
     }
 
     /// 支給額。各明細行の金額(それぞれ円未満切り捨て済み)の合計
     #[must_use]
     pub fn total(&self) -> Money {
-        total_of(self.lines())
+        each_state!(self, p => p.total())
     }
 
     #[must_use]
@@ -187,9 +180,7 @@ impl Payslip<PayslipId> {
 
     #[must_use]
     pub fn id(&self) -> PayslipId {
-        match self {
-            Self::Draft(PayslipIn { id, .. }) | Self::Finalized(PayslipIn { id, .. }) => *id,
-        }
+        each_state!(self, p => p.id())
     }
 }
 
