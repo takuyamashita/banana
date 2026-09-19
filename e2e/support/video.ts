@@ -1,32 +1,53 @@
-// 動作確認の動画(mise run e2e:video)を撮るための補助。確かめるテストでは使わない
-import { join } from "node:path";
+// 動作確認の動画(mise run e2e:video)の台本で使う test。確かめるテスト(tests/)では使わない。
+//
+//   test("派遣社員を選ぶと、その人の給与明細が出る", async ({ record }) => {
+//     const page = await record();           // 録画するブラウザを開く(何人分でも開ける: record("本人"))
+//     await caption(page, "① …");           // 画面の下に字幕を出す
+//   });
+//
+// 動画は videos-out/<台本のファイル名>/<テスト名>[-<record の名前>].webm に保存する(mp4 への変換はタスクが行う)。
+//
+// 台本は PR ごとに videos/<見せること>.spec.ts に書き、PR と一緒にコミットする(CI では流さない)。
+// 後で画面が変わって動かなくなったら、直さずに消してよい(動画は PR に残る)
+import { basename, join } from "node:path";
 
-import type { Browser, Page } from "@playwright/test";
+import { test as base, type Page } from "@playwright/test";
 
 /// 動画の出力先(git には入れない)
 export const VIDEO_DIR = join(import.meta.dirname, "..", "videos-out");
 export const VIDEO_SIZE = { width: 1280, height: 800 };
 
-/// 録画するブラウザを1つ開く。close() で閉じて <name>.webm に保存する(mp4 への変換はタスクが行う)
-export async function recordPage(browser: Browser, name: string): Promise<{ page: Page; close: () => Promise<void> }> {
-  const context = await browser.newContext({
-    viewport: VIDEO_SIZE,
-    recordVideo: { dir: join(VIDEO_DIR, "raw"), size: VIDEO_SIZE },
-  });
-  // 録画にはマウスカーソルが映らないので、カーソルの形をした要素を画面に足す(ログインの IdP の画面にも出す)
-  await context.addInitScript(showCursor);
-  const page = await context.newPage();
-  return {
-    page,
-    close: async () => {
-      await context.close();
+/// ファイル名に使えない文字を除く
+const fileName = (text: string) => text.replace(/[\\/:*?"<>|\s]+/g, "_");
+
+export const test = base.extend<{ record: (label?: string) => Promise<Page> }>({
+  record: async ({ browser }, use, testInfo) => {
+    const opened: { page: Page; label: string | undefined }[] = [];
+    await use(async (label) => {
+      const context = await browser.newContext({
+        viewport: VIDEO_SIZE,
+        recordVideo: { dir: join(VIDEO_DIR, "raw"), size: VIDEO_SIZE },
+      });
+      // 録画にはマウスカーソルが映らないので、カーソルの形をした要素を画面に足す(ログインの IdP の画面にも出す)
+      await context.addInitScript(showCursor);
+      const page = await context.newPage();
+      opened.push({ page, label });
+      return page;
+    });
+    // テストの終わりにブラウザを閉じ、台本とテストの名前で保存する
+    const dir = join(VIDEO_DIR, fileName(basename(testInfo.file).replace(/\.spec\.ts$/, "")));
+    for (const { page, label } of opened) {
+      await page.context().close();
       const video = page.video();
       if (!video) throw new Error("録画されていない");
-      await video.saveAs(join(VIDEO_DIR, `${name}.webm`));
+      const name = label === undefined ? testInfo.title : `${testInfo.title}-${label}`;
+      await video.saveAs(join(dir, `${fileName(name)}.webm`));
       await video.delete();
-    },
-  };
-}
+    }
+  },
+});
+
+export { expect } from "@playwright/test";
 
 /// カーソルの代わりの矢印を画面に出し、マウスの動きに合わせて動かす。押した場所には波紋を出す。
 /// fill・selectOption はマウスを動かさないので、入力欄に入ったときもその欄へ動かす。

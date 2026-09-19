@@ -31,18 +31,18 @@ mise run dev-frontend             # Vite :5173
 
 ## よく使うコマンド
 
-| コマンド                | 内容                                                                                                       |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `mise run lint`         | 全言語の lint(Rust・TS・CSS・依存の向き・proto・Terraform・Dockerfile・シークレット)                       |
-| `mise run gen:styles`   | utilities.css を変えたら、クラス名の型(utilities.gen.ts)を作り直す                                         |
-| `mise run test`         | Rust(nextest。DB 結合・API テストは testcontainers)とフロント(Vitest)                                      |
-| `mise run deps:stop`    | 依存サービスを止める(データは残す)                                                                         |
-| `mise run e2e`          | 依存サービス起動・マイグレーション・server/Vite 起動・Playwright                                           |
-| `mise run e2e:video`    | 動作確認の動画を撮り、mp4 を e2e/videos-out/ に出す(台本は e2e/videos/。ffmpeg はこのタスクのときだけ入る) |
-| `mise run sqlx-prepare` | マイグレーションか `query!` を変えたら、DB に当てて .sqlx/ を更新する                                      |
-| `scripts/smoke-test.sh` | 起動中の server に grpcurl で主要シナリオを流す                                                            |
-| `mise run lambda-build` | payout-dispatcher の zip を作る                                                                            |
-| `mise run tf-plan`      | dev 環境の terraform plan                                                                                  |
+| コマンド                | 内容                                                                                                               |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `mise run lint`         | 全言語の lint(Rust・TS・CSS・依存の向き・proto・Terraform・Dockerfile・シークレット)                               |
+| `mise run gen:styles`   | utilities.css を変えたら、クラス名の型(utilities.gen.ts)を作り直す                                                 |
+| `mise run test`         | Rust(nextest。DB 結合・API テストは testcontainers)とフロント(Vitest)                                              |
+| `mise run deps:stop`    | 依存サービスを止める(データは残す)                                                                                 |
+| `mise run e2e`          | 依存サービス起動・マイグレーション・server/Vite 起動・Playwright                                                   |
+| `mise run e2e:video`    | 動作確認の動画(mp4)を e2e/videos-out/ に撮る。`-- --only-changed=origin/main` で PR の台本だけ(台本は e2e/videos/) |
+| `mise run sqlx-prepare` | マイグレーションか `query!` を変えたら、DB に当てて .sqlx/ を更新する                                              |
+| `scripts/smoke-test.sh` | 起動中の server に grpcurl で主要シナリオを流す                                                                    |
+| `mise run lambda-build` | payout-dispatcher の zip を作る                                                                                    |
+| `mise run tf-plan`      | dev 環境の terraform plan                                                                                          |
 
 非同期側(outbox → SQS → Lambda)をローカルで動かすには、server を起動した状態で
 `cargo run -p payout-dispatcher --bin local_poller` を実行する(ElasticMQ をポーリングして Lambda と同じ処理を呼ぶ。振込の結果は `payouts` テーブルに残り、5回処理できなかったメッセージは `payroll-events-dlq.fifo` に移る)。

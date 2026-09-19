@@ -3,15 +3,14 @@
 import { LoginPage } from "../pages/login-page";
 import { PayslipPage } from "../pages/payslip-page";
 import { ADMIN, adminApi, seedProject, seedStaff } from "../support/api";
-import { expect, test } from "../support/fixtures";
-import { caption, recordPage } from "../support/video";
+import { caption, expect, test } from "../support/video";
 
-test("管理者: ログイン後の戻り先・給与明細の作成と確定・画面の移動・セッション切れ", async ({ browser }) => {
+test("管理者: ログイン後の戻り先・給与明細の作成と確定・画面の移動・セッション切れ", async ({ record }) => {
   const api = await adminApi();
   const staff = await seedStaff(api);
   const project = await seedProject(api);
   const staffLabel = `${staff.displayName}(${staff.email})`;
-  const { page, close } = await recordPage(browser, "1-admin");
+  const page = await record();
 
   await page.goto(`/payslips?staffId=${staff.staffId}`);
   await caption(page, "① ログイン前に、派遣社員を選んだ給与明細の URL を開く → ログイン画面へ");
@@ -57,10 +56,9 @@ test("管理者: ログイン後の戻り先・給与明細の作成と確定・
   await page.getByLabel("派遣社員").selectOption({ index: 1 });
   await expect(page.getByRole("alert")).toHaveText("ログインの有効期限が切れました。もう一度ログインしてください。");
   await caption(page, "⑩ ログインが切れたら、知らせを出してログイン画面へ(戻り先は今の画面)", 3000);
-  await close();
 });
 
-test("派遣社員本人: 初回ログインで確定済みの自分の給与明細を見る", async ({ browser }) => {
+test("派遣社員本人: 初回ログインで確定済みの自分の給与明細を見る", async ({ record }) => {
   const api = await adminApi();
   const staff = await seedStaff(api);
   const project = await seedProject(api);
@@ -74,7 +72,7 @@ test("派遣社員本人: 初回ログインで確定済みの自分の給与明
     ],
   });
   await api.payroll.finalizePayslip({ payslipId });
-  const { page, close } = await recordPage(browser, "2-staff");
+  const page = await record();
 
   await page.goto("/");
   await caption(page, "① 派遣社員本人がログインする(初回はパスワードを変える)", 2000);
@@ -83,5 +81,4 @@ test("派遣社員本人: 初回ログインで確定済みの自分の給与明
   await caption(page, "② 確定した自分の給与明細だけが見える(案件名・稼働時間・金額)", 3500);
   await page.emulateMedia({ colorScheme: "dark" });
   await caption(page, "③ ダークモード(OS の設定に合わせる)");
-  await close();
 });
