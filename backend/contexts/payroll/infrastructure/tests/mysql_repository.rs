@@ -9,8 +9,8 @@ use payroll_domain::payout::{Payout, PayoutOutcome};
 use payroll_domain::payslip::{
     HourlyRate, NewPayslip, PayPeriod, Payslip, PayslipId, PayslipLine, PayslipStatus, WorkMinutes,
 };
-use payroll_domain::project::{NewProject, ProjectId, ProjectName};
-use payroll_domain::staff::{DisplayName, NewStaff, StaffId};
+use payroll_domain::project::{NewProject, Project, ProjectId, ProjectName};
+use payroll_domain::staff::{DisplayName, NewStaff, Staff, StaffId};
 use payroll_infrastructure::database::MySqlDatabase;
 use payroll_infrastructure::messaging::outbox::MySqlEventOutbox;
 use payroll_infrastructure::messaging::relay::relay_once;
@@ -240,27 +240,6 @@ async fn reading_for_update_waits_until_the_other_transaction_ends() {
 }
 
 #[tokio::test]
-async fn stale_draft_cannot_overwrite_a_finalized_payslip() {
-    let db = db().await;
-    let (staff, project) = seed(&db).await;
-    let repo = MySqlPayslipRepository::new(db.pool.clone());
-    let id = create(&db, &draft(staff, project, 9)).await.unwrap();
-    // ロックせずに読んだ作成中(この後で確定される)
-    let Payslip::Draft(stale) = repo.find(id).await.unwrap().unwrap() else {
-        panic!("作成中のはず")
-    };
-    finalize_usecase(&db).execute(id).await.unwrap();
-
-    let (finalized, _event) = stale.finalize(datetime!(2026-10-01 00:00 UTC));
-    let mut conn = MySqlDatabase::new(db.pool.clone()).connection().await.unwrap();
-    let err = repo.record_finalized(&mut conn, &finalized).await.unwrap_err();
-
-    assert!(matches!(err, RepositoryError::Conflict(_)));
-    let Payslip::Finalized(found) = repo.find(id).await.unwrap().unwrap() else { panic!() };
-    assert_eq!(found.finalized_at(), FINALIZED_AT);
-}
-
-#[tokio::test]
 async fn reading_for_update_needs_a_transaction() {
     let db = db().await;
     let (staff, project) = seed(&db).await;
@@ -289,7 +268,7 @@ async fn records_are_discarded_when_the_transaction_is_not_committed() {
             panic!("作成中のはず");
         };
         let (finalized, event) = draft.finalize(FINALIZED_AT);
-        repo.record_finalized(&mut tx, &finalized).await.unwrap();
+        repo.update(&mut tx, &finalized.into()).await.unwrap();
         MySqlEventOutbox.append(&mut tx, PayrollEvent::Payslip(event)).await.unwrap();
         // commit せずに捨てる
     }
@@ -384,6 +363,231 @@ async fn registered_project_can_be_found() {
     let found = repo.find(project).await.unwrap().unwrap();
     assert_eq!(found.name().as_str(), "案件A");
     assert!(repo.find(ProjectId::from_i64(999).unwrap()).await.unwrap().is_none());
+}
+
+// ---- 記録と組み立て直し ----
+// リポジトリの責務は「集約の今の状態をそのまま記録し、記録からそのまま組み立て直す」こと。
+// どの状態・どの形の集約でも、書いたものが読み戻ることを確かめる
+
+/// 給与明細の中身を比べられる形にする(状態・派遣社員・対象月・明細行・支給額・確定日時)
+fn snapshot<Id>(
+    p: &Payslip<Id>,
+) -> (PayslipStatus, StaffId, PayPeriod, Vec<PayslipLine>, Money, Option<OffsetDateTime>) {
+    let c = p.content();
+    let finalized_at = match p {
+        Payslip::Draft(_) => None,
+        Payslip::Finalized(f) => Some(f.finalized_at()),
+    };
+    (p.status(), c.staff_id(), c.period(), c.lines().to_vec(), c.total(), finalized_at)
+}
+
+/// 登録済みの作成中の給与明細を、指定した内容で組み立てる(update に渡す形を自由に作るため)
+#[allow(clippy::disallowed_methods, reason = "記録の読み書きを確かめるテスト")]
+fn draft_with(id: PayslipId, staff: StaffId, month: u8, lines: Vec<PayslipLine>) -> Payslip {
+    Payslip::reconstruct_draft(id, staff, PayPeriod::new(2026, month).unwrap(), lines).unwrap()
+}
+
+async fn line_rows(pool: &MySqlPool, id: PayslipId) -> i64 {
+    sqlx::query_scalar("select count(*) from payslip_lines where payslip_id = ?")
+        .bind(id.as_i64())
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+/// 1件だけの書き込み(接続に書く)
+async fn update_payslip(db: &TestDb, payslip: &Payslip) -> Result<(), RepositoryError> {
+    let mut conn = MySqlDatabase::new(db.pool.clone()).connection().await?;
+    MySqlPayslipRepository::new(db.pool.clone()).update(&mut conn, payslip).await
+}
+
+#[tokio::test]
+async fn inserted_payslip_is_restored_as_it_was() {
+    let db = db().await;
+    let (staff, project) = seed(&db).await;
+    let repo = MySqlPayslipRepository::new(db.pool.clone());
+    let new = draft(staff, project, 9);
+
+    let id = create(&db, &new).await.unwrap();
+
+    let found = repo.find(id).await.unwrap().unwrap();
+    assert_eq!(snapshot(&found), snapshot(&Payslip::from(new)));
+}
+
+#[tokio::test]
+async fn updated_payslip_is_restored_as_it_was_in_every_state() {
+    let db = db().await;
+    let (staff, project) = seed(&db).await;
+    let repo = MySqlPayslipRepository::new(db.pool.clone());
+    let id = create(&db, &draft(staff, project, 9)).await.unwrap();
+    let Some(Payslip::Draft(draft)) = repo.find(id).await.unwrap() else {
+        panic!("作成中のはず")
+    };
+
+    // 作成中のまま書き戻す
+    let as_draft = Payslip::from(draft);
+    update_payslip(&db, &as_draft).await.unwrap();
+    assert_eq!(snapshot(&repo.find(id).await.unwrap().unwrap()), snapshot(&as_draft));
+
+    // 確定して書き戻す
+    let Payslip::Draft(draft) = as_draft else { unreachable!() };
+    let (finalized, _event) = draft.finalize(FINALIZED_AT);
+    let finalized = Payslip::from(finalized);
+    update_payslip(&db, &finalized).await.unwrap();
+    assert_eq!(snapshot(&repo.find(id).await.unwrap().unwrap()), snapshot(&finalized));
+}
+
+#[tokio::test]
+async fn updating_with_the_same_content_again_changes_nothing() {
+    let db = db().await;
+    let (staff, project) = seed(&db).await;
+    let repo = MySqlPayslipRepository::new(db.pool.clone());
+    let id = create(&db, &draft(staff, project, 9)).await.unwrap();
+    let before = repo.find(id).await.unwrap().unwrap();
+
+    // 値の変わらない更新も、記録がある限り成功する(何度書いても同じ状態になる)
+    update_payslip(&db, &before).await.unwrap();
+    update_payslip(&db, &before).await.unwrap();
+
+    assert_eq!(snapshot(&repo.find(id).await.unwrap().unwrap()), snapshot(&before));
+    assert_eq!(line_rows(&db.pool, id).await, 2, "明細行が重ならない");
+}
+
+#[tokio::test]
+async fn update_replaces_the_lines_with_the_current_ones() {
+    let db = db().await;
+    let (staff, project) = seed(&db).await;
+    let repo = MySqlPayslipRepository::new(db.pool.clone());
+    let id = create(&db, &draft(staff, project, 9)).await.unwrap();
+    let other = PayslipLine::new(
+        project,
+        ProjectName::new("案件B").unwrap(),
+        WorkMinutes::from_minutes(30).unwrap(),
+        HourlyRate::from_yen(2_000).unwrap(),
+    )
+    .unwrap();
+
+    // 2行 → 別の内容の1行
+    let changed = draft_with(id, staff, 9, vec![other.clone()]);
+    update_payslip(&db, &changed).await.unwrap();
+
+    let found = repo.find(id).await.unwrap().unwrap();
+    assert_eq!(found.content().lines(), [other]);
+    assert_eq!(found.content().total().as_yen(), 1_000);
+    assert_eq!(line_rows(&db.pool, id).await, 1);
+}
+
+#[tokio::test]
+async fn updating_an_unrecorded_payslip_is_an_internal_error() {
+    let db = db().await;
+    let (staff, project) = seed(&db).await;
+
+    let unrecorded =
+        draft_with(PayslipId::from_i64(999).unwrap(), staff, 9, vec![line(project, 60, 1_000)]);
+    let err = update_payslip(&db, &unrecorded).await.unwrap_err();
+
+    assert!(matches!(err, RepositoryError::Internal(_)));
+    assert_eq!(line_rows(&db.pool, PayslipId::from_i64(999).unwrap()).await, 0);
+}
+
+#[tokio::test]
+async fn failed_update_leaves_the_payslip_untouched() {
+    let db = db().await;
+    let (staff, project) = seed(&db).await;
+    let repo = MySqlPayslipRepository::new(db.pool.clone());
+    create(&db, &draft(staff, project, 9)).await.unwrap();
+    let id = create(&db, &draft(staff, project, 10)).await.unwrap();
+    let before = repo.find(id).await.unwrap().unwrap();
+
+    // 10月分を、既にある9月分と同じ月にしようとする
+    let clash = draft_with(id, staff, 9, vec![line(project, 60, 1_000)]);
+    let err = update_payslip(&db, &clash).await.unwrap_err();
+
+    assert!(matches!(err, RepositoryError::Conflict(_)));
+    assert_eq!(snapshot(&repo.find(id).await.unwrap().unwrap()), snapshot(&before));
+    assert_eq!(line_rows(&db.pool, id).await, 2);
+}
+
+#[tokio::test]
+#[allow(clippy::disallowed_methods, reason = "記録の読み書きを確かめるテスト")]
+async fn staff_and_project_are_restored_as_updated() {
+    let db = db().await;
+    let (staff, project) = seed(&db).await;
+    let staff_repo = MySqlStaffRepository::new(db.pool.clone());
+    let project_repo = MySqlProjectRepository::new(db.pool.clone());
+    let mut conn = MySqlDatabase::new(db.pool.clone()).connection().await.unwrap();
+
+    let renamed = Staff::reconstruct(
+        staff,
+        UserId::parse("sub-1").unwrap(),
+        Email::parse("taro.new@example.com").unwrap(),
+        DisplayName::new("派遣 太郎(新)").unwrap(),
+    );
+    staff_repo.update(&mut conn, &renamed).await.unwrap();
+    staff_repo.update(&mut conn, &renamed).await.unwrap();
+    let found = staff_repo.find(staff).await.unwrap().unwrap();
+    assert_eq!(found.email().as_str(), "taro.new@example.com");
+    assert_eq!(found.display_name().as_str(), "派遣 太郎(新)");
+
+    let renamed = Project::reconstruct(project, ProjectName::new("案件A(改)").unwrap());
+    project_repo.update(&mut conn, &renamed).await.unwrap();
+    assert_eq!(project_repo.find(project).await.unwrap().unwrap().name().as_str(), "案件A(改)");
+
+    // 記録されていないものは更新できない
+    let unrecorded =
+        Project::reconstruct(ProjectId::from_i64(999).unwrap(), ProjectName::new("x").unwrap());
+    let err = project_repo.update(&mut conn, &unrecorded).await.unwrap_err();
+    assert!(matches!(err, RepositoryError::Internal(_)));
+}
+
+#[tokio::test]
+#[allow(clippy::disallowed_methods, reason = "記録の読み書きを確かめるテスト")]
+async fn staff_update_that_takes_another_email_is_a_conflict() {
+    let db = db().await;
+    let (staff, _) = seed(&db).await;
+    let repo = MySqlStaffRepository::new(db.pool.clone());
+    let mut conn = MySqlDatabase::new(db.pool.clone()).connection().await.unwrap();
+    repo.insert(
+        &mut conn,
+        &NewStaff::new(
+            UserId::parse("sub-2").unwrap(),
+            Email::parse("hanako@example.com").unwrap(),
+            DisplayName::new("派遣 花子").unwrap(),
+        ),
+    )
+    .await
+    .unwrap();
+
+    let taken = Staff::reconstruct(
+        staff,
+        UserId::parse("sub-1").unwrap(),
+        Email::parse("hanako@example.com").unwrap(),
+        DisplayName::new("派遣 太郎").unwrap(),
+    );
+    let err = repo.update(&mut conn, &taken).await.unwrap_err();
+    assert!(matches!(err, RepositoryError::Conflict(_)));
+    assert_eq!(repo.find(staff).await.unwrap().unwrap().email().as_str(), "taro@example.com");
+}
+
+#[tokio::test]
+#[allow(clippy::disallowed_methods, reason = "記録の読み書きを確かめるテスト")]
+async fn payout_is_restored_as_updated() {
+    let db = db().await;
+    let (staff, project) = seed(&db).await;
+    let payslip = create_and_finalize(&db, staff, project, 9).await;
+    let repo = MySqlPayoutRepository::new(db.pool.clone());
+    let mut conn = MySqlDatabase::new(db.pool.clone()).connection().await.unwrap();
+    let amount = Money::from_yen(15_750).unwrap();
+    let accepted = PayoutOutcome::Accepted { receipt: "R-1".into() };
+    let id = repo.insert(&mut conn, &Payout::new(payslip, staff, amount, accepted)).await.unwrap();
+
+    let rejected = PayoutOutcome::Rejected { reason: "口座不備".into() };
+    repo.update(&mut conn, &Payout::reconstruct(id, payslip, staff, amount, rejected.clone()))
+        .await
+        .unwrap();
+
+    let found = repo.find_by_payslip(payslip).await.unwrap().unwrap();
+    assert_eq!((found.id(), found.amount(), found.outcome()), (id, amount, &rejected));
 }
 
 /// つながらない送り先の SQS。送ろうとしたことだけを確かめるのに使う

@@ -45,7 +45,7 @@ impl FinalizePayslipUseCase {
         };
 
         let (finalized, event) = draft.finalize(self.clock.now());
-        self.payslips.record_finalized(&mut tx, &finalized).await?;
+        self.payslips.update(&mut tx, &finalized.into()).await?;
         self.outbox.append(&mut tx, PayrollEvent::Payslip(event)).await?;
         tx.commit().await?;
         Ok(())

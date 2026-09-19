@@ -10,8 +10,7 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use payroll_domain::payout::{NewPayout, Payout, PayoutId, PayoutOutcome};
 use payroll_domain::payslip::{
-    FinalizedPayslip, HourlyRate, NewPayslip, PayPeriod, Payslip, PayslipEvent, PayslipId,
-    PayslipLine, WorkMinutes,
+    HourlyRate, NewPayslip, PayPeriod, Payslip, PayslipEvent, PayslipId, PayslipLine, WorkMinutes,
 };
 use payroll_domain::project::{NewProject, Project, ProjectId, ProjectName};
 use payroll_domain::staff::{DisplayName, NewStaff, Staff, StaffId};
@@ -35,8 +34,8 @@ use time::OffsetDateTime;
 use time::macros::datetime;
 
 // ---- フェイク ----
-// フェイクも「リポジトリ実装」なので reconstruct を呼ぶ必要がある。usecase の clippy.toml は
-// crate 全体(tests/ も含む)に効くため、ここだけ明示的に許可する
+// フェイクも「リポジトリ実装」なので reconstruct を呼ぶ必要がある。ルートの clippy.toml の禁止は
+// tests/ にも効くため、呼ぶ箇所だけ明示的に許可する
 
 /// 番号・派遣社員・対象月・明細行・確定日時(作成中なら None)
 #[derive(Clone)]
@@ -219,20 +218,20 @@ impl PayslipRepository for FakePayslips {
         }))
     }
 
-    async fn record_finalized(
-        &self,
-        db: &mut Db,
-        payslip: &FinalizedPayslip,
-    ) -> Result<(), RepositoryError> {
+    async fn update(&self, db: &mut Db, payslip: &Payslip) -> Result<(), RepositoryError> {
         fake(db).write(|r| {
-            // 本物と同じく、作成中の記録だけを書き換える
-            match r.payslips.iter_mut().find(|row| row.id == payslip.content().id()) {
-                Some(row) if row.finalized_at.is_none() => {
-                    row.finalized_at = Some(payslip.finalized_at());
-                    Ok(())
-                }
-                _ => Err(RepositoryError::Conflict("作成中の給与明細ではありません".into())),
-            }
+            let c = payslip.content();
+            let Some(row) = r.payslips.iter_mut().find(|row| row.id == c.id()) else {
+                return Err(RepositoryError::Internal("記録されていない給与明細です".into()));
+            };
+            row.staff_id = c.staff_id();
+            row.period = c.period();
+            row.lines = c.lines().to_vec();
+            row.finalized_at = match payslip {
+                Payslip::Draft(_) => None,
+                Payslip::Finalized(finalized) => Some(finalized.finalized_at()),
+            };
+            Ok(())
         })
     }
 }
@@ -267,6 +266,17 @@ impl StaffRepository for FakeStaff {
             id
         }))
     }
+
+    async fn update(&self, db: &mut Db, staff: &Staff) -> Result<(), RepositoryError> {
+        fake(db).write(|r| {
+            let Some(row) = r.staff.iter_mut().find(|row| row.id == staff.id()) else {
+                return Err(RepositoryError::Internal("記録されていない派遣社員です".into()));
+            };
+            row.user_id = staff.user_id().clone();
+            row.email = staff.email().clone();
+            Ok(())
+        })
+    }
 }
 
 struct FakeProjects(Arc<World>);
@@ -289,6 +299,17 @@ impl ProjectRepository for FakeProjects {
             r.projects.push(id);
             id
         }))
+    }
+
+    async fn update(&self, db: &mut Db, project: &Project) -> Result<(), RepositoryError> {
+        fake(db).write(|r| {
+            // フェイクは案件名を持たない(名前は番号から決まる)ので、登録されているかだけを見る
+            if r.projects.contains(&project.id()) {
+                Ok(())
+            } else {
+                Err(RepositoryError::Internal("記録されていない案件です".into()))
+            }
+        })
     }
 }
 
@@ -336,6 +357,20 @@ impl PayoutRepository for FakePayouts {
                 outcome: new.outcome().clone(),
             });
             Ok(PayoutId::from_i64(next_id(r.payouts.len() - 1)).unwrap())
+        })
+    }
+
+    async fn update(&self, db: &mut Db, payout: &Payout) -> Result<(), RepositoryError> {
+        fake(db).write(|r| {
+            let index = usize::try_from(payout.id().as_i64() - 1).unwrap();
+            let Some(row) = r.payouts.get_mut(index) else {
+                return Err(RepositoryError::Internal("記録されていない振込依頼です".into()));
+            };
+            row.payslip_id = payout.payslip_id();
+            row.staff_id = payout.staff_id();
+            row.amount = payout.amount();
+            row.outcome = payout.outcome().clone();
+            Ok(())
         })
     }
 }

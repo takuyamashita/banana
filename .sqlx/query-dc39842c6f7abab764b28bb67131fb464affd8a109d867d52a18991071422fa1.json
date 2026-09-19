@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "insert into payslip_lines (payslip_id, project_id, project_name, work_minutes, hourly_rate)\n             values (?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "dc39842c6f7abab764b28bb67131fb464affd8a109d867d52a18991071422fa1"
+}

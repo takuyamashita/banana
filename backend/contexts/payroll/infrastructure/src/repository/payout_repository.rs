@@ -8,7 +8,7 @@ use platform_kernel::Money;
 use sqlx::mysql::MySqlPool;
 
 use crate::database::mysql;
-use crate::db::{corrupted, db_err};
+use crate::db::{corrupted, db_err, ensure_updated};
 
 /// 振込先から返る理由は長さが決まっていないので、列に収まる長さで切る
 const MAX_REASON_CHARS: usize = 1000;
@@ -80,12 +80,7 @@ impl PayoutRepository for MySqlPayoutRepository {
 
     async fn insert(&self, db: &mut Db, new: &NewPayout) -> Result<PayoutId, RepositoryError> {
         let conn = mysql(db)?;
-        let (outcome, receipt, reason) = match new.outcome() {
-            PayoutOutcome::Accepted { receipt } => ("accepted", Some(receipt.as_str()), None),
-            PayoutOutcome::Rejected { reason } => {
-                ("rejected", None, Some(reason.chars().take(MAX_REASON_CHARS).collect::<String>()))
-            }
-        };
+        let (outcome, receipt, reason) = encode_outcome(new.outcome());
         let result = sqlx::query!(
             "insert into payouts (payslip_id, staff_id, amount_yen, outcome, receipt, reject_reason)
              values (?, ?, ?, ?, ?, ?)",
@@ -103,5 +98,36 @@ impl PayoutRepository for MySqlPayoutRepository {
         i64::try_from(result.last_insert_id())
             .map_err(corrupted)
             .and_then(|id| PayoutId::from_i64(id).map_err(corrupted))
+    }
+
+    async fn update(&self, db: &mut Db, payout: &Payout) -> Result<(), RepositoryError> {
+        let conn = mysql(db)?;
+        let (outcome, receipt, reason) = encode_outcome(payout.outcome());
+        let result = sqlx::query!(
+            "update payouts set payslip_id = ?, staff_id = ?, amount_yen = ?, outcome = ?, receipt = ?,
+                    reject_reason = ?
+             where id = ?",
+            payout.payslip_id().as_i64(),
+            payout.staff_id().as_i64(),
+            payout.amount().as_yen(),
+            outcome,
+            receipt,
+            reason,
+            payout.id().as_i64(),
+        )
+        .execute(&mut *conn)
+        .await
+        .map_err(db_err)?;
+        ensure_updated(result.rows_affected(), "振込依頼", payout.id().as_i64())
+    }
+}
+
+/// 振込の結果を列(outcome・receipt・reject_reason)に分ける
+fn encode_outcome(outcome: &PayoutOutcome) -> (&'static str, Option<&str>, Option<String>) {
+    match outcome {
+        PayoutOutcome::Accepted { receipt } => ("accepted", Some(receipt.as_str()), None),
+        PayoutOutcome::Rejected { reason } => {
+            ("rejected", None, Some(reason.chars().take(MAX_REASON_CHARS).collect()))
+        }
     }
 }

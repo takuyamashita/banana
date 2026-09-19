@@ -6,7 +6,7 @@ use platform_kernel::{Email, UserId};
 use sqlx::mysql::MySqlPool;
 
 use crate::database::mysql;
-use crate::db::{corrupted, db_err};
+use crate::db::{corrupted, db_err, ensure_updated};
 
 pub struct MySqlStaffRepository {
     pool: MySqlPool,
@@ -96,5 +96,20 @@ impl StaffRepository for MySqlStaffRepository {
         i64::try_from(result.last_insert_id())
             .map_err(corrupted)
             .and_then(|id| StaffId::from_i64(id).map_err(corrupted))
+    }
+
+    async fn update(&self, db: &mut Db, staff: &Staff) -> Result<(), RepositoryError> {
+        let conn = mysql(db)?;
+        let result = sqlx::query!(
+            "update staff set user_id = ?, email = ?, display_name = ? where id = ?",
+            staff.user_id().as_str(),
+            staff.email().as_str(),
+            staff.display_name().as_str(),
+            staff.id().as_i64(),
+        )
+        .execute(&mut *conn)
+        .await
+        .map_err(db_err)?;
+        ensure_updated(result.rows_affected(), "派遣社員", staff.id().as_i64())
     }
 }

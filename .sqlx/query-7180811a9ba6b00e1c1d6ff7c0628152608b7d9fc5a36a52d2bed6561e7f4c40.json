@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "update payouts set payslip_id = ?, staff_id = ?, amount_yen = ?, outcome = ?, receipt = ?,\n                    reject_reason = ?\n             where id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 7
+    },
+    "nullable": []
+  },
+  "hash": "7180811a9ba6b00e1c1d6ff7c0628152608b7d9fc5a36a52d2bed6561e7f4c40"
+}

@@ -5,7 +5,7 @@ use payroll_usecase::ports::repository::{ProjectRepository, RepositoryError};
 use sqlx::mysql::MySqlPool;
 
 use crate::database::mysql;
-use crate::db::{corrupted, db_err};
+use crate::db::{corrupted, db_err, ensure_updated};
 
 pub struct MySqlProjectRepository {
     pool: MySqlPool,
@@ -45,5 +45,18 @@ impl ProjectRepository for MySqlProjectRepository {
         i64::try_from(result.last_insert_id())
             .map_err(corrupted)
             .and_then(|id| ProjectId::from_i64(id).map_err(corrupted))
+    }
+
+    async fn update(&self, db: &mut Db, project: &Project) -> Result<(), RepositoryError> {
+        let conn = mysql(db)?;
+        let result = sqlx::query!(
+            "update projects set name = ? where id = ?",
+            project.name().as_str(),
+            project.id().as_i64(),
+        )
+        .execute(&mut *conn)
+        .await
+        .map_err(db_err)?;
+        ensure_updated(result.rows_affected(), "案件", project.id().as_i64())
     }
 }

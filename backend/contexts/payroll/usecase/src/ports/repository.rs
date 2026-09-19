@@ -1,5 +1,6 @@
 //! 案件・派遣社員・給与明細・振込依頼の記録と取り出し。
 //!
+//! どの集約も、新しく登録する `insert` と、登録済みの今の内容を記録する `update` を持つ。
 //! 記録(`insert`・`update`)は書き込み先([`Db`])を受け取る。同じトランザクションに書いた記録は、
 //! まとめて確定するか、まとめて取り消される。
 //!
@@ -7,7 +8,7 @@
 
 use async_trait::async_trait;
 use payroll_domain::payout::{NewPayout, Payout, PayoutId};
-use payroll_domain::payslip::{FinalizedPayslip, NewPayslip, Payslip, PayslipId};
+use payroll_domain::payslip::{NewPayslip, Payslip, PayslipId};
 use payroll_domain::project::{NewProject, Project, ProjectId};
 use payroll_domain::staff::{NewStaff, Staff, StaffId};
 use platform_kernel::{Email, UserId};
@@ -49,13 +50,10 @@ pub trait PayslipRepository: Send + Sync {
     ) -> Result<Option<Payslip>, RepositoryError>;
     /// 新しい給与明細を登録し、振られた給与明細番号を返す
     async fn insert(&self, db: &mut Db, new: &NewPayslip) -> Result<PayslipId, RepositoryError>;
-    /// 作成中だった給与明細が確定したことを記録する。
-    /// 記録が作成中でなければ(先に確定されていたなど)、何も変えずに `Conflict` になる
-    async fn record_finalized(
-        &self,
-        db: &mut Db,
-        payslip: &FinalizedPayslip,
-    ) -> Result<(), RepositoryError>;
+    /// 登録済みの給与明細の今の内容(状態・明細行を含む)を記録する。記録されていなければ `Internal`。
+    /// 読んだ内容を変えて書き戻すときは、同じトランザクションで `find_for_update` で読んでおく
+    /// (ロックせずに読んだ古い内容を書き戻すと、その間の他の変更を消してしまう)
+    async fn update(&self, db: &mut Db, payslip: &Payslip) -> Result<(), RepositoryError>;
 }
 
 /// 派遣社員の記録と取り出し
@@ -69,6 +67,8 @@ pub trait StaffRepository: Send + Sync {
     async fn find_by_email(&self, email: &Email) -> Result<Option<Staff>, RepositoryError>;
     /// 新しい派遣社員を登録し、振られた派遣社員番号を返す
     async fn insert(&self, db: &mut Db, new: &NewStaff) -> Result<StaffId, RepositoryError>;
+    /// 登録済みの派遣社員の今の内容を記録する。記録されていなければ `Internal`
+    async fn update(&self, db: &mut Db, staff: &Staff) -> Result<(), RepositoryError>;
 }
 
 /// 案件の記録と取り出し
@@ -78,6 +78,8 @@ pub trait ProjectRepository: Send + Sync {
     async fn find(&self, id: ProjectId) -> Result<Option<Project>, RepositoryError>;
     /// 新しい案件を登録し、振られた案件番号を返す
     async fn insert(&self, db: &mut Db, new: &NewProject) -> Result<ProjectId, RepositoryError>;
+    /// 登録済みの案件の今の内容を記録する。記録されていなければ `Internal`
+    async fn update(&self, db: &mut Db, project: &Project) -> Result<(), RepositoryError>;
 }
 
 /// 振込依頼の記録と取り出し
@@ -90,4 +92,6 @@ pub trait PayoutRepository: Send + Sync {
     ) -> Result<Option<Payout>, RepositoryError>;
     /// 振込依頼を記録し、振られた振込依頼番号を返す
     async fn insert(&self, db: &mut Db, new: &NewPayout) -> Result<PayoutId, RepositoryError>;
+    /// 登録済みの振込依頼の今の内容を記録する。記録されていなければ `Internal`
+    async fn update(&self, db: &mut Db, payout: &Payout) -> Result<(), RepositoryError>;
 }

@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "update staff set user_id = ?, email = ?, display_name = ? where id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "dcd676efc18b448c2b5c02536102763d5c18c921f67223df3e262a886b07ab37"
+}

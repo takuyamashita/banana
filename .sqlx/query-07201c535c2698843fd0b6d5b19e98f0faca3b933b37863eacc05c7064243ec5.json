@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "update payslips set staff_id = ?, pay_year = ?, pay_month = ?, status = ?, finalized_at = ?\n             where id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "07201c535c2698843fd0b6d5b19e98f0faca3b933b37863eacc05c7064243ec5"
+}

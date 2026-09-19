@@ -1,18 +1,17 @@
 use async_trait::async_trait;
 use payroll_domain::payslip::{
-    FinalizedPayslip, HourlyRate, NewPayslip, PayPeriod, Payslip, PayslipId, PayslipLine,
-    WorkMinutes,
+    HourlyRate, NewPayslip, PayPeriod, Payslip, PayslipId, PayslipLine, WorkMinutes,
 };
 use payroll_domain::project::{ProjectId, ProjectName};
 use payroll_domain::staff::StaffId;
 use payroll_usecase::ports::database::Db;
 use payroll_usecase::ports::repository::{PayslipRepository, RepositoryError};
 use sqlx::Connection as _;
-use sqlx::mysql::MySqlPool;
+use sqlx::mysql::{MySqlConnection, MySqlPool};
 use time::{OffsetDateTime, PrimitiveDateTime, UtcOffset};
 
 use crate::database::{mysql, mysql_tx};
-use crate::db::{corrupted, db_err};
+use crate::db::{corrupted, db_err, ensure_updated};
 
 pub struct MySqlPayslipRepository {
     pool: MySqlPool,
@@ -120,46 +119,69 @@ impl PayslipRepository for MySqlPayslipRepository {
             .map_err(corrupted)
             .and_then(|id| PayslipId::from_i64(id).map_err(corrupted))?;
 
-        for line in new.content().lines() {
-            sqlx::query!(
-                "insert into payslip_lines (payslip_id, project_id, project_name, work_minutes, hourly_rate)
-                 values (?, ?, ?, ?, ?)",
-                payslip_id.as_i64(),
-                line.project_id().as_i64(),
-                line.project_name().as_str(),
-                line.work_minutes().as_minutes(),
-                line.hourly_rate().as_yen(),
-            )
-            .execute(&mut *tx)
-            .await
-            .map_err(db_err)?;
-        }
+        insert_lines(&mut tx, payslip_id, new.content().lines()).await?;
 
         tx.commit().await.map_err(db_err)?;
         Ok(payslip_id)
     }
 
-    async fn record_finalized(
-        &self,
-        db: &mut Db,
-        payslip: &FinalizedPayslip,
-    ) -> Result<(), RepositoryError> {
-        let conn = mysql(db)?;
-        // 作成中の記録だけを書き換える。ロックせずに読んだ古い作成中を書き戻して、
-        // 確定済み(振込の出来事は記録済み)を作成中に戻すことがないようにする
+    async fn update(&self, db: &mut Db, payslip: &Payslip) -> Result<(), RepositoryError> {
+        // insert と同じく、給与明細と明細行は必ず一緒に書く
+        let mut tx = mysql(db)?.begin().await.map_err(db_err)?;
+        let content = payslip.content();
+        let id = content.id();
+        let (status, finalized_at) = match payslip {
+            Payslip::Draft(_) => ("draft", None),
+            Payslip::Finalized(finalized) => ("finalized", Some(utc(finalized.finalized_at()))),
+        };
         let result = sqlx::query!(
-            "update payslips set status = 'finalized', finalized_at = ? where id = ? and status = 'draft'",
-            utc(payslip.finalized_at()),
-            payslip.content().id().as_i64(),
+            "update payslips set staff_id = ?, pay_year = ?, pay_month = ?, status = ?, finalized_at = ?
+             where id = ?",
+            content.staff_id().as_i64(),
+            content.period().year(),
+            content.period().month(),
+            status,
+            finalized_at,
+            id.as_i64(),
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(db_err)?;
+        ensure_updated(result.rows_affected(), "給与明細", id.as_i64())?;
+
+        // 明細行は今の内容に置き換える。集約はどの行が変わったかを持たないので、消して入れ直す
+        sqlx::query!("delete from payslip_lines where payslip_id = ?", id.as_i64())
+            .execute(&mut *tx)
+            .await
+            .map_err(db_err)?;
+        insert_lines(&mut tx, id, content.lines()).await?;
+
+        tx.commit().await.map_err(db_err)?;
+        Ok(())
+    }
+}
+
+/// 明細行を並びのとおりに書く(取り出しは id 順なので、この順で読み戻る)
+async fn insert_lines(
+    conn: &mut MySqlConnection,
+    payslip_id: PayslipId,
+    lines: &[PayslipLine],
+) -> Result<(), RepositoryError> {
+    for line in lines {
+        sqlx::query!(
+            "insert into payslip_lines (payslip_id, project_id, project_name, work_minutes, hourly_rate)
+             values (?, ?, ?, ?, ?)",
+            payslip_id.as_i64(),
+            line.project_id().as_i64(),
+            line.project_name().as_str(),
+            line.work_minutes().as_minutes(),
+            line.hourly_rate().as_yen(),
         )
         .execute(&mut *conn)
         .await
         .map_err(db_err)?;
-        if result.rows_affected() != 1 {
-            return Err(RepositoryError::Conflict("作成中の給与明細ではありません".to_owned()));
-        }
-        Ok(())
     }
+    Ok(())
 }
 
 /// JOIN の行(明細ごとに id 順で連続している)を集約に組み立てる。

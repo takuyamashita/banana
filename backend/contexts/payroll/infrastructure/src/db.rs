@@ -68,3 +68,12 @@ pub(crate) fn db_err(err: sqlx::Error) -> RepositoryError {
 pub(crate) fn corrupted(err: impl std::fmt::Display) -> RepositoryError {
     RepositoryError::CorruptedData(err.to_string())
 }
+
+/// update が記録を1行書き換えたかを確かめる。接続は FOUND_ROWS 付きなので、値が変わらなくても
+/// 一致した行は数えられる。0 行なら記録されていないものを更新しようとした(組み立ての誤り)
+pub(crate) fn ensure_updated(rows: u64, what: &str, id: i64) -> Result<(), RepositoryError> {
+    if rows == 1 {
+        return Ok(());
+    }
+    Err(RepositoryError::Internal(format!("記録されていない{what}は更新できません: {id}")))
+}
