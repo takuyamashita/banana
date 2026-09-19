@@ -6,10 +6,12 @@ const respond = (body: string, contentType: string, status = 200) =>
 test("正しい設定を読む", async () => {
   const body = JSON.stringify({
     apiBaseUrl: "https://api.example.com",
+    timesheetApiBaseUrl: "https://api.example.com",
     oidc: { authority: "https://id", clientId: "web" },
   });
   await expect(loadRuntimeConfig(respond(body, "application/json"))).resolves.toMatchObject({
     apiBaseUrl: "https://api.example.com",
+    timesheetApiBaseUrl: "https://api.example.com",
   });
 });
 

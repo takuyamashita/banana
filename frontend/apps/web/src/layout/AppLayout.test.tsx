@@ -9,17 +9,17 @@ import {
 } from "@tanstack/react-router";
 import { render, screen } from "@testing-library/react";
 
-import { AppLayout } from "./AppLayout";
+import { AppLayout, type Menu } from "./AppLayout";
 
-function renderAt(path: string) {
+function renderAt(path: string, menu: Menu = "admin") {
   const root = createRootRoute({
     component: () => (
-      <AppLayout email="admin@example.com" isAdmin onSignOut={() => {}} signOutError={null}>
+      <AppLayout email="admin@example.com" menu={menu} onSignOut={() => {}} signOutError={null}>
         <Outlet />
       </AppLayout>
     ),
   });
-  const pages = ["/payslips", "/staff", "/projects"].map((page) =>
+  const pages = ["/payslips", "/timesheets", "/staff", "/projects", "/me", "/timesheet"].map((page) =>
     createRoute({ getParentRoute: () => root, path: page, component: () => null }),
   );
   const router = createRouter({
@@ -38,4 +38,13 @@ test("開いている画面のメニューだけが強調される(選んでい�
   const other = screen.getByRole("link", { name: "給与明細" });
   expect(other).not.toHaveAttribute("aria-current");
   expect(other).toHaveClass(buttonClass("secondary"), { exact: true });
+});
+
+test("派遣社員には、自分の給与明細と勤怠のメニューを出す", async () => {
+  renderAt("/timesheet", "staff");
+
+  const nav = await screen.findByRole("navigation", { name: "メニュー" });
+  expect(nav).toHaveTextContent("自分の給与明細勤怠");
+  expect(screen.getByRole("link", { name: "勤怠" })).toHaveAttribute("aria-current", "page");
+  expect(screen.queryByRole("link", { name: "派遣社員" })).toBeNull();
 });

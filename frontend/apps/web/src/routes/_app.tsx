@@ -23,7 +23,7 @@ function AppRoute() {
   return (
     <AppLayout
       email={user?.profile.email ?? ""}
-      isAdmin={isAdmin(me)}
+      menu={isAdmin(me) ? "admin" : me.staff ? "staff" : "none"}
       onSignOut={() => signOut.mutate()}
       signOutError={signOut.error ? errorMessage(signOut.error) : null}
     >

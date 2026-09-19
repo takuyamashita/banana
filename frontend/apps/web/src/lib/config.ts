@@ -1,5 +1,8 @@
 export interface RuntimeConfig {
+  /// 給与(payroll)サービスの API
   apiBaseUrl: string;
+  /// 勤怠(timesheet)サービスの API
+  timesheetApiBaseUrl: string;
   oidc: {
     authority: string;
     clientId: string;
@@ -17,6 +20,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isRuntimeConfig(value: unknown): value is RuntimeConfig {
   if (!isRecord(value) || typeof value["apiBaseUrl"] !== "string") return false;
+  if (typeof value["timesheetApiBaseUrl"] !== "string") return false;
   const oidc = value["oidc"];
   // 指定しない項目は、無いか null(Terraform の optional は null で書き出す)
   const optionalString = (v: unknown) => v === undefined || v === null || typeof v === "string";

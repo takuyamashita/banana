@@ -1,4 +1,4 @@
-import { fromJson, type DescMessage, type JsonObject } from "@bufbuild/protobuf";
+import { fromJson } from "@bufbuild/protobuf";
 import {
   CreatePayslipRequestSchema,
   PayslipLineInputSchema,
@@ -7,8 +7,7 @@ import {
   type PayslipLineInputJson,
 } from "@platform/api-client";
 
-/// 入力欄の中身。要求の JSON 形と同じ項目を、入力されたまま(文字列で)持つ
-export type Fields<T> = { [K in keyof Required<T>]: string };
+import { checkField as check, normalize, type Fields } from "../../lib/form";
 
 type LineField = keyof Fields<PayslipLineInputJson>;
 type PeriodField = "payYear" | "payMonth";
@@ -28,7 +27,9 @@ export type DraftAction =
   | { type: "setLine"; key: number; field: LineField; value: string }
   | { type: "addLine" }
   | { type: "removeLine"; key: number }
-  | { type: "clearLines" };
+  | { type: "clearLines" }
+  /// 勤怠で承認された案件ごとの稼働で明細行を作り直す。同じ案件の行に入れてあった時給は残す
+  | { type: "fillFromApprovedWork"; work: readonly { projectId: string; workMinutes: string }[] };
 
 const emptyLine = (key: number): LineDraft => ({ key, projectId: "", workMinutes: "", hourlyRate: "" });
 
@@ -51,6 +52,15 @@ export function draftReducer(draft: PayslipDraft, action: DraftAction): PayslipD
       return { ...draft, lines: draft.lines.filter((line) => line.key !== action.key) };
     case "clearLines":
       return { ...draft, lines: [emptyLine(draft.nextKey)], nextKey: draft.nextKey + 1 };
+    case "fillFromApprovedWork": {
+      const lines = action.work.map((w, i) => ({
+        key: draft.nextKey + i,
+        projectId: w.projectId,
+        workMinutes: w.workMinutes,
+        hourlyRate: draft.lines.find((line) => line.projectId === w.projectId)?.hourlyRate ?? "",
+      }));
+      return { ...draft, lines, nextKey: draft.nextKey + lines.length };
+    }
     default: {
       // 操作を足したら、ここで型エラーになる
       const unknown: never = action;
@@ -99,19 +109,11 @@ export function toCreateRequest(
   return { request: fromJson(CreatePayslipRequestSchema, json) };
 }
 
-/// 1つの項目が、スキーマのその項目の型として読めるか。読めなければ文言を返す
-function check(schema: DescMessage, field: string, text: string, label: string): string | undefined {
-  const value = normalize(text);
-  if (value === "") return `${label}を入力してください。`;
-  try {
-    fromJson(schema, { [field]: value } satisfies JsonObject);
-    return undefined;
-  } catch {
-    return `${label}は数字で入力してください。`;
-  }
-}
-
-/// 前後の空白を除き、全角数字を半角にする
-function normalize(text: string): string {
-  return text.trim().replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
+/// 入力中の対象月。年と月が数字として読めなければ undefined(承認された稼働を取りに行かない)
+export function draftPeriod(draft: PayslipDraft): { payYear: number; payMonth: number } | undefined {
+  const payYear = Number(normalize(draft.payYear));
+  const payMonth = Number(normalize(draft.payMonth));
+  if (!Number.isInteger(payYear) || !Number.isInteger(payMonth)) return undefined;
+  if (payYear < 2000 || payYear > 2999 || payMonth < 1 || payMonth > 12) return undefined;
+  return { payYear, payMonth };
 }

@@ -1,6 +1,7 @@
 import { PayslipStatus } from "@platform/api-client";
 import { Alert, Button, Card, clusterClass, cx, Field, rowClass, SelectField } from "@platform/ui";
 
+import { formatWorkMinutes } from "./format";
 import { labels } from "./payslipInput";
 import { PayslipView } from "./PayslipView";
 import { usePayslipAdmin, type PayslipAdminModel, type PayslipAdminProps } from "./usePayslipAdmin";
@@ -49,6 +50,18 @@ export function PayslipAdminView(model: PayslipAdminModel) {
             />
           ))}
         </div>
+
+        {model.approvedWork.length > 0 && (
+          <div className={cx("border", "radius-1", "p-y-3", "p-x-4", "m-y-3")} aria-label="承認済みの勤怠">
+            <p className={cx("m-t-0")}>
+              この月の承認済みの勤怠:{" "}
+              {model.approvedWork.map((w) => `${w.projectName} ${formatWorkMinutes(w.workMinutes)}`).join("、")}
+            </p>
+            <Button variant="secondary" onClick={model.onFillFromApprovedWork}>
+              承認済みの勤怠から明細を入れる
+            </Button>
+          </div>
+        )}
 
         {draft.lines.map((line, i) => (
           <fieldset key={line.key} className={cx("border", "radius-1", "m-y-3")}>

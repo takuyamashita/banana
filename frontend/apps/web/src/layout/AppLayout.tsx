@@ -2,23 +2,39 @@ import { Alert, Button, buttonClass, clusterClass, cx, pageClass } from "@platfo
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
-/// 管理者のメニュー。URL ごとに画面が分かれる
-const adminMenu = [
-  { to: "/payslips", label: "給与明細" },
-  { to: "/staff", label: "派遣社員" },
-  { to: "/projects", label: "案件" },
-] as const;
+/// メニュー。URL ごとに画面が分かれる
+const menus = {
+  admin: {
+    label: "管理メニュー",
+    items: [
+      { to: "/payslips", label: "給与明細" },
+      { to: "/timesheets", label: "勤怠の承認" },
+      { to: "/staff", label: "派遣社員" },
+      { to: "/projects", label: "案件" },
+    ],
+  },
+  staff: {
+    label: "メニュー",
+    items: [
+      { to: "/me", label: "自分の給与明細" },
+      { to: "/timesheet", label: "勤怠" },
+    ],
+  },
+} as const;
 
-/// ログインした人の画面の枠。管理者にはメニューを出す
+/// どのメニューを出すか。派遣社員として登録されていない利用者には出さない
+export type Menu = keyof typeof menus | "none";
+
+/// ログインした人の画面の枠。管理者と派遣社員には、それぞれのメニューを出す
 export function AppLayout({
   email,
-  isAdmin,
+  menu,
   onSignOut,
   signOutError,
   children,
 }: {
   email: string;
-  isAdmin: boolean;
+  menu: Menu;
   onSignOut: () => void;
   signOutError: string | null;
   children: ReactNode;
@@ -33,9 +49,9 @@ export function AppLayout({
         </Button>
       </header>
       {signOutError && <Alert>{signOutError}</Alert>}
-      {isAdmin && (
-        <nav className={clusterClass()} aria-label="管理メニュー">
-          {adminMenu.map(({ to, label }) => (
+      {menu !== "none" && (
+        <nav className={clusterClass()} aria-label={menus[menu].label}>
+          {menus[menu].items.map(({ to, label }) => (
             <Link
               key={to}
               to={to}

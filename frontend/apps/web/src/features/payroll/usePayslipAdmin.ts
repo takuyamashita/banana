@@ -1,6 +1,7 @@
 import { fromJson } from "@bufbuild/protobuf";
 import { createConnectQueryKey, skipToken, useMutation, useQuery, useSuspenseQuery } from "@connectrpc/connect-query";
 import {
+  GetApprovedWorkRequestSchema,
   ListPayslipsRequestSchema,
   PayrollService,
   ProjectService,
@@ -11,7 +12,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useReducer, useState } from "react";
 
 import { errorMessage } from "../../lib/errors";
-import { draftReducer, initialDraft, toCreateRequest, type DraftAction } from "./payslipInput";
+import { draftPeriod, draftReducer, initialDraft, toCreateRequest, type DraftAction } from "./payslipInput";
 
 export interface PayslipAdminProps {
   /// 選んでいる派遣社員(URL の引数。一覧の要求の JSON 形)
@@ -32,6 +33,15 @@ export function usePayslipAdmin({ staffId, defaultPeriod, onSelectStaff }: Paysl
     staffId === undefined ? skipToken : fromJson(ListPayslipsRequestSchema, { staffId }),
   );
   const [draft, dispatch] = useReducer(draftReducer, defaultPeriod, initialDraft);
+  // 勤怠で承認された、選んだ派遣社員の入力中の月の稼働。明細行に入れられる(月が読めなければ取りに行かない)
+  const period = draftPeriod(draft);
+  const approved = useQuery(
+    PayrollService.method.getApprovedWork,
+    staffId === undefined || period === undefined
+      ? skipToken
+      : fromJson(GetApprovedWorkRequestSchema, { staffId, ...period }),
+  );
+  const approvedWork = approved.data?.work ?? [];
   const [inputError, setInputError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -72,8 +82,15 @@ export function usePayslipAdmin({ staffId, defaultPeriod, onSelectStaff }: Paysl
     busy: create.isPending || finalize.isPending,
     error: inputError ?? (serverError ? errorMessage(serverError) : null),
     notice,
+    /// 勤怠で承認された、入力中の月の案件ごとの稼働(なければ空)
+    approvedWork,
     onSelectStaff,
     onEdit: (action: DraftAction) => dispatch(action),
+    onFillFromApprovedWork: () =>
+      dispatch({
+        type: "fillFromApprovedWork",
+        work: approvedWork.map((w) => ({ projectId: String(w.projectId), workMinutes: String(w.workMinutes) })),
+      }),
     onCreate: () => {
       clearMessages();
       const result = toCreateRequest(staffId, draft);

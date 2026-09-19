@@ -36,7 +36,13 @@ const draft = (staffId: bigint, payslipId: bigint) =>
 
 /// 作成・確定・一覧は、このテストの中だけの給与明細の置き場を読み書きする
 function routes(
-  options: { rejectCreate?: ConnectError; received?: CreatePayslipRequest[]; hold?: Promise<void> } = {},
+  options: {
+    rejectCreate?: ConnectError;
+    received?: CreatePayslipRequest[];
+    hold?: Promise<void>;
+    /// 勤怠で承認された稼働(2026年9月分)
+    approved?: { projectId: bigint; projectName: string; workMinutes: number }[];
+  } = {},
 ) {
   const payslips: Payslip[] = [];
   return ({ service }: ConnectRouter) => {
@@ -57,6 +63,9 @@ function routes(
         return {};
       },
       listPayslips: () => ({ payslips }),
+      getApprovedWork: (req) => ({
+        work: req.payYear === 2026 && req.payMonth === 9 ? (options.approved ?? []) : [],
+      }),
     });
   };
 }
@@ -196,4 +205,43 @@ test("派遣社員を選び直すと、新しい一覧が届くまで前の人�
   release();
   expect(await screen.findByRole("button", { name: "派遣 花子の2026年9月分を確定する" })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /派遣 太郎/ })).not.toBeInTheDocument();
+});
+
+test("勤怠で承認された稼働から明細行を入れられる(時給は入力する)", async () => {
+  const received: CreatePayslipRequest[] = [];
+  await renderReady(
+    routes({
+      received,
+      approved: [
+        { projectId: 10n, projectName: "案件A", workMinutes: 9_600 },
+        { projectId: 11n, projectName: "案件B", workMinutes: 90 },
+      ],
+    }),
+  );
+  const user = userEvent.setup();
+
+  await user.selectOptions(screen.getByLabelText("派遣社員"), "1");
+  // 8月は承認された勤怠がない
+  expect(screen.queryByRole("button", { name: "承認済みの勤怠から明細を入れる" })).toBeNull();
+  await user.clear(screen.getByLabelText("月"));
+  await user.type(screen.getByLabelText("月"), "9");
+
+  expect(await screen.findByText("この月の承認済みの勤怠: 案件A 160時間、案件B 1時間30分")).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "承認済みの勤怠から明細を入れる" }));
+
+  const first = screen.getByRole("group", { name: "明細 1" });
+  const second = screen.getByRole("group", { name: "明細 2" });
+  expect(within(first).getByLabelText("案件")).toHaveValue("10");
+  expect(within(first).getByLabelText("稼働(分)")).toHaveValue("9600");
+  expect(within(second).getByLabelText("稼働(分)")).toHaveValue("90");
+  expect(within(first).getByLabelText("時給(円)")).toHaveValue("");
+  await user.type(within(first).getByLabelText("時給(円)"), "1501");
+  await user.type(within(second).getByLabelText("時給(円)"), "1500");
+  await user.click(screen.getByRole("button", { name: "作成する" }));
+
+  await screen.findByText(/給与明細 #\d+ を作成しました。/);
+  expect(received[0]?.lines.map((l) => [l.projectId, l.workMinutes, l.hourlyRate])).toEqual([
+    [10n, 9_600, 1_501n],
+    [11n, 90, 1_500n],
+  ]);
 });
