@@ -1,0 +1,65 @@
+{
+  "db_name": "MySQL",
+  "query": "select work_date, project_id, work_minutes from timesheet_entries\n         where timesheet_id = ? order by work_date, project_id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "work_date",
+        "type_info": {
+          "type": "Date",
+          "flags": "NOT_NULL | PRIMARY_KEY | BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 10
+        },
+        "origin": {
+          "Table": {
+            "table": "timesheet.timesheet_entries",
+            "name": "work_date"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "project_id",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | PRIMARY_KEY | MULTIPLE_KEY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 20
+        },
+        "origin": {
+          "Table": {
+            "table": "timesheet.timesheet_entries",
+            "name": "project_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "work_minutes",
+        "type_info": {
+          "type": "Long",
+          "flags": "NOT_NULL | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 11
+        },
+        "origin": {
+          "Table": {
+            "table": "timesheet.timesheet_entries",
+            "name": "work_minutes"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "6d16f5eb9302a490fc9c2e2a0cd4c6cd98bb154977f7605c4cd1dcc595d54fb5"
+}

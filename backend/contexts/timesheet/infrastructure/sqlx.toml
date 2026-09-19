@@ -1,0 +1,4 @@
+# query! がコンパイル時に見る DB。サービスごとにデータベースが別なので、環境変数もサービスごとに分ける
+# (オフラインのキャッシュ .sqlx/ を作るときだけ使う。mise run sqlx-prepare)
+[common]
+database-url-var = "TIMESHEET_DATABASE_URL"

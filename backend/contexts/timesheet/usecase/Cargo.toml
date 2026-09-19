@@ -1,0 +1,19 @@
+[package]
+name = "timesheet-usecase"
+version = "0.1.0"
+edition.workspace = true
+publish.workspace = true
+description = "timesheet のユースケースと、usecase 固有の外部依存 trait(ports)"
+
+[dependencies]
+async-trait.workspace = true
+platform-kernel.workspace = true
+thiserror.workspace = true
+time.workspace = true
+timesheet-domain.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+
+[lints]
+workspace = true

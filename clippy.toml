@@ -11,4 +11,7 @@ disallowed-methods = [
   { path = "payroll_domain::staff::Staff::reconstruct", reason = "記録からの組み立て直しはリポジトリ実装だけが呼ぶ" },
   { path = "payroll_domain::project::Project::reconstruct", reason = "記録からの組み立て直しはリポジトリ実装だけが呼ぶ" },
   { path = "payroll_domain::payout::Payout::reconstruct", reason = "記録からの組み立て直しはリポジトリ実装だけが呼ぶ" },
+  { path = "timesheet_domain::timesheet::Timesheet::reconstruct_draft", reason = "記録からの組み立て直しはリポジトリ実装だけが呼ぶ。新しく書き始めるなら Timesheet::start を使う" },
+  { path = "timesheet_domain::timesheet::Timesheet::reconstruct_submitted", reason = "記録からの組み立て直しはリポジトリ実装だけが呼ぶ。申告は DraftTimesheet::submit で行う" },
+  { path = "timesheet_domain::timesheet::Timesheet::reconstruct_approved", reason = "記録からの組み立て直しはリポジトリ実装だけが呼ぶ。承認は SubmittedTimesheet::approve で行う" },
 ]

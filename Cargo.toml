@@ -12,6 +12,9 @@ members = [
   "backend/contexts/payroll/usecase",
   "backend/contexts/payroll/infrastructure",
   "backend/contexts/payroll/handler",
+  "backend/contexts/timesheet/domain",
+  "backend/contexts/timesheet/usecase",
+  "backend/contexts/timesheet/infrastructure",
   "backend/services/payroll/bootstrap",
   "backend/services/payroll/server",
   "backend/services/payroll/migrate",
@@ -36,6 +39,9 @@ payroll-domain = { path = "backend/contexts/payroll/domain" }
 payroll-usecase = { path = "backend/contexts/payroll/usecase" }
 payroll-infrastructure = { path = "backend/contexts/payroll/infrastructure" }
 payroll-handler = { path = "backend/contexts/payroll/handler" }
+timesheet-domain = { path = "backend/contexts/timesheet/domain" }
+timesheet-usecase = { path = "backend/contexts/timesheet/usecase" }
+timesheet-infrastructure = { path = "backend/contexts/timesheet/infrastructure" }
 payroll-bootstrap = { path = "backend/services/payroll/bootstrap" }
 
 # 外部

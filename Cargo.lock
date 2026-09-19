@@ -3851,6 +3851,45 @@ dependencies = [
 ]
 
 [[package]]
+name = "timesheet-domain"
+version = "0.1.0"
+dependencies = [
+ "platform-kernel",
+ "thiserror",
+ "time",
+]
+
+[[package]]
+name = "timesheet-infrastructure"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "platform-db",
+ "platform-gen",
+ "platform-kernel",
+ "platform-telemetry",
+ "serde_json",
+ "sqlx",
+ "testcontainers-modules",
+ "time",
+ "timesheet-domain",
+ "timesheet-usecase",
+ "tokio",
+]
+
+[[package]]
+name = "timesheet-usecase"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "platform-kernel",
+ "thiserror",
+ "time",
+ "timesheet-domain",
+ "tokio",
+]
+
+[[package]]
 name = "tinystr"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"

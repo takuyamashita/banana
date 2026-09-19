@@ -60,6 +60,7 @@ run = "pnpm --filter web dev"
 description = "未適用のマイグレーションを当ててから、query! のオフラインキャッシュ(.sqlx/)を更新する"
 run = [
   "sqlx migrate run --source backend/contexts/payroll/infrastructure/migrations --database-url \"$PAYROLL_DATABASE_URL\"",
+  "sqlx migrate run --source backend/contexts/timesheet/infrastructure/migrations --database-url \"$TIMESHEET_DATABASE_URL\"",
   # sqlx-cli は DATABASE_URL がないと動かない。各 crate の query! は sqlx.toml の環境変数(サービスごとの DB)を見る
   "DATABASE_URL=\"$PAYROLL_DATABASE_URL\" cargo sqlx prepare --workspace",
 ]

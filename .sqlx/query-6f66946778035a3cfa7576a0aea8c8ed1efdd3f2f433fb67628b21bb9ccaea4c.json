@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "select id, name from projects order by id",
+  "query": "select id, user_id, name from staff where user_id = ?",
   "describe": {
     "columns": [
       {
@@ -14,13 +14,29 @@
         },
         "origin": {
           "Table": {
-            "table": "timesheet.projects",
+            "table": "timesheet.staff",
             "name": "id"
           }
         }
       },
       {
         "ordinal": 1,
+        "name": "user_id",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL | UNIQUE_KEY | NO_DEFAULT_VALUE",
+          "collation": 255,
+          "max_size": 256
+        },
+        "origin": {
+          "Table": {
+            "table": "timesheet.staff",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
         "name": "name",
         "type_info": {
           "type": "VarString",
@@ -30,19 +46,20 @@
         },
         "origin": {
           "Table": {
-            "table": "timesheet.projects",
+            "table": "timesheet.staff",
             "name": "name"
           }
         }
       }
     ],
     "parameters": {
-      "Right": 0
+      "Right": 1
     },
     "nullable": [
+      false,
       false,
       false
     ]
   },
-  "hash": "3626d8a3a0f681aef7d45013ce150d7d0f8cc6a4df34654c68bf4da16bb518dd"
+  "hash": "6f66946778035a3cfa7576a0aea8c8ed1efdd3f2f433fb67628b21bb9ccaea4c"
 }

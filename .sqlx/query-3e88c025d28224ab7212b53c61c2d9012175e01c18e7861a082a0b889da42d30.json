@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "delete from timesheet_entries where timesheet_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "3e88c025d28224ab7212b53c61c2d9012175e01c18e7861a082a0b889da42d30"
+}

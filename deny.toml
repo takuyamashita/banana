@@ -46,6 +46,8 @@ deny = [
   { crate = "sqlx", wrappers = [
     "payroll-infrastructure",
     "payroll-bootstrap",
+    "timesheet-infrastructure",
+    "timesheet-bootstrap",
     "platform-db",
     "platform-messaging",
     "platform-service",

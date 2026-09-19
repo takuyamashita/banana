@@ -58,6 +58,7 @@ jobs:
     env:
       APP_ENV: local
       PAYROLL_DATABASE_URL: mysql://payroll:payroll@127.0.0.1:3306/payroll
+      TIMESHEET_DATABASE_URL: mysql://timesheet:timesheet@127.0.0.1:3306/timesheet
     steps:
       - uses: actions/checkout@v7.0.1
       # mise は cargo 系ツールを並列に入れるので、rust-toolchain.toml の版を先に入れておく
@@ -72,6 +73,7 @@ jobs:
           # サービスごとのデータベースとユーザー(ローカルの compose と同じもの)
           mysql -h 127.0.0.1 -uroot -proot < compose/mysql-init.sql
           sqlx migrate run --source backend/contexts/payroll/infrastructure/migrations --database-url "$PAYROLL_DATABASE_URL"
+          sqlx migrate run --source backend/contexts/timesheet/infrastructure/migrations --database-url "$TIMESHEET_DATABASE_URL"
           SQLX_OFFLINE=false DATABASE_URL="$PAYROLL_DATABASE_URL" cargo sqlx prepare --workspace --check
       - name: test(nextest。DB 結合・API テストは testcontainers)
         run: mise run test:rust
