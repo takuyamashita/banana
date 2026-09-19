@@ -1,35 +1,43 @@
-import { PayslipStatus, type Payslip } from "@platform/api-client";
+import type { Payslip } from "@platform/api-client";
 
-const yen = new Intl.NumberFormat("ja-JP", { style: "currency", currency: "JPY" });
+import { formatWorkMinutes, statusLabel, yen } from "./format";
 
-export function PayslipView({ payslip, projectName }: { payslip: Payslip; projectName?: (id: bigint) => string }) {
+/// 給与明細1件の中身。案件名は明細を作った時点のもの
+export function PayslipView({ payslip }: { payslip: Payslip }) {
+  const title = `${payslip.payYear}年${payslip.payMonth}月分の給与明細`;
   return (
-    <div className="payslip" aria-label={`${payslip.payYear}年${payslip.payMonth}月分の給与明細`}>
+    <section className="payslip" aria-label={title}>
       <p>
-        {payslip.payYear}年{payslip.payMonth}月分 ・{" "}
-        {payslip.status === PayslipStatus.FINALIZED ? "確定済み" : "作成中"} ・ 合計{" "}
+        {payslip.payYear}年{payslip.payMonth}月分 ・ {statusLabel(payslip.status)} ・ 合計{" "}
         <strong data-testid="payslip-total">{yen.format(payslip.totalYen)}</strong>
       </p>
       <table>
         <thead>
           <tr>
-            <th>案件</th>
-            <th className="num">稼働(分)</th>
-            <th className="num">時給</th>
-            <th className="num">金額</th>
+            <th scope="col">案件</th>
+            <th scope="col" className="num">
+              稼働
+            </th>
+            <th scope="col" className="num">
+              時給
+            </th>
+            <th scope="col" className="num">
+              金額
+            </th>
           </tr>
         </thead>
         <tbody>
           {payslip.lines.map((line, i) => (
+            // 明細行に番号はなく、並びは作ったときのまま変わらないので、位置で見分ける
             <tr key={i}>
-              <td>{projectName ? projectName(line.projectId) : `#${line.projectId}`}</td>
-              <td className="num">{line.workMinutes}</td>
+              <td>{line.projectName}</td>
+              <td className="num">{formatWorkMinutes(line.workMinutes)}</td>
               <td className="num">{yen.format(line.hourlyRate)}</td>
               <td className="num">{yen.format(line.amountYen)}</td>
             </tr>
           ))}
         </tbody>
       </table>
-    </div>
+    </section>
   );
 }

@@ -1,17 +1,10 @@
 [extend]
 useDefault = true
 
-# ローカル開発専用のダミー値(compose の Keycloak・config/local.toml・.env.example)は検出対象外にする。
+# ローカル開発専用のダミー値(compose の Keycloak・config/local.toml・E2E のパスワードなど)は、
+# 今の既定のルールでは検出されないので許可リストに入れていない。検出されたら、そのファイルだけを足す
+# (ディレクトリごと外すと、そこに本物の秘密情報を書いても気づけない)。
 # 本番の秘密情報は Secrets Manager にあり、リポジトリには置かない
-[[allowlists]]
-description = "ローカル開発用のダミー認証情報"
-paths = [
-  '''^compose/keycloak-realm\.json$''',
-  '''^config/local\.toml$''',
-  '''^\.env\.example$''',
-  '''^scripts/smoke-test\.sh$''',
-  '''^e2e/''',
-]
 
 [[allowlists]]
 description = "トークン検証のテスト専用の署名鍵(どの認証基盤にも登録していない)"

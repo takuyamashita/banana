@@ -37,7 +37,7 @@ mise run dev-frontend             # Vite :5173
 | `mise run test`         | Rust(nextest。DB 結合・API テストは testcontainers)とフロント(Vitest) |
 | `mise run deps:stop`    | 依存サービスを止める(データは残す)                                    |
 | `mise run e2e`          | 依存サービス起動・マイグレーション・server/Vite 起動・Playwright      |
-| `mise run sqlx-prepare` | `query!` を変えたら .sqlx/ を更新する                                 |
+| `mise run sqlx-prepare` | マイグレーションか `query!` を変えたら、DB に当てて .sqlx/ を更新する |
 | `scripts/smoke-test.sh` | 起動中の server に grpcurl で主要シナリオを流す                       |
 | `mise run lambda-build` | payout-dispatcher の zip を作る                                       |
 | `mise run tf-plan`      | dev 環境の terraform plan                                             |

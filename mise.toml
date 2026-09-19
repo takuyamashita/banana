@@ -50,9 +50,11 @@ run = "cargo run -p server"
 description = "Viteの開発サーバーを起動"
 run = "pnpm --filter web dev"
 
+# マイグレーションは sqlx-cli で当てる。列を足して query! も変えたときは、キャッシュが古いままなので
+# infrastructure に依存する migrate がビルドできない
 [tasks.sqlx-prepare]
-description = "query! のオフラインキャッシュ(.sqlx/)を更新する。DB はマイグレーション済みであること"
-run = "cargo sqlx prepare --workspace"
+description = "未適用のマイグレーションを当ててから、query! のオフラインキャッシュ(.sqlx/)を更新する"
+run = ["sqlx migrate run --source backend/contexts/payroll/infrastructure/migrations", "cargo sqlx prepare --workspace"]
 env = { SQLX_OFFLINE = "false" }
 
 [tasks.migrate]
@@ -139,7 +141,7 @@ run = "pnpm --filter e2e exec playwright show-report"
 
 [tasks.lint]
 description = "全言語のlintを並列実行"
-depends = ["lint:rust", "lint:ts", "lint:proto", "lint:tf", "lint:docker", "lint:secrets"]
+depends = ["lint:rust", "lint:ts", "lint:proto", "lint:tf", "lint:docker", "lint:actions", "lint:secrets"]
 
 [tasks."lint:rust"]
 run = [
@@ -163,7 +165,12 @@ run = [
   "tflint --init --config \"$PWD/.tflint.hcl\"",
   "tflint --recursive --config \"$PWD/.tflint.hcl\"",
   "trivy config --quiet --exit-code 1 --severity HIGH,CRITICAL --ignorefile .trivyignore.yaml .",
+  # 型・参照・モジュールの引数の誤りは fmt や tflint では見つからない。state には触れない(-backend=false)
+  "for env in envs/*/; do terraform -chdir=\"$env\" init -backend=false -input=false >/dev/null && terraform -chdir=\"$env\" validate -no-color || exit 1; done",
 ]
+
+[tasks."lint:actions"]
+run = "actionlint"
 
 [tasks."lint:docker"]
 run = [

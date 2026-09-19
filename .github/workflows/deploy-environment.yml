@@ -111,7 +111,13 @@ jobs:
           aws ecs wait services-stable \
             --cluster "${{ steps.tf.outputs.ecs_cluster_name }}" --services "${{ steps.tf.outputs.ecs_service_name }}"
 
-      - name: フロントを S3 + CloudFront に配信(config.json は Terraform が置くので触らない)
+      # assets/ を先に置いてから index.html を差し替える(新しい index.html が、まだない assets/ を指さないように)。
+      # 古い assets/ は消さない。前の index.html を開いたままの画面が、後から読みに来る。
+      # config.json は Terraform が置くので触らない
+      - name: フロントを S3 + CloudFront に配信
+        env:
+          BUCKET: ${{ steps.tf.outputs.web_bucket_name }}
         run: |
-          aws s3 sync release/web "s3://${{ steps.tf.outputs.web_bucket_name }}" --delete --exclude config.json
-          aws cloudfront create-invalidation --distribution-id "${{ steps.tf.outputs.web_distribution_id }}" --paths "/index.html"
+          aws s3 sync release/web/assets "s3://$BUCKET/assets" --cache-control "public, max-age=31536000, immutable"
+          aws s3 sync release/web "s3://$BUCKET" --exclude "assets/*" --exclude config.json --cache-control "no-cache"
+          aws cloudfront create-invalidation --distribution-id "${{ steps.tf.outputs.web_distribution_id }}" --paths "/" "/index.html"

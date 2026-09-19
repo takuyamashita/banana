@@ -30,10 +30,14 @@ function isRuntimeConfig(value: unknown): value is RuntimeConfig {
   );
 }
 
-export async function loadRuntimeConfig(): Promise<RuntimeConfig> {
-  const res = await fetch("/config.json", { cache: "no-store" });
-  if (!res.ok) throw new Error(`failed to load /config.json: ${res.status}`);
-  const body: unknown = await res.json();
-  if (!isRuntimeConfig(body)) throw new Error("invalid /config.json");
+/// 実行時の設定(/config.json)を読む。読めなければ、画面に出せる文言の Error を投げる
+export async function loadRuntimeConfig(fetcher: typeof fetch = fetch): Promise<RuntimeConfig> {
+  const res = await fetcher("/config.json", { cache: "no-store" });
+  // 置き忘れると、配信の設定によっては index.html が 200 で返る。JSON でなければ置かれていないとみなす
+  if (!res.ok || !res.headers.get("content-type")?.includes("application/json")) {
+    throw new Error(`設定ファイル(/config.json)が見つかりません(HTTP ${res.status})。`);
+  }
+  const body: unknown = await res.json().catch(() => undefined);
+  if (!isRuntimeConfig(body)) throw new Error("設定ファイル(/config.json)の形式が正しくありません。");
   return body;
 }

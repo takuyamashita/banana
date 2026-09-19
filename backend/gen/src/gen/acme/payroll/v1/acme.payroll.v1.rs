@@ -79,7 +79,7 @@ pub struct Payslip {
     #[prost(message, repeated, tag="7")]
     pub lines: ::prost::alloc::vec::Vec<PayslipLine>,
 }
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct PayslipLine {
     #[prost(int64, tag="1")]
     pub project_id: i64,
@@ -89,6 +89,9 @@ pub struct PayslipLine {
     pub hourly_rate: i64,
     #[prost(int64, tag="4")]
     pub amount_yen: i64,
+    /// 給与明細を作った時点の案件名。後で案件名が変わっても変わらない
+    #[prost(string, tag="5")]
+    pub project_name: ::prost::alloc::string::String,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]

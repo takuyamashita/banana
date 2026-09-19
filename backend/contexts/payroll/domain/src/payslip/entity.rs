@@ -220,11 +220,12 @@ mod tests {
 
     use super::*;
     use crate::payslip::{HourlyRate, WorkMinutes};
-    use crate::project::ProjectId;
+    use crate::project::{ProjectId, ProjectName};
 
     fn line(minutes: u32, rate: i64) -> PayslipLine {
         PayslipLine::new(
             ProjectId::from_i64(1).unwrap(),
+            ProjectName::new("案件A").unwrap(),
             WorkMinutes::from_minutes(minutes).unwrap(),
             HourlyRate::from_yen(rate).unwrap(),
         )

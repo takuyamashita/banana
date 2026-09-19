@@ -22,12 +22,13 @@ struct UnsavedHasNoId;
 ///
 /// ```compile_fail
 /// use payroll_domain::payslip::{HourlyRate, PayPeriod, Payslip, PayslipId, PayslipLine, WorkMinutes};
-/// use payroll_domain::project::ProjectId;
+/// use payroll_domain::project::{ProjectId, ProjectName};
 /// use payroll_domain::staff::StaffId;
 /// use time::OffsetDateTime;
 ///
 /// let line = PayslipLine::new(
 ///     ProjectId::from_i64(1).unwrap(),
+///     ProjectName::new("新宿の倉庫").unwrap(),
 ///     WorkMinutes::from_minutes(600).unwrap(),
 ///     HourlyRate::from_yen(1_500).unwrap(),
 /// )
@@ -40,12 +41,13 @@ struct UnsavedHasNoId;
 ///
 /// ```compile_fail
 /// use payroll_domain::payslip::{HourlyRate, PayPeriod, Payslip, PayslipId, PayslipLine, WorkMinutes};
-/// use payroll_domain::project::ProjectId;
+/// use payroll_domain::project::{ProjectId, ProjectName};
 /// use payroll_domain::staff::StaffId;
 /// use time::OffsetDateTime;
 ///
 /// let line = PayslipLine::new(
 ///     ProjectId::from_i64(1).unwrap(),
+///     ProjectName::new("新宿の倉庫").unwrap(),
 ///     WorkMinutes::from_minutes(600).unwrap(),
 ///     HourlyRate::from_yen(1_500).unwrap(),
 /// )
@@ -58,12 +60,13 @@ struct UnsavedHasNoId;
 ///
 /// ```
 /// use payroll_domain::payslip::{HourlyRate, PayPeriod, Payslip, PayslipId, PayslipLine, WorkMinutes};
-/// use payroll_domain::project::ProjectId;
+/// use payroll_domain::project::{ProjectId, ProjectName};
 /// use payroll_domain::staff::StaffId;
 /// use time::OffsetDateTime;
 ///
 /// let line = PayslipLine::new(
 ///     ProjectId::from_i64(1).unwrap(),
+///     ProjectName::new("新宿の倉庫").unwrap(),
 ///     WorkMinutes::from_minutes(600).unwrap(),
 ///     HourlyRate::from_yen(1_500).unwrap(),
 /// )
@@ -84,12 +87,13 @@ struct UnsavedPayslipCannotBeFinalized;
 ///
 /// ```compile_fail
 /// use payroll_domain::payslip::{HourlyRate, PayPeriod, Payslip, PayslipId, PayslipLine, WorkMinutes};
-/// use payroll_domain::project::ProjectId;
+/// use payroll_domain::project::{ProjectId, ProjectName};
 /// use payroll_domain::staff::StaffId;
 /// use time::OffsetDateTime;
 ///
 /// let line = PayslipLine::new(
 ///     ProjectId::from_i64(1).unwrap(),
+///     ProjectName::new("新宿の倉庫").unwrap(),
 ///     WorkMinutes::from_minutes(600).unwrap(),
 ///     HourlyRate::from_yen(1_500).unwrap(),
 /// )
@@ -103,12 +107,13 @@ struct UnsavedPayslipCannotBeFinalized;
 ///
 /// ```compile_fail
 /// use payroll_domain::payslip::{HourlyRate, PayPeriod, Payslip, PayslipId, PayslipLine, WorkMinutes};
-/// use payroll_domain::project::ProjectId;
+/// use payroll_domain::project::{ProjectId, ProjectName};
 /// use payroll_domain::staff::StaffId;
 /// use time::OffsetDateTime;
 ///
 /// let line = PayslipLine::new(
 ///     ProjectId::from_i64(1).unwrap(),
+///     ProjectName::new("新宿の倉庫").unwrap(),
 ///     WorkMinutes::from_minutes(600).unwrap(),
 ///     HourlyRate::from_yen(1_500).unwrap(),
 /// )
@@ -125,12 +130,13 @@ struct UnsavedPayslipCannotBeFinalized;
 ///
 /// ```
 /// use payroll_domain::payslip::{HourlyRate, PayPeriod, Payslip, PayslipId, PayslipLine, WorkMinutes};
-/// use payroll_domain::project::ProjectId;
+/// use payroll_domain::project::{ProjectId, ProjectName};
 /// use payroll_domain::staff::StaffId;
 /// use time::OffsetDateTime;
 ///
 /// let line = PayslipLine::new(
 ///     ProjectId::from_i64(1).unwrap(),
+///     ProjectName::new("新宿の倉庫").unwrap(),
 ///     WorkMinutes::from_minutes(600).unwrap(),
 ///     HourlyRate::from_yen(1_500).unwrap(),
 /// )

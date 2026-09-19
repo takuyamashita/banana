@@ -54,11 +54,11 @@ jobs:
           mise run lambda-build
           cp target/lambda/payout-dispatcher/bootstrap.zip release/payout-dispatcher.zip
 
-      - name: フロントをビルド(config.json は環境ごとに Terraform が置くので含めない)
+      # config.json は環境ごとに Terraform が置く(ビルド成果物には入らない)
+      - name: フロントをビルド
         run: |
           pnpm install --frozen-lockfile
           pnpm --filter web build
-          rm -f frontend/apps/web/dist/config.json
           cp -r frontend/apps/web/dist release/web
 
       - uses: actions/upload-artifact@v7.0.1

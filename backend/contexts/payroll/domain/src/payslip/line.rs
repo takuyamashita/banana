@@ -1,13 +1,15 @@
 use platform_kernel::Money;
 
 use super::{HourlyRate, PayslipError, WorkMinutes};
-use crate::project::ProjectId;
+use crate::project::{ProjectId, ProjectName};
 
 /// 給与明細の1行。どの案件で、どれだけ働き、時給はいくらだったか
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PayslipLine {
     /// 稼働した案件
     project_id: ProjectId,
+    /// 給与明細を作った時点の案件名。後で案件名が変わっても、作った明細の表記は変えない
+    project_name: ProjectName,
     /// その案件での、この月の稼働時間
     work_minutes: WorkMinutes,
     /// その案件での時給
@@ -20,18 +22,25 @@ impl PayslipLine {
     /// 明細行を作り、支給額を決める(1,001円で15分なら 250.25円 → 250円)
     pub fn new(
         project_id: ProjectId,
+        project_name: ProjectName,
         work_minutes: WorkMinutes,
         hourly_rate: HourlyRate,
     ) -> Result<Self, PayslipError> {
         let yen = i64::from(hourly_rate.as_yen()) * i64::from(work_minutes.as_minutes()) / 60;
         let amount = Money::from_yen(yen)
             .map_err(|_| PayslipError::InvalidHourlyRate { max: HourlyRate::MAX_YEN })?;
-        Ok(Self { project_id, work_minutes, hourly_rate, amount })
+        Ok(Self { project_id, project_name, work_minutes, hourly_rate, amount })
     }
 
     #[must_use]
     pub fn project_id(&self) -> ProjectId {
         self.project_id
+    }
+
+    /// 給与明細を作った時点の案件名
+    #[must_use]
+    pub fn project_name(&self) -> &ProjectName {
+        &self.project_name
     }
 
     #[must_use]
@@ -58,6 +67,7 @@ mod tests {
     fn line(minutes: u32, rate: i64) -> PayslipLine {
         PayslipLine::new(
             ProjectId::from_i64(1).unwrap(),
+            ProjectName::new("案件A").unwrap(),
             WorkMinutes::from_minutes(minutes).unwrap(),
             HourlyRate::from_yen(rate).unwrap(),
         )

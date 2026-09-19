@@ -39,6 +39,9 @@ test("管理者が作成して確定した給与明細を、本人がログイ�
   await new LoginPage(staffPage).login(staff.email, staff.temporaryPassword, "New-pass-12345");
   await expect(staffPage.getByRole("heading", { name: "自分の給与明細" })).toBeVisible();
   await expect(staffPage.getByTestId("payslip-total")).toHaveText("￥242,410");
+  // 明細行には案件名と、時間で表した稼働が出る
+  await expect(staffPage.getByRole("cell", { name: project.name })).toHaveCount(2);
+  await expect(staffPage.getByRole("cell", { name: "160時間" })).toBeVisible();
 });
 
 // 画面は自分の給与明細しか取りに行かないので、ここで確かめるのは「他人の明細が自分の画面に出ない」こと。

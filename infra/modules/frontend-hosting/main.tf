@@ -1,5 +1,8 @@
 # SPA を S3(非公開)+ CloudFront(OAC)で配信する。
-# ビルド成果物は全環境で同一にし、環境ごとの差は config.json だけにする(ここで生成して置く)
+# ビルド成果物は全環境で同一にし、環境ごとの差は config.json だけにする(ここで生成して置く)。
+#
+# キャッシュの長さは置くときの Cache-Control で決める(デプロイのワークフロー)。
+# ファイル名にハッシュが入る assets/ は1年、index.html は毎回確かめる
 resource "aws_s3_bucket" "this" {
   bucket = var.bucket_name
 }
@@ -57,12 +60,13 @@ resource "aws_cloudfront_distribution" "this" {
   }
 
   default_cache_behavior {
-    target_origin_id       = "s3"
-    viewer_protocol_policy = "redirect-to-https"
-    allowed_methods        = ["GET", "HEAD"]
-    cached_methods         = ["GET", "HEAD"]
-    cache_policy_id        = data.aws_cloudfront_cache_policy.optimized.id
-    compress               = true
+    target_origin_id           = "s3"
+    viewer_protocol_policy     = "redirect-to-https"
+    allowed_methods            = ["GET", "HEAD"]
+    cached_methods             = ["GET", "HEAD"]
+    cache_policy_id            = data.aws_cloudfront_cache_policy.optimized.id
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.this.id
+    compress                   = true
   }
 
   # config.json は環境ごとに差し替えるのでキャッシュしない
@@ -75,12 +79,8 @@ resource "aws_cloudfront_distribution" "this" {
     cache_policy_id        = data.aws_cloudfront_cache_policy.disabled.id
   }
 
-  # SPA: 存在しないパスは index.html を返す
-  custom_error_response {
-    error_code         = 403
-    response_code      = 200
-    response_page_path = "/index.html"
-  }
+  # 画面の切り替えは URL を変えないので、存在しないパスを index.html に振り替えない。
+  # 振り替えると、置き忘れた config.json や消えた assets/ にも 200 で HTML が返り、原因が見えなくなる
 
   restrictions {
     geo_restriction {
@@ -92,6 +92,58 @@ resource "aws_cloudfront_distribution" "this" {
     acm_certificate_arn      = var.certificate_arn
     ssl_support_method       = "sni-only"
     minimum_protocol_version = "TLSv1.2_2021"
+  }
+}
+
+locals {
+  # 画面が話す相手(API・認証基盤)のオリジン。config.json と同じ値から作るので、ずれない
+  connect_origins = distinct(concat(
+    [for url in compact([
+      var.runtime_config.apiBaseUrl,
+      var.runtime_config.oidc.authority,
+      var.runtime_config.oidc.endSessionEndpoint,
+      var.runtime_config.oidc.revocationEndpoint,
+    ]) : regex("^https?://[^/]+", url)],
+    var.extra_connect_origins,
+  ))
+  content_security_policy = join("; ", [
+    "default-src 'self'",
+    "connect-src 'self' ${join(" ", local.connect_origins)}",
+    "img-src 'self' data:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+  ])
+}
+
+# ブラウザに守ってもらう決まり。スクリプトとスタイルは自分のオリジンのファイルだけ
+# (ビルド成果物にインラインのスクリプト・スタイルはない)。他のサイトの枠の中には表示させない
+resource "aws_cloudfront_response_headers_policy" "this" {
+  name = "${var.bucket_name}-security"
+
+  security_headers_config {
+    content_security_policy {
+      content_security_policy = local.content_security_policy
+      override                = true
+    }
+    strict_transport_security {
+      access_control_max_age_sec = 31536000
+      include_subdomains         = true
+      override                   = true
+    }
+    content_type_options {
+      override = true
+    }
+    frame_options {
+      frame_option = "DENY"
+      override     = true
+    }
+    # ログインから戻った直後の URL には認可コードが載る。他のサイトに Referer で渡さない
+    referrer_policy {
+      referrer_policy = "same-origin"
+      override        = true
+    }
   }
 }
 

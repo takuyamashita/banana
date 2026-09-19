@@ -1,12 +1,11 @@
 use payroll_domain::payslip::{
-    HourlyRate, PayPeriod, Payslip, PayslipError, PayslipId, PayslipLine, PayslipStatus,
-    WorkMinutes,
+    HourlyRate, PayPeriod, Payslip, PayslipError, PayslipId, PayslipStatus, WorkMinutes,
 };
 use payroll_domain::project::ProjectId;
 use payroll_domain::staff::StaffId;
 use payroll_usecase::payslip::{
-    CreatePayslipInput, CreatePayslipUseCase, FinalizePayslipUseCase, GetPayslipUseCase,
-    ListPayslipsUseCase,
+    CreatePayslipInput, CreatePayslipLine, CreatePayslipUseCase, FinalizePayslipUseCase,
+    GetPayslipUseCase, ListPayslipsUseCase,
 };
 use platform_gen::acme::payroll::v1 as proto;
 use tonic::{Request, Response, Status};
@@ -56,12 +55,13 @@ impl proto::payroll_service_server::PayrollService for PayrollServiceHandler {
         let lines = req
             .lines
             .into_iter()
-            .map(|l| -> Result<PayslipLine, Status> {
-                let project_id = ProjectId::from_i64(l.project_id).map_err(invalid_argument)?;
-                let work_minutes =
-                    WorkMinutes::from_minutes(l.work_minutes).map_err(invalid_argument)?;
-                let hourly_rate = HourlyRate::from_yen(l.hourly_rate).map_err(invalid_argument)?;
-                PayslipLine::new(project_id, work_minutes, hourly_rate).map_err(invalid_argument)
+            .map(|l| -> Result<CreatePayslipLine, Status> {
+                Ok(CreatePayslipLine {
+                    project_id: ProjectId::from_i64(l.project_id).map_err(invalid_argument)?,
+                    work_minutes: WorkMinutes::from_minutes(l.work_minutes)
+                        .map_err(invalid_argument)?,
+                    hourly_rate: HourlyRate::from_yen(l.hourly_rate).map_err(invalid_argument)?,
+                })
             })
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -137,6 +137,7 @@ fn to_proto(p: &Payslip) -> proto::Payslip {
             .iter()
             .map(|l| proto::PayslipLine {
                 project_id: l.project_id().as_i64(),
+                project_name: l.project_name().as_str().to_owned(),
                 work_minutes: l.work_minutes().as_minutes(),
                 hourly_rate: i64::from(l.hourly_rate().as_yen()),
                 amount_yen: l.amount().as_yen(),

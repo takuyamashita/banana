@@ -34,10 +34,13 @@ export async function signOut(manager: UserManager, config: RuntimeConfig): Prom
 
 // 認可コードは1回しか交換できない。StrictMode の開発時は effect が2回走るので、
 // 同じ UserManager に対する復元処理は最初の Promise を使い回す
-const sessions = new WeakMap<UserManager, Promise<User | null>>();
+const sessions = new WeakMap<SessionSource, Promise<User | null>>();
 
-/// ログイン後のリダイレクト(?code=...)なら処理してから、現在のユーザーを返す
-export function restoreSession(manager: UserManager): Promise<User | null> {
+/// ログイン状態の復元に使う UserManager の操作
+type SessionSource = Pick<UserManager, "signinRedirectCallback" | "getUser" | "signinSilent">;
+
+/// ログイン後のリダイレクトなら処理してから、現在のユーザーを返す。ログインしていなければ null
+export function restoreSession(manager: SessionSource): Promise<User | null> {
   let session = sessions.get(manager);
   if (!session) {
     session = restore(manager);
@@ -46,13 +49,30 @@ export function restoreSession(manager: UserManager): Promise<User | null> {
   return session;
 }
 
-async function restore(manager: UserManager): Promise<User | null> {
+/// ログインから戻ってきたが、ログインできなかった(IdP が断った・認可コードを交換できなかった)
+export class SignInError extends Error {
+  constructor(cause: unknown) {
+    super("ログインできませんでした。もう一度お試しください。", { cause });
+  }
+}
+
+async function restore(manager: SessionSource): Promise<User | null> {
   const params = new URLSearchParams(window.location.search);
-  if (params.has("code") && params.has("state")) {
-    const user = await manager.signinRedirectCallback();
-    window.history.replaceState({}, "", window.location.pathname);
-    return user;
+  // IdP からの戻りは、成功なら ?code=...&state=...、断られたら ?error=...&state=...
+  if (params.has("state") && (params.has("code") || params.has("error"))) {
+    try {
+      return await manager.signinRedirectCallback();
+    } catch (err) {
+      throw new SignInError(err);
+    } finally {
+      // 成否によらず消す(失敗したコードで再読み込みのたびに交換し直さない)
+      window.history.replaceState({}, "", window.location.pathname);
+    }
   }
   const user = await manager.getUser();
-  return user && !user.expired ? user : null;
+  if (!user) return null;
+  if (!user.expired) return user;
+  // アクセストークンが切れていても、リフレッシュトークンが生きていればログインし直さずに続ける
+  if (!user.refresh_token) return null;
+  return manager.signinSilent().catch(() => null);
 }

@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use payroll_domain::payslip::{PayPeriod, Payslip, PayslipId, PayslipLine};
+use payroll_domain::payslip::{
+    HourlyRate, PayPeriod, Payslip, PayslipId, PayslipLine, WorkMinutes,
+};
+use payroll_domain::project::ProjectId;
 use payroll_domain::staff::StaffId;
 
 use crate::UseCaseError;
@@ -16,7 +19,17 @@ pub struct CreatePayslipInput {
     /// 対象月
     pub period: PayPeriod,
     /// 案件ごとの稼働と時給
-    pub lines: Vec<PayslipLine>,
+    pub lines: Vec<CreatePayslipLine>,
+}
+
+/// 明細行として管理者が入力する内容。案件名は入力させず、作成時点の登録内容から取る
+pub struct CreatePayslipLine {
+    /// 稼働した案件
+    pub project_id: ProjectId,
+    /// その案件での、この月の稼働時間
+    pub work_minutes: WorkMinutes,
+    /// その案件での時給
+    pub hourly_rate: HourlyRate,
 }
 
 /// 管理者が、派遣社員1人の1か月分の給与明細を作成中として作る。
@@ -49,17 +62,24 @@ impl CreatePayslipUseCase {
         if self.staff.find(input.staff_id).await?.is_none() {
             return Err(UseCaseError::InvalidInput("派遣社員が存在しません".into()));
         }
-        for line in &input.lines {
-            if self.projects.find(line.project_id()).await?.is_none() {
+        let mut lines = Vec::with_capacity(input.lines.len());
+        for line in input.lines {
+            let Some(project) = self.projects.find(line.project_id).await? else {
                 return Err(UseCaseError::InvalidInput("案件が存在しません".into()));
-            }
+            };
+            lines.push(PayslipLine::new(
+                line.project_id,
+                project.name().clone(),
+                line.work_minutes,
+                line.hourly_rate,
+            )?);
         }
         let existing = self.payslips.list_by_staff(input.staff_id).await?;
         if existing.iter().any(|p| p.content().period() == input.period) {
             return Err(UseCaseError::Conflict("この月の給与明細は既にあります".into()));
         }
 
-        let draft = Payslip::draft(input.staff_id, input.period, input.lines)?;
+        let draft = Payslip::draft(input.staff_id, input.period, lines)?;
         let mut db = self.db.connection().await?;
         match self.payslips.insert(&mut db, &draft).await {
             Ok(id) => Ok(id),

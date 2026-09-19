@@ -80,6 +80,7 @@ async fn seed(db: &TestDb) -> (StaffId, ProjectId) {
 fn line(project: ProjectId, minutes: u32, rate: i64) -> PayslipLine {
     PayslipLine::new(
         project,
+        ProjectName::new("案件A").unwrap(),
         WorkMinutes::from_minutes(minutes).unwrap(),
         HourlyRate::from_yen(rate).unwrap(),
     )
@@ -147,6 +148,7 @@ async fn finalized_payslip_and_its_event_are_committed_together() {
     let Payslip::Finalized(finalized) = &found else { panic!("確定済みのはず: {found:?}") };
     assert_eq!(finalized.finalized_at(), FINALIZED_AT);
     assert_eq!(found.content().lines().len(), 2);
+    assert_eq!(found.content().lines()[0].project_name().as_str(), "案件A");
     // 600分×1500/60 = 15,000 と 45分×1001/60 = 750.75 → 750
     assert_eq!(found.content().total().as_yen(), 15_750);
 

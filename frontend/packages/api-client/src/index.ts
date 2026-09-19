@@ -1,5 +1,5 @@
 // proto から buf generate した型とサービス記述子(src/gen)を、使いやすい形で公開する
-import { createClient, type Client, type Interceptor } from "@connectrpc/connect";
+import { createClient, type Client, type Interceptor, type Transport } from "@connectrpc/connect";
 import { createGrpcWebTransport } from "@connectrpc/connect-web";
 
 import { PayrollService } from "./gen/acme/payroll/v1/payroll_pb";
@@ -9,24 +9,16 @@ import { StaffService } from "./gen/acme/payroll/v1/staff_pb";
 export * from "./gen/acme/payroll/v1/payroll_pb";
 export * from "./gen/acme/payroll/v1/project_pb";
 export * from "./gen/acme/payroll/v1/staff_pb";
-export { Code, ConnectError } from "@connectrpc/connect";
-
-export interface ApiClients {
-  payroll: Client<typeof PayrollService>;
-  staff: Client<typeof StaffService>;
-  project: Client<typeof ProjectService>;
-}
+export { Code, ConnectError, type Transport } from "@connectrpc/connect";
 
 export interface ApiOptions {
   baseUrl: string;
   /// リクエストごとにアクセストークンを返す。未ログインなら undefined
   getAccessToken: () => Promise<string | undefined>;
-  /// fetch を差し替える(テストで MSW を使うときなど)
-  fetch?: typeof globalThis.fetch;
 }
 
-/// サーバー(tonic + tonic-web)とは gRPC-Web で話す
-export function createApiClients(options: ApiOptions): ApiClients {
+/// サーバー(tonic + tonic-web)とは gRPC-Web で話す。画面は connect-query にこの transport を渡す
+export function createApiTransport(options: ApiOptions): Transport {
   const auth: Interceptor = (next) => async (req) => {
     const token = await options.getAccessToken();
     if (token) {
@@ -34,11 +26,18 @@ export function createApiClients(options: ApiOptions): ApiClients {
     }
     return next(req);
   };
-  const transport = createGrpcWebTransport({
-    baseUrl: options.baseUrl,
-    interceptors: [auth],
-    fetch: options.fetch,
-  });
+  return createGrpcWebTransport({ baseUrl: options.baseUrl, interceptors: [auth] });
+}
+
+export interface ApiClients {
+  payroll: Client<typeof PayrollService>;
+  staff: Client<typeof StaffService>;
+  project: Client<typeof ProjectService>;
+}
+
+/// 画面を通さずに API を呼ぶクライアント(E2E のテストデータ投入など)
+export function createApiClients(options: ApiOptions): ApiClients {
+  const transport = createApiTransport(options);
   return {
     payroll: createClient(PayrollService, transport),
     staff: createClient(StaffService, transport),

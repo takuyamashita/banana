@@ -3,7 +3,7 @@ use payroll_domain::payslip::{
     FinalizedPayslip, HourlyRate, NewPayslip, PayPeriod, Payslip, PayslipId, PayslipLine,
     WorkMinutes,
 };
-use payroll_domain::project::ProjectId;
+use payroll_domain::project::{ProjectId, ProjectName};
 use payroll_domain::staff::StaffId;
 use payroll_usecase::ports::database::Db;
 use payroll_usecase::ports::repository::{PayslipRepository, RepositoryError};
@@ -34,6 +34,7 @@ struct JoinedRow {
     status: String,
     finalized_at: Option<PrimitiveDateTime>,
     project_id: i64,
+    project_name: String,
     work_minutes: u32,
     hourly_rate: i64,
 }
@@ -44,7 +45,7 @@ impl PayslipRepository for MySqlPayslipRepository {
         let rows = sqlx::query_as!(
             JoinedRow,
             "select p.id, p.staff_id, p.pay_year, p.pay_month, p.status, p.finalized_at,
-                    l.project_id, l.work_minutes, l.hourly_rate
+                    l.project_id, l.project_name, l.work_minutes, l.hourly_rate
              from payslips p
              join payslip_lines l on l.payslip_id = p.id
              where p.id = ?
@@ -62,7 +63,7 @@ impl PayslipRepository for MySqlPayslipRepository {
         let rows = sqlx::query_as!(
             JoinedRow,
             "select p.id, p.staff_id, p.pay_year, p.pay_month, p.status, p.finalized_at,
-                    l.project_id, l.work_minutes, l.hourly_rate
+                    l.project_id, l.project_name, l.work_minutes, l.hourly_rate
              from payslips p
              join payslip_lines l on l.payslip_id = p.id
              where p.staff_id = ? and p.superseded_at is null
@@ -85,7 +86,7 @@ impl PayslipRepository for MySqlPayslipRepository {
         let rows = sqlx::query_as!(
             JoinedRow,
             "select p.id, p.staff_id, p.pay_year, p.pay_month, p.status, p.finalized_at,
-                    l.project_id, l.work_minutes, l.hourly_rate
+                    l.project_id, l.project_name, l.work_minutes, l.hourly_rate
              from payslips p
              join payslip_lines l on l.payslip_id = p.id
              where p.id = ?
@@ -121,10 +122,11 @@ impl PayslipRepository for MySqlPayslipRepository {
 
         for line in new.content().lines() {
             sqlx::query!(
-                "insert into payslip_lines (payslip_id, project_id, work_minutes, hourly_rate)
-                 values (?, ?, ?, ?)",
+                "insert into payslip_lines (payslip_id, project_id, project_name, work_minutes, hourly_rate)
+                 values (?, ?, ?, ?, ?)",
                 payslip_id.as_i64(),
                 line.project_id().as_i64(),
+                line.project_name().as_str(),
                 line.work_minutes().as_minutes(),
                 line.hourly_rate().as_yen(),
             )
@@ -171,6 +173,7 @@ fn assemble(rows: Vec<JoinedRow>) -> Result<Vec<Payslip>, RepositoryError> {
         // 壊れたデータから不正な集約が組み立つのを防ぐ
         let line = PayslipLine::new(
             ProjectId::from_i64(row.project_id).map_err(corrupted)?,
+            ProjectName::new(row.project_name.as_str()).map_err(corrupted)?,
             WorkMinutes::from_minutes(row.work_minutes).map_err(corrupted)?,
             HourlyRate::from_yen(row.hourly_rate).map_err(corrupted)?,
         )

@@ -17,8 +17,9 @@ use payroll_domain::project::{NewProject, Project, ProjectId, ProjectName};
 use payroll_domain::staff::{DisplayName, NewStaff, Staff, StaffId};
 use payroll_usecase::UseCaseError;
 use payroll_usecase::payslip::{
-    CreatePayslipInput, CreatePayslipUseCase, FinalizePayslipUseCase, GetPayslipUseCase,
-    ListPayslipsUseCase, RequestPayoutInput, RequestPayoutResult, RequestPayoutUseCase,
+    CreatePayslipInput, CreatePayslipLine, CreatePayslipUseCase, FinalizePayslipUseCase,
+    GetPayslipUseCase, ListPayslipsUseCase, RequestPayoutInput, RequestPayoutResult,
+    RequestPayoutUseCase,
 };
 use payroll_usecase::ports::clock::Clock;
 use payroll_usecase::ports::database::{Database, Db, DbHandle, Transaction};
@@ -279,7 +280,7 @@ impl ProjectRepository for FakeProjects {
             .records()
             .projects
             .contains(&id)
-            .then(|| Project::reconstruct(id, ProjectName::new("案件").unwrap())))
+            .then(|| Project::reconstruct(id, project_name(id))))
     }
 
     async fn insert(&self, db: &mut Db, _new: &NewProject) -> Result<ProjectId, RepositoryError> {
@@ -436,13 +437,21 @@ fn payout_input(payslip: i64, key: &str) -> RequestPayoutInput {
     }
 }
 
-fn line() -> PayslipLine {
-    PayslipLine::new(
-        ProjectId::from_i64(1).unwrap(),
-        WorkMinutes::from_minutes(600).unwrap(),
-        HourlyRate::from_yen(1_200).unwrap(),
-    )
-    .unwrap()
+/// フェイクの案件の名前
+fn project_name(id: ProjectId) -> ProjectName {
+    ProjectName::new(format!("案件{}", id.as_i64())).unwrap()
+}
+
+fn line_for(project: i64) -> CreatePayslipLine {
+    CreatePayslipLine {
+        project_id: ProjectId::from_i64(project).unwrap(),
+        work_minutes: WorkMinutes::from_minutes(600).unwrap(),
+        hourly_rate: HourlyRate::from_yen(1_200).unwrap(),
+    }
+}
+
+fn line() -> CreatePayslipLine {
+    line_for(1)
 }
 
 fn input(staff: i64, month: u8) -> CreatePayslipInput {
@@ -473,6 +482,16 @@ async fn create_makes_a_draft_payslip() {
 }
 
 #[tokio::test]
+async fn create_keeps_the_project_name_at_that_time() {
+    let world = Arc::new(World::with_staff(&[(1, "taro")]));
+
+    create_usecase(&world).execute(input(1, 9)).await.unwrap();
+
+    let lines = world.records().payslips[0].lines.clone();
+    assert_eq!(lines[0].project_name().as_str(), "案件1");
+}
+
+#[tokio::test]
 async fn create_rejects_unknown_staff() {
     let world = Arc::new(World::default());
     let err = create_usecase(&world).execute(input(1, 9)).await.unwrap_err();
@@ -482,15 +501,8 @@ async fn create_rejects_unknown_staff() {
 #[tokio::test]
 async fn create_rejects_unknown_project() {
     let world = Arc::new(World::with_staff(&[(1, "taro")]));
-    let unknown = PayslipLine::new(
-        ProjectId::from_i64(99).unwrap(),
-        WorkMinutes::from_minutes(600).unwrap(),
-        HourlyRate::from_yen(1_200).unwrap(),
-    )
-    .unwrap();
-
     let err = create_usecase(&world)
-        .execute(CreatePayslipInput { lines: vec![line(), unknown], ..input(1, 9) })
+        .execute(CreatePayslipInput { lines: vec![line(), line_for(99)], ..input(1, 9) })
         .await
         .unwrap_err();
 

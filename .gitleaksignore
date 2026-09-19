@@ -1,0 +1,2 @@
+# 履歴にだけ残っている誤検出(冪等キーの文字列を API キーと見なした)。今のコードでは行末の gitleaks:allow で外している
+cad5c3dfda3687bb6c25c55a3ef0c0ccca1aed02:backend/app/lambdas/payout-dispatcher/src/lib.rs:generic-api-key:147

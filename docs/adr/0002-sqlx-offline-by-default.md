@@ -6,7 +6,7 @@
 ## 決定
 
 mise の `[env]` で `SQLX_OFFLINE=true` を既定にし、コミット済みの `.sqlx/` でコンパイルする。
-クエリを変えたら `mise run sqlx-prepare` でキャッシュを更新し、CI の `cargo sqlx prepare --check` で更新漏れを弾く。
+クエリを変えたら `mise run sqlx-prepare` でキャッシュを更新し(未適用のマイグレーションは sqlx-cli で先に当てる。列を足してクエリも変えたときは、古いキャッシュのままでは migrate 自体がビルドできないため)、CI の `cargo sqlx prepare --check` で更新漏れを弾く。
 
 ## 理由
 

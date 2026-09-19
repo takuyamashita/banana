@@ -83,6 +83,8 @@ PAYSLIP_ID=$(call "$ADMIN" PayrollService/CreatePayslip "$CREATE" | id_of .paysl
 check_id "給与明細の作成" "$PAYSLIP_ID"
 check "作成直後は作成中" "PAYSLIP_STATUS_DRAFT" \
   "$(call "$ADMIN" PayrollService/GetPayslip "{\"payslip_id\":$PAYSLIP_ID}")"
+check "明細行に作成時点の案件名が残る" "\"projectName\": \"案件-$SUFFIX\"" \
+  "$(call "$ADMIN" PayrollService/GetPayslip "{\"payslip_id\":$PAYSLIP_ID}")"
 check "同じ月の作成は AlreadyExists" "AlreadyExists" "$(call "$ADMIN" PayrollService/CreatePayslip "$CREATE")"
 check "月=257 は InvalidArgument(as キャストなら1月になる)" "InvalidArgument" \
   "$(call "$ADMIN" PayrollService/CreatePayslip "{\"staff_id\":$TARO_ID,\"pay_year\":2026,\"pay_month\":257,\"lines\":$LINES}")"

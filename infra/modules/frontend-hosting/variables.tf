@@ -27,3 +27,9 @@ variable "runtime_config" {
     })
   })
 }
+
+variable "extra_connect_origins" {
+  description = "config.json に載らないが画面が話す相手のオリジン(ディスカバリが別のホストのトークン発行先を返す IdP など)"
+  type        = list(string)
+  default     = []
+}
