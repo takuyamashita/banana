@@ -48,8 +48,12 @@
 
 - **出来事は集約に溜めず、操作の戻り値で返す**: 当初は集約が `events` に出来事を溜め、リポジトリの `insert` が `take_events()` で取り出して outbox に書いていた。
   - この形だと、取り出し忘れ(`update` 側で outbox に書き忘れるなど)をコンパイラが検出できない。集約の記録と outbox の記録がリポジトリの中に隠れ、ユースケースを読んでも出来事の流れが追えない。
-  - `finalize()` が `Result<PayslipEvent, _>` を返す形(cqrs-es などの Decider パターン)にした。
-  - `PayslipEvent`・`PayrollEvent` に `#[must_use]` を付け、workspace の lints で `unused_must_use = "deny"` にした。`new.finalize()?;` のように `?` で包んで捨てた場合も検出されることを確認した。
+  - `finalize()` が出来事を戻り値で返す形(cqrs-es などの Decider パターン)にした。
+  - `PayslipEvent`・`PayrollEvent` に `#[must_use]` を付け、workspace の lints で `unused_must_use = "deny"` にした。`Result<PayslipEvent, _>` を `?` で包んで捨てた場合も、`(FinalizedPayslip, PayslipEvent)` のタプルごと捨てた場合も検出される(「unused `PayslipEvent` in tuple element 1」)ことを確認した。
+- **給与明細の状態を型で分ける**: 当初は `status` フィールドを持つ1つの型で、`finalize(&mut self)` が作成中かを実行時に確かめ、確定済みなら `AlreadyFinalized` を返していた。
+  - 作成中と確定済みを別の型(`DraftPayslip`・`FinalizedPayslip`。共通部分は `PayslipIn<State, Id>` に1回だけ書く)にし、`finalize(self) -> (FinalizedPayslip, PayslipEvent)` は作成中の型にだけ置いた。確定済みに `finalize` を呼ぶとコンパイルエラー(E0599)になることを compile_fail の doc テストで固定し、`AlreadyFinalized` はなくした。
+  - DB から読み出した給与明細は状態が実行時にしか分からないので、`enum Payslip { Draft, Finalized }` で包む。`NewPayslip::draft`・`Payslip::reconstruct`・各アクセサの呼び方は変わらず、変更は domain と確定のユースケースとテストだけで済んだ。
+  - Rust では `&mut self` の書き換えも所有権で1か所に限られるので、「元を消費して新しいものを返す」こと自体の利点は小さい。消費する形にしたのは、戻り値の型を変える(状態を型で表す)ためだけ。
 - **リポジトリは書き込み先を受け取り、トランザクションを張るかは usecase が決める**: ガイドの「1トランザクションで複数集約を更新しない」は、1つのユースケースで複数の集約を扱う場面が出ると守れない。制約は「コンテキストをまたいで1トランザクションで更新しない」に緩めた。
   - 採用した形:
     - usecase は `Database` から書き込み先を用意する。一緒に確定させたい記録は `transaction()` に書いて `commit()`、1件だけ書くときは `connection()` に書く。
