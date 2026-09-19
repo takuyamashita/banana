@@ -1,15 +1,22 @@
-import type { RouterContext } from "./lib/context";
-import { createAppRouter } from "./router";
+import type { AnyRoute } from "@tanstack/react-router";
+
+import { routeTree } from "./routeTree.gen";
+
+/// ルートの下のルートをすべて並べる
+function descendants(route: AnyRoute): AnyRoute[] {
+  const children: AnyRoute[] = Object.values(route.children ?? {});
+  return children.flatMap((child) => [child, ...descendants(child)]);
+}
 
 test("ログインした人の画面は、どれもどのシステム(給与・勤怠)のものかを決めている", () => {
-  // ルートの ID(/_app/me など)は、ルーターを作るときに決まる。画面は開かないので、中身の要る context は渡さない
-  const { routesById } = createAppRouter({} as RouterContext);
-  const pages = Object.values(routesById).filter((route) => route.id.startsWith("/_app/") && route.options.component);
+  const app = descendants(routeTree).find((route) => "id" in route.options && route.options.id === "/_app");
+  const pages = descendants(app ?? routeTree).filter((route) => route.options.component);
 
   expect(pages.length).toBeGreaterThan(0);
   for (const page of pages) {
-    expect({ id: page.id, system: page.options.staticData?.system }).toEqual({
-      id: page.id,
+    const path: unknown = "path" in page.options ? page.options.path : undefined;
+    expect({ path, system: page.options.staticData?.system }).toEqual({
+      path,
       system: expect.stringMatching(/^(payroll|timesheet)$/),
     });
   }
