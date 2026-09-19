@@ -22,12 +22,15 @@ lefthook install
 cp .env.example .env
 docker compose up -d --wait       # MySQL・Keycloak・ElasticMQ・SeaweedFS・Jaeger
 mise run gen                      # proto → Rust・TS
-mise run migrate                  # 空の DB からでも通る(query! は .sqlx/ のキャッシュでコンパイルする)
-mise run dev-backend              # gRPC(+ gRPC-Web)サーバー :50051
+mise run migrate                  # 給与・勤怠の DB に流す(query! は .sqlx/ のキャッシュでコンパイルする)
+mise run dev-backend              # gRPC(+ gRPC-Web)サーバー: 給与 :50051・勤怠 :50052
 mise run dev-frontend             # Vite :5173
 ```
 
 ブラウザで http://localhost:5173 を開き、`admin@example.com` / `password` でログインする。
+
+勤怠(timesheet)サービスを足す前の版から更新したときは、`mise run db:reset` でローカルの DB を作り直す
+(データベースがサービスごと(`payroll`・`timesheet`)になり、初回の起動時にだけ作られるため)。
 
 ## よく使うコマンド
 
@@ -41,12 +44,15 @@ mise run dev-frontend             # Vite :5173
 | `mise run e2e:video`    | 動作確認の動画(mp4)を e2e/videos-out/ に撮る(台本は e2e/videos/。`-- e2e/videos/pr/12/` で指定したものだけ)                 |
 | `mise run pr:video`     | 今のブランチの PR の台本(e2e/videos/pr/<PR 番号>/)で動画を撮り、PR に貼る(gh の `--attach`。初回は本文、撮り直しはコメント) |
 | `mise run sqlx-prepare` | マイグレーションか `query!` を変えたら、DB に当てて .sqlx/ を更新する                                                       |
-| `scripts/smoke-test.sh` | 起動中の server に grpcurl で主要シナリオを流す                                                                             |
+| `mise run smoke`        | 起動中の server(給与・勤怠)に grpcurl で主要シナリオと、サービスをまたぐ出来事の流れを流す                                  |
 | `mise run lambda-build` | payout-dispatcher の zip を作る                                                                                             |
 | `mise run tf-plan`      | dev 環境の terraform plan                                                                                                   |
 
-非同期側(outbox → SQS → Lambda)をローカルで動かすには、server を起動した状態で
-`cargo run -p payout-dispatcher --bin local_poller` を実行する(ElasticMQ をポーリングして Lambda と同じ処理を呼ぶ。振込の結果は `payouts` テーブルに残り、5回処理できなかったメッセージは `payroll-events-dlq.fifo` に移る)。
+サービスの間の出来事(給与 ⇄ 勤怠)は、server(`mise run dev-backend`)が自分のキューを読むので、両方を起動すれば流れる。
+ローカルには SNS がないので、relay が受け手のキュー(ElasticMQ)へ直接送る(`config/<サービス>/local.toml` の `publish_queue_urls`)。
+
+振込(給与明細の確定 → Lambda)をローカルで動かすには、server を起動した状態で
+`cargo run -p payout-dispatcher --bin local_poller` を実行する(ElasticMQ をポーリングして Lambda と同じ処理を呼ぶ。振込の結果は `payouts` テーブルに残り、5回処理できなかったメッセージは `payroll-payout-dlq.fifo` に移る)。
 Lambda 本体は `cargo lambda watch -p payout-dispatcher` と
 `cargo lambda invoke payout-dispatcher --data-file backend/services/payroll/payout-dispatcher/events/sqs-payslip-finalized.json` で確認できる。
 
@@ -62,10 +68,10 @@ mise run worktree:list                 # worktree ごとのスロットとポー
 mise run worktree:remove -- feature-x  # worktree と compose(データも)を片付ける。ブランチは残す
 ```
 
-- スロットは 1〜9(main は 0)。ポートは「既定値 + スロット × 100」(スロット 1 なら API :50151・画面 :5273・Keycloak :8180・MySQL :3406)。
+- スロットは 1〜9(main は 0)。ポートは「既定値 + スロット × 100」(スロット 1 なら給与 :50151・勤怠 :50152・画面 :5273・Keycloak :8180・MySQL :3406)。
 - 名前はブランチ名。既にあるブランチならそれを checkout し、なければ作る。ディレクトリ名と compose のプロジェクト名では `/` などを `-` にし、小文字にする(`feature/X` → `banana-feature-x`)。
 - 画面はその worktree の `WEB_PORT` で開く(スロット 1 なら http://localhost:5273)。
-- 値(`COMPOSE_NAME` と各ポート、server の接続先の `DATABASE_URL`・`APP__*`)は worktree の `.env` にある。
+- 値(`COMPOSE_NAME` と各ポート、server の接続先の `PAYROLL__*`・`TIMESHEET__*`)は worktree の `.env` にある。
   `docker compose` はプロジェクトの `.env` を自分で読み、mise も読んで環境変数で渡すので、そのディレクトリでそのまま使える。
 - `target/` は worktree ごとに作られるので、初回の cargo ビルドには時間がかかる。
 - `worktree:remove` は、そのディレクトリのブランチが指定の名前と一致し、コミットしていない変更がないときだけ進む(`feature/x` と `feature-x` は同じディレクトリ名になるので、取り違えて消さないため)。
@@ -78,23 +84,28 @@ mise run worktree:remove -- feature-x  # worktree と compose(データも)を�
 3. GitHub の Environments を作る: `dev`・`stg`・`prod`(変数 `AWS_DEPLOY_ROLE_ARN`)と `dev-plan`・`stg-plan`・`prod-plan`(変数 `AWS_PLAN_ROLE_ARN`)。
    値は bootstrap の出力。`stg`・`prod` には承認者(Required reviewers)を付ける。
 4. 各環境を apply し(最初の1回は管理者が手元から。以後は deploy ワークフロー)、振込 API のキーを Secrets Manager に入れる。
-5. deploy ワークフローを実行する。migrate がテーブルと、アプリが接続する DB ユーザー(読み書きだけ)を作る。
-   それまで server は DB に接続できない。
+5. deploy ワークフローを実行する。サービスごとの migrate が、そのサービスのデータベース・テーブルと、
+   アプリが接続する DB ユーザー(そのデータベースの読み書きだけ)を作る。それまで server は DB に接続できない。
 
 ## 構成
 
 ```text
-proto/acme/payroll/v1/        API 契約(buf)
+proto/acme/{payroll,timesheet}/v1/          サービスの API 契約(buf)
+proto/acme/{payroll,timesheet}/events/v1/   サービスの間の出来事の約束
 backend/
-  contexts/payroll/{domain,usecase,infrastructure,handler}   レイヤーごとの crate
-  shared/{kernel,telemetry,auth}                            最小限の共通値・OTel・OIDC 検証
-  gen/                                                      proto 生成コード
-  app/{bootstrap,server,migrate,lambdas/payout-dispatcher}  組み立てと実行ファイル
+  contexts/{payroll,timesheet}/{domain,usecase,infrastructure,handler}   コンテキストごと・レイヤーごとの crate
+  shared/{kernel,telemetry,auth}                                  最小限の共通値・OTel・OIDC 検証と認証の入口
+  shared/{db,messaging,service}                                   DB 接続・出来事の送受信・サービスの起動と停止
+  gen/                                                            proto 生成コード
+  services/payroll/{bootstrap,server,migrate,payout-dispatcher}   給与サービスの組み立てと実行ファイル
+  services/timesheet/{bootstrap,server,migrate}                   勤怠サービスの組み立てと実行ファイル
+  Dockerfile                                                      サービスごとのイメージ(SERVICE で選ぶ)
+config/{payroll,timesheet}/      サービスごとの設定(環境変数 PAYROLL__…・TIMESHEET__… で上書き)
 frontend/apps/web                Vite + React + TanStack Router(routes/ が画面の URL。依存の向きは .dependency-cruiser.cjs)
-frontend/packages/{api-client,ui}  ui は部品と CSS(styles/ の層: reset・tokens・base・utilities)
+frontend/packages/{api-client,ui}  api-client はサービスごとの宛先に振り分ける transport。ui は部品と CSS
 infra/bootstrap                  アカウントに1回だけ作るもの(state・成果物の置き場、GitHub Actions のロール)
 infra/modules/stack              1つの環境の組み立て(環境ごとの差は規模と保護の強さだけ)
-infra/modules/{network,database,backend-service,lambda-function,frontend-hosting,auth,messaging}
+infra/modules/{network,database,load-balancer,backend-service,event-topic,event-queue,lambda-function,frontend-hosting,auth}
 infra/envs/{dev,stg,prod}        modules/stack に値を渡すだけ
 e2e/                             Playwright
 ```
