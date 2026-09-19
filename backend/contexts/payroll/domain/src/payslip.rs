@@ -12,9 +12,7 @@ mod line;
 mod pay_period;
 mod work_minutes;
 
-pub use self::entity::{
-    Draft, DraftPayslip, Finalized, FinalizedPayslip, NewPayslip, Payslip, PayslipIn, PayslipStatus,
-};
+pub use self::entity::{DraftPayslip, FinalizedPayslip, NewPayslip, Payslip, PayslipStatus};
 pub use self::error::PayslipError;
 pub use self::event::PayslipEvent;
 pub use self::id::PayslipId;
