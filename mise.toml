@@ -68,9 +68,35 @@ run = ["cargo nextest run --workspace", "cargo test --doc --workspace --quiet"]
 # E2E は mise run e2e で別に回す(依存サービスと server が要る)
 run = "pnpm -r --filter '!e2e' --if-present test"
 
+[tasks."e2e:prepare"]
+description = "E2E の依存サービスを起動してマイグレーション"
+run = ["docker compose up -d --wait mysql keycloak elasticmq", "cargo run -p migrate"]
+
 [tasks.e2e]
 description = "DB起動・マイグレーション後にPlaywright"
-run = ["docker compose up -d --wait mysql keycloak elasticmq", "cargo run -p migrate", "pnpm --filter e2e test"]
+depends = ["e2e:prepare"]
+run = "pnpm --filter e2e test"
+
+# 画面を見ながら動かす。引数は Playwright に渡る(例: mise run e2e:headed -- -g 作成中)
+[tasks."e2e:ui"]
+description = "Playwright の UI モード(テストの一覧・手順ごとの画面を見ながら実行)"
+depends = ["e2e:prepare"]
+run = "pnpm --filter e2e exec playwright test --ui"
+
+[tasks."e2e:headed"]
+description = "ブラウザを表示して実行。E2E_SLOW_MO(ミリ秒)で操作を遅くできる(既定 500)"
+depends = ["e2e:prepare"]
+env = { E2E_SLOW_MO = "{{ get_env(name='E2E_SLOW_MO', default='500') }}" }
+run = "pnpm --filter e2e exec playwright test --headed --workers=1"
+
+[tasks."e2e:debug"]
+description = "Playwright Inspector で1手順ずつ止めながら実行"
+depends = ["e2e:prepare"]
+run = "pnpm --filter e2e exec playwright test --debug"
+
+[tasks."e2e:report"]
+description = "直近の実行結果(失敗時のトレース)を見る"
+run = "pnpm --filter e2e exec playwright show-report"
 
 [tasks.lint]
 description = "全言語のlintを並列実行"
