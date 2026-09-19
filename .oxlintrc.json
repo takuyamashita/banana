@@ -5,7 +5,7 @@
     "correctness": "error",
     "suspicious": "warn"
   },
-  "ignorePatterns": ["**/gen/**", "**/dist/**", "target/**", "e2e/playwright-report/**"],
+  "ignorePatterns": ["**/gen/**", "**/routeTree.gen.ts", "**/dist/**", "target/**", "e2e/playwright-report/**"],
   "rules": {
     "react/react-in-jsx-scope": "off",
     "import/no-unassigned-import": [

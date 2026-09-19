@@ -17,3 +17,5 @@ plugins:
     out: frontend/packages/api-client/src/gen
     opt:
       - target=ts
+      # メッセージの JSON 形の型(<Message>Json)も作る。URL の引数やフォームの入力を、この型で扱う
+      - json_types=true

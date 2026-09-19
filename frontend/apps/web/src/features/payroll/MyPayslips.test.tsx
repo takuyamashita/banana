@@ -3,10 +3,10 @@ import { PayrollService, PayslipSchema, PayslipStatus } from "@platform/api-clie
 import { screen } from "@testing-library/react";
 
 import { renderWithApi } from "../../test-utils";
-import { MyPayslips } from "./MyPayslips";
+import { MyPayslipsPage } from "./MyPayslips";
 
 test("確定した給与明細がまだなければ、そう伝える", async () => {
-  renderWithApi(<MyPayslips staffId={1n} />, ({ service }) => {
+  renderWithApi(<MyPayslipsPage staffId={1n} />, ({ service }) => {
     service(PayrollService, { listPayslips: () => ({ payslips: [] }) });
   });
 
@@ -14,7 +14,7 @@ test("確定した給与明細がまだなければ、そう伝える", async ()
 });
 
 test("明細行には作った時点の案件名を出す", async () => {
-  renderWithApi(<MyPayslips staffId={1n} />, ({ service }) => {
+  renderWithApi(<MyPayslipsPage staffId={1n} />, ({ service }) => {
     service(PayrollService, {
       listPayslips: () => ({
         payslips: [

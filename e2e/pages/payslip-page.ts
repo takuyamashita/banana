@@ -11,7 +11,7 @@ export class PayslipPage {
   constructor(private readonly page: Page) {}
 
   async open() {
-    await this.page.getByRole("button", { name: "給与明細" }).click();
+    await this.page.getByRole("link", { name: "給与明細" }).click();
   }
 
   async create(staffLabel: string, year: number, month: number, lines: LineValues[]) {

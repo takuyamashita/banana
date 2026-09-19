@@ -10,10 +10,11 @@ import {
   type Payslip,
 } from "@platform/api-client";
 import { screen, within } from "@testing-library/react";
+import { useState } from "react";
 import userEvent from "@testing-library/user-event";
 
 import { renderWithApi } from "../../test-utils";
-import { PayslipAdmin } from "./PayslipAdmin";
+import { PayslipAdminPage } from "./PayslipAdmin";
 
 const taro = { staffId: 1n, email: "taro@example.com", displayName: "派遣 太郎" };
 const hanako = { staffId: 2n, email: "hanako@example.com", displayName: "派遣 花子" };
@@ -60,6 +61,12 @@ function routes(
   };
 }
 
+/// URL の代わりに、選んでいる派遣社員を state で持つ(本番はルートが URL の引数から渡す)
+function Page() {
+  const [staffId, setStaffId] = useState<string | undefined>(undefined);
+  return <PayslipAdminPage staffId={staffId} defaultPeriod={{ year: 2026, month: 8 }} onSelectStaff={setStaffId} />;
+}
+
 async function fillLine(user: ReturnType<typeof userEvent.setup>, minutes: string) {
   await user.selectOptions(await screen.findByLabelText("派遣社員"), "1");
   await user.clear(screen.getByLabelText("年"));
@@ -72,7 +79,7 @@ async function fillLine(user: ReturnType<typeof userEvent.setup>, minutes: strin
 }
 
 async function renderReady(r: ReturnType<typeof routes>) {
-  renderWithApi(<PayslipAdmin />, r);
+  renderWithApi(<Page />, r);
   await screen.findByRole("option", { name: "派遣 太郎(taro@example.com)" });
   await screen.findByRole("option", { name: "案件A" });
 }
@@ -162,7 +169,7 @@ test("派遣社員を選び直すと、新しい一覧が届くまで前の人�
   const hanakoListed = new Promise<void>((resolve) => {
     release = resolve;
   });
-  renderWithApi(<PayslipAdmin />, ({ service }) => {
+  renderWithApi(<Page />, ({ service }) => {
     service(StaffService, { listStaff: () => ({ staff: [taro, hanako] }) });
     service(ProjectService, { listProjects: () => ({ projects }) });
     service(PayrollService, {

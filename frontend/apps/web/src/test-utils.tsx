@@ -2,7 +2,7 @@ import { createRouterTransport, type ConnectRouter } from "@connectrpc/connect";
 import { TransportProvider } from "@connectrpc/connect-query";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { render } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 
 import { createQueryClient } from "./lib/query";
 
@@ -17,7 +17,10 @@ export function renderWithApi(
   const queryClient = createQueryClient(options.onUnauthenticated ?? (() => {}));
   return render(
     <TransportProvider transport={transport}>
-      <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
+      <QueryClientProvider client={queryClient}>
+        {/* 画面は useSuspenseQuery でデータを待つ(本番ではルートの loader が先に取っておく) */}
+        <Suspense fallback={<output>読み込み中…</output>}>{ui}</Suspense>
+      </QueryClientProvider>
     </TransportProvider>,
   );
 }

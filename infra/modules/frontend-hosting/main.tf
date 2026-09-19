@@ -60,6 +60,15 @@ data "aws_cloudfront_cache_policy" "disabled" {
   name = "Managed-CachingDisabled"
 }
 
+# 画面の URL を index.html に置き換える(ビューアーリクエストで、キャッシュを引く前に)
+resource "aws_cloudfront_function" "spa_rewrite" {
+  name    = "${var.bucket_name}-spa-rewrite"
+  runtime = "cloudfront-js-2.0"
+  comment = "画面の URL を index.html に置き換える"
+  publish = true
+  code    = file("${path.module}/spa-rewrite.js")
+}
+
 resource "aws_cloudfront_distribution" "this" {
   enabled             = true
   default_root_object = "index.html"
@@ -81,6 +90,11 @@ resource "aws_cloudfront_distribution" "this" {
     cache_policy_id            = data.aws_cloudfront_cache_policy.optimized.id
     response_headers_policy_id = aws_cloudfront_response_headers_policy.this.id
     compress                   = true
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.spa_rewrite.arn
+    }
   }
 
   # config.json は環境ごとに差し替えるのでキャッシュしない
@@ -93,8 +107,9 @@ resource "aws_cloudfront_distribution" "this" {
     cache_policy_id        = data.aws_cloudfront_cache_policy.disabled.id
   }
 
-  # 画面の切り替えは URL を変えないので、存在しないパスを index.html に振り替えない。
-  # 振り替えると、置き忘れた config.json や消えた assets/ にも 200 で HTML が返り、原因が見えなくなる
+  # 見つからないとき(403・404)に index.html を返す設定(custom_error_response)は使わない。
+  # 置き忘れた config.json や消えた assets/ にも 200 で HTML が返り、原因が見えなくなる。
+  # 画面の URL だけを、spa_rewrite で index.html に置き換える
 
   restrictions {
     geo_restriction {

@@ -1,3 +1,4 @@
+import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import react from "@vitejs/plugin-react";
 import { loadEnv, type Connect, type Plugin } from "vite";
 import { defineConfig } from "vitest/config";
@@ -29,7 +30,8 @@ const localRuntimeConfig = (): Plugin => {
 };
 
 export default defineConfig({
-  plugins: [react(), localRuntimeConfig()],
+  // ルーターのプラグインは react より前に置く(src/routes/ から src/routeTree.gen.ts を作り、画面ごとにコードを分ける)
+  plugins: [tanstackRouter({ target: "react", autoCodeSplitting: true }), react(), localRuntimeConfig()],
   server: { port: port("WEB_PORT", 5173), strictPort: true },
   preview: { port: port("WEB_PORT", 5173), strictPort: true },
   test: {

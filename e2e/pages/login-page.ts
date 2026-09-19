@@ -6,6 +6,11 @@ export class LoginPage {
 
   async login(email: string, password: string, newPassword?: string) {
     await this.page.goto("/");
+    await this.signIn(email, password, newPassword);
+  }
+
+  /// ログイン画面が出ている状態から、IdP でログインしてアプリに戻る
+  async signIn(email: string, password: string, newPassword?: string) {
     await this.page.getByRole("button", { name: "ログイン" }).click();
     await this.page.locator("#username").fill(email);
     await this.page.locator("#password").fill(password);

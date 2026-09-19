@@ -87,7 +87,7 @@ backend/
   shared/{kernel,telemetry,auth}                            最小限の共通値・OTel・OIDC 検証
   gen/                                                      proto 生成コード
   app/{bootstrap,server,migrate,lambdas/payout-dispatcher}  組み立てと実行ファイル
-frontend/apps/web                Vite + React(features/ 間の import は oxlint で禁止)
+frontend/apps/web                Vite + React + TanStack Router(routes/ が画面の URL、features/ 間の import は oxlint で禁止)
 frontend/packages/{api-client,ui}
 infra/bootstrap                  アカウントに1回だけ作るもの(state・成果物の置き場、GitHub Actions のロール)
 infra/modules/stack              1つの環境の組み立て(環境ごとの差は規模と保護の強さだけ)

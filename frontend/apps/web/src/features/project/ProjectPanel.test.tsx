@@ -3,11 +3,11 @@ import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { renderWithApi } from "../../test-utils";
-import { ProjectPanel } from "./ProjectPanel";
+import { ProjectPage } from "./ProjectPanel";
 
 test("登録すると一覧に加わる", async () => {
   const projects: Omit<Project, "$typeName">[] = [{ projectId: 1n, name: "案件A" }];
-  renderWithApi(<ProjectPanel />, ({ service }) => {
+  renderWithApi(<ProjectPage />, ({ service }) => {
     service(ProjectService, {
       listProjects: () => ({ projects }),
       createProject: ({ name }) => {
