@@ -1,0 +1,8 @@
+# 勤怠(timesheet)サービスの prd 環境。インフラが決める値(issuer・Cognito の ID・トピック・キュー・CORS の許可元・シークレット ID)は
+# Terraform が環境変数(TIMESHEET__*)で渡すので、ここには書かない
+[auth]
+provider = "cognito"
+
+[telemetry]
+# ADOT collector(ECS はサイドカー)
+otlp_endpoint = "http://localhost:4317"

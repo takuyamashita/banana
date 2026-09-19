@@ -51,6 +51,9 @@ deny = [
     "platform-db",
     "platform-messaging",
     "platform-service",
+    # API テストが DB を直接確かめる(dev-dependencies だけ)
+    "payroll-server",
+    "timesheet-server",
   ] },
 ]
 

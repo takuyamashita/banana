@@ -15,10 +15,14 @@ members = [
   "backend/contexts/timesheet/domain",
   "backend/contexts/timesheet/usecase",
   "backend/contexts/timesheet/infrastructure",
+  "backend/contexts/timesheet/handler",
   "backend/services/payroll/bootstrap",
   "backend/services/payroll/server",
   "backend/services/payroll/migrate",
   "backend/services/payroll/payout-dispatcher",
+  "backend/services/timesheet/bootstrap",
+  "backend/services/timesheet/server",
+  "backend/services/timesheet/migrate",
 ]
 
 [workspace.package]
@@ -42,7 +46,9 @@ payroll-handler = { path = "backend/contexts/payroll/handler" }
 timesheet-domain = { path = "backend/contexts/timesheet/domain" }
 timesheet-usecase = { path = "backend/contexts/timesheet/usecase" }
 timesheet-infrastructure = { path = "backend/contexts/timesheet/infrastructure" }
+timesheet-handler = { path = "backend/contexts/timesheet/handler" }
 payroll-bootstrap = { path = "backend/services/payroll/bootstrap" }
+timesheet-bootstrap = { path = "backend/services/timesheet/bootstrap" }
 
 # 外部
 anyhow = "1.0.104"

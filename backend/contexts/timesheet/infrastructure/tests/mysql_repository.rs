@@ -277,6 +277,7 @@ async fn approval_is_recorded_with_its_event_in_the_published_shape() {
 
     ApproveTimesheetUseCase::new(
         repo.clone(),
+        Arc::new(MySqlStaffRepository::new(db.pool.clone())),
         Arc::new(MySqlEventOutbox),
         Arc::new(MySqlDatabase::new(db.pool.clone())),
         Arc::new(SystemClock),

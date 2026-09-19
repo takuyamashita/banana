@@ -56,6 +56,7 @@ async fn test_auth(mut request: Request, next: Next) -> Response {
 
 struct Api {
     channel: Channel,
+    pool: sqlx::MySqlPool,
     _container: ContainerAsync<Mysql>,
 }
 
@@ -77,6 +78,7 @@ async fn api() -> Api {
     payroll_infrastructure::MIGRATOR.run(&pool).await.unwrap();
 
     let handlers = payroll_bootstrap::build_handlers(&pool, Arc::new(FakeDirectory));
+    let events_pool = pool.clone();
     let router = tonic::service::Routes::new(
         proto::payroll_service_server::PayrollServiceServer::new(handlers.payroll),
     )
@@ -90,7 +92,7 @@ async fn api() -> Api {
     tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
 
     let channel = Channel::from_shared(format!("http://{addr}")).unwrap().connect().await.unwrap();
-    Api { channel, _container: container }
+    Api { channel, pool: events_pool, _container: container }
 }
 
 fn as_user<T>(message: T, sub: &str, roles: &str) -> GrpcRequest<T> {
@@ -333,4 +335,53 @@ async fn every_rpc_requires_login_and_admin_only_rpcs_reject_staff() {
             assert_ne!(code, Some(Code::Unauthenticated), "{rpc} は派遣社員も呼べる");
         }
     }
+}
+
+#[tokio::test]
+async fn approved_work_from_timesheet_is_shown_to_admins_for_the_payslip() {
+    use platform_messaging::consumer::Handler as _;
+
+    let api = api().await;
+    let (taro, _, project) = setup(&api).await;
+    let mut client = PayrollServiceClient::new(api.channel.clone());
+    let september =
+        || proto::GetApprovedWorkRequest { staff_id: taro, pay_year: 2026, pay_month: 9 };
+
+    // まだ承認されていなければ空
+    let none = client.get_approved_work(admin(september())).await.unwrap().into_inner();
+    assert!(none.work.is_empty());
+
+    // 勤怠から「勤務表が承認された」が届く(relay が送るのと同じ封筒。ペイロードは proto の JSON 形)
+    let body = serde_json::json!({
+        "event_id": 7,
+        "event_type": "timesheet.approved",
+        "aggregate_type": "timesheet",
+        "aggregate_id": 1,
+        "payload": {
+            "timesheetId": "1",
+            "staffId": taro.to_string(),
+            "year": 2026,
+            "month": 9,
+            "work": [{ "projectId": project.to_string(), "workMinutes": 9600 }],
+            "approvedAt": "2026-10-01T10:00:00Z",
+        },
+    })
+    .to_string();
+    let handler = payroll_bootstrap::build_event_handler(&api.pool);
+    handler.handle(&body).await.unwrap();
+    // 同じ出来事が2回届いても、記録は変わらない
+    handler.handle(&body).await.unwrap();
+
+    let work = client.get_approved_work(admin(september())).await.unwrap().into_inner().work;
+    assert_eq!(work.len(), 1);
+    assert_eq!(
+        (work[0].project_id, work[0].project_name.as_str(), work[0].work_minutes),
+        (project, "案件A", 9600)
+    );
+
+    let staff = client
+        .get_approved_work(as_user(september(), "sub-taro@example.com", "staff"))
+        .await
+        .unwrap_err();
+    assert_eq!(staff.code(), Code::PermissionDenied);
 }

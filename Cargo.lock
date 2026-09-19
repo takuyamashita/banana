@@ -2441,11 +2441,15 @@ dependencies = [
 name = "payroll-handler"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "async-trait",
  "payroll-domain",
  "payroll-usecase",
  "platform-auth",
  "platform-gen",
  "platform-kernel",
+ "platform-messaging",
+ "serde_json",
  "tonic",
  "tracing",
 ]
@@ -2496,7 +2500,10 @@ dependencies = [
  "payroll-usecase",
  "platform-gen",
  "platform-kernel",
+ "platform-messaging",
  "platform-service",
+ "serde_json",
+ "sqlx",
  "testcontainers-modules",
  "tokio",
  "tonic",
@@ -3851,12 +3858,50 @@ dependencies = [
 ]
 
 [[package]]
+name = "timesheet-bootstrap"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "aws-config",
+ "config",
+ "platform-gen",
+ "platform-messaging",
+ "platform-service",
+ "serde",
+ "sqlx",
+ "timesheet-handler",
+ "timesheet-infrastructure",
+ "timesheet-usecase",
+ "tokio",
+ "tokio-util",
+ "tonic",
+]
+
+[[package]]
 name = "timesheet-domain"
 version = "0.1.0"
 dependencies = [
  "platform-kernel",
  "thiserror",
  "time",
+]
+
+[[package]]
+name = "timesheet-handler"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "platform-auth",
+ "platform-gen",
+ "platform-kernel",
+ "platform-messaging",
+ "serde_json",
+ "time",
+ "timesheet-domain",
+ "timesheet-usecase",
+ "tonic",
+ "tracing",
 ]
 
 [[package]]
@@ -3875,6 +3920,34 @@ dependencies = [
  "timesheet-domain",
  "timesheet-usecase",
  "tokio",
+]
+
+[[package]]
+name = "timesheet-migrate"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "timesheet-bootstrap",
+ "tokio",
+]
+
+[[package]]
+name = "timesheet-server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "platform-gen",
+ "platform-kernel",
+ "platform-messaging",
+ "platform-service",
+ "serde_json",
+ "sqlx",
+ "testcontainers-modules",
+ "timesheet-bootstrap",
+ "timesheet-infrastructure",
+ "tokio",
+ "tonic",
 ]
 
 [[package]]

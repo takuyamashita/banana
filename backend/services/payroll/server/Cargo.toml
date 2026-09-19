@@ -18,6 +18,9 @@ payroll-infrastructure.workspace = true
 payroll-usecase.workspace = true
 platform-gen.workspace = true
 platform-kernel.workspace = true
+platform-messaging.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
 testcontainers-modules.workspace = true
 tonic.workspace = true
 

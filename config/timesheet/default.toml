@@ -1,0 +1,42 @@
+# 勤怠(timesheet)サービスの、全環境共通の既定値。バイナリに埋め込み、APP_ENV の {env}.toml と
+# 環境変数(TIMESHEET__SECTION__KEY)で上書きする
+[server]
+addr = "0.0.0.0:50051"
+cors_allowed_origins = []
+shutdown_grace_seconds = 20
+
+[database]
+# 接続文字列はシークレット。環境変数 TIMESHEET__DATABASE__URL か secrets.database_url_secret_id で与える
+url = ""
+max_connections = 10
+
+[auth]
+# keycloak | cognito
+provider = "cognito"
+issuer = ""
+# keycloak: aud に入る API 識別子 / cognito: アプリクライアントID
+audience = "platform-api"
+cognito_client_id = ""
+
+[messaging]
+# 出来事を出す SNS の FIFO トピック(AWS)。ローカルはトピックの代わりに publish_queue_urls へ直接送る
+topic_arn = ""
+publish_queue_urls = []
+# 給与(payroll)の出来事(派遣社員・案件の登録)を受け取るキュー
+inbox_queue_url = ""
+# ローカル(ElasticMQ)だけ指定する
+sqs_endpoint = ""
+relay_interval_ms = 500
+
+[secrets]
+# 指定すると起動時に Secrets Manager から取る(AWS では Terraform が環境変数で渡す)
+database_url_secret_id = ""
+# migrate だけが使う(給与サービスと同じ)
+database_admin_secret_id = ""
+database_app_user_secret_id = ""
+
+[telemetry]
+otlp_endpoint = ""
+json_logs = true
+log_filter = "info"
+sample_ratio = 1.0

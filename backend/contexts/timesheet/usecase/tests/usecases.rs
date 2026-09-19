@@ -304,6 +304,7 @@ fn submit(world: &Arc<World>) -> SubmitMyTimesheetUseCase {
 fn approve(world: &Arc<World>) -> ApproveTimesheetUseCase {
     ApproveTimesheetUseCase::new(
         Arc::new(FakeTimesheets(world.clone())),
+        Arc::new(FakeStaff(world.clone())),
         Arc::new(FakeOutbox(world.clone())),
         Arc::new(FakeDatabase(world.clone())),
         Arc::new(FixedClock(datetime!(2026-10-01 10:00 UTC))),
@@ -313,6 +314,7 @@ fn approve(world: &Arc<World>) -> ApproveTimesheetUseCase {
 fn send_back(world: &Arc<World>) -> ReturnTimesheetUseCase {
     ReturnTimesheetUseCase::new(
         Arc::new(FakeTimesheets(world.clone())),
+        Arc::new(FakeStaff(world.clone())),
         Arc::new(FakeDatabase(world.clone())),
     )
 }
@@ -327,7 +329,7 @@ async fn submitted(world: &Arc<World>) -> TimesheetId {
         )
         .await
         .unwrap();
-    submit(world).execute(&taro(), september()).await.unwrap().content().id()
+    submit(world).execute(&taro(), september()).await.unwrap().timesheet().unwrap().content().id()
 }
 
 // ---- テスト ----
@@ -375,7 +377,10 @@ async fn saving_starts_the_timesheet_and_saving_again_rewrites_its_rows() {
         .await
         .unwrap();
 
-    assert_eq!(first.content().id(), second.content().id());
+    assert_eq!(
+        first.timesheet().unwrap().content().id(),
+        second.timesheet().unwrap().content().id()
+    );
     let records = world.records();
     assert_eq!(records.timesheets.len(), 1);
     assert_eq!(records.timesheets[0].content().total_minutes(), 510);
@@ -425,7 +430,7 @@ async fn approval_records_the_timesheet_and_announces_the_work_together() {
     let world = World::ready();
     let id = submitted(&world).await;
 
-    let approved = approve(&world).execute(id).await.unwrap();
+    let approved = approve(&world).execute(id).await.unwrap().timesheet;
 
     assert_eq!(approved.status(), TimesheetStatus::Approved);
     let records = world.records();
@@ -463,7 +468,7 @@ async fn only_submitted_timesheets_can_be_approved_or_returned() {
         .execute(&taro(), september(), vec![entry(date!(2026 - 09 - 01), 1, 480)])
         .await
         .unwrap();
-    let id = draft.content().id();
+    let id = draft.timesheet().unwrap().content().id();
 
     assert!(matches!(
         approve(&world).execute(id).await.unwrap_err(),
@@ -489,7 +494,7 @@ async fn a_returned_timesheet_can_be_fixed_and_submitted_again() {
         .execute(id, ReturnReason::new("9/2 の案件が違います").unwrap())
         .await
         .unwrap();
-    let Timesheet::Draft(draft) = &returned else { panic!("作成中に戻るはず") };
+    let Timesheet::Draft(draft) = &returned.timesheet else { panic!("作成中に戻るはず") };
     assert_eq!(draft.returned_reason().unwrap().as_str(), "9/2 の案件が違います");
 
     save(&world)
@@ -497,7 +502,7 @@ async fn a_returned_timesheet_can_be_fixed_and_submitted_again() {
         .await
         .unwrap();
     let resubmitted = submit(&world).execute(&taro(), september()).await.unwrap();
-    assert_eq!(resubmitted.status(), TimesheetStatus::Submitted);
+    assert_eq!(resubmitted.timesheet().unwrap().status(), TimesheetStatus::Submitted);
     assert!(world.records().events.is_empty());
 }
 

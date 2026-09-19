@@ -14,6 +14,7 @@ set -euo pipefail
 # 名前 → 既定のポート。compose.yaml・vite.config.ts・playwright.config.ts・config/local.toml の既定値とそろえる
 PORTS=(
   API_PORT=50051
+  TIMESHEET_API_PORT=50052
   WEB_PORT=5173
   MYSQL_PORT=3306
   KEYCLOAK_PORT=8080
@@ -109,6 +110,16 @@ cmd_new() {
     echo "PAYROLL__MESSAGING__SQS_ENDPOINT=http://localhost:${port[ELASTICMQ_PORT]}"
     echo "PAYROLL__PAYOUT__QUEUE_URL=$sqs/payroll-payout.fifo"
     echo "PAYROLL__TELEMETRY__OTLP_ENDPOINT=http://localhost:${port[OTLP_GRPC_PORT]}"
+    # 勤怠サービス(server・migrate)の接続先(config/timesheet/local.toml の値を上書きする)
+    echo "TIMESHEET_DATABASE_URL=mysql://timesheet:timesheet@127.0.0.1:${port[MYSQL_PORT]}/timesheet"
+    echo "TIMESHEET__DATABASE__URL=mysql://timesheet:timesheet@127.0.0.1:${port[MYSQL_PORT]}/timesheet"
+    echo "TIMESHEET__SERVER__ADDR=0.0.0.0:${port[TIMESHEET_API_PORT]}"
+    echo "TIMESHEET__SERVER__CORS_ALLOWED_ORIGINS=http://localhost:${port[WEB_PORT]}"
+    echo "TIMESHEET__AUTH__ISSUER=http://localhost:${port[KEYCLOAK_PORT]}/realms/platform"
+    echo "TIMESHEET__MESSAGING__PUBLISH_QUEUE_URLS=$sqs/payroll-inbox.fifo"
+    echo "TIMESHEET__MESSAGING__INBOX_QUEUE_URL=$sqs/timesheet-inbox.fifo"
+    echo "TIMESHEET__MESSAGING__SQS_ENDPOINT=http://localhost:${port[ELASTICMQ_PORT]}"
+    echo "TIMESHEET__TELEMETRY__OTLP_ENDPOINT=http://localhost:${port[OTLP_GRPC_PORT]}"
   } >> "$dir/.env"
 
   mise trust --quiet "$dir"
@@ -117,7 +128,7 @@ cmd_new() {
 
   echo
   echo "worktree: $dir(スロット $slot、compose: $project)"
-  grep -E '^(API|WEB|KEYCLOAK|MYSQL)_PORT=' "$dir/.env" | sed 's/^/  /'
+  grep -E '^(API|TIMESHEET_API|WEB|KEYCLOAK|MYSQL)_PORT=' "$dir/.env" | sed 's/^/  /'
   echo "次は: cd $dir && mise run e2e(依存サービスの起動とマイグレーションも行う)"
 }
 

@@ -47,7 +47,8 @@ allowed_workspace_deps() {
     *-usecase) echo "^(${1%-usecase}-domain|platform-kernel)$" ;;
     # platform-gen は出来事の約束(proto の acme.*.events.v1)を読み書きするため
     *-infrastructure) echo "^(${1%-infrastructure}-(domain|usecase)|platform-(kernel|telemetry|db|messaging|gen))$" ;;
-    *-handler) echo "^(${1%-handler}-(domain|usecase)|platform-(kernel|auth|gen))$" ;;
+    # handler は外からの入口(gRPC と、他のサービスから届いた出来事)。出来事の受け手の形は platform-messaging
+    *-handler) echo "^(${1%-handler}-(domain|usecase)|platform-(kernel|auth|gen|messaging))$" ;;
     platform-kernel | platform-gen | platform-db) echo '^$' ;;
     platform-auth | platform-telemetry) echo '^platform-kernel$' ;;
     platform-messaging) echo '^platform-telemetry$' ;;

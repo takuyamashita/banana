@@ -9,7 +9,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Context as _;
-use payroll_handler::{PayrollServiceHandler, ProjectServiceHandler, StaffServiceHandler};
+use payroll_handler::{
+    PayrollServiceHandler, ProjectServiceHandler, StaffServiceHandler, TimesheetEventHandler,
+};
 use payroll_infrastructure::clock::SystemClock;
 use payroll_infrastructure::database::MySqlDatabase;
 use payroll_infrastructure::external::{
@@ -18,7 +20,8 @@ use payroll_infrastructure::external::{
 use payroll_infrastructure::messaging::outbox::MySqlEventOutbox;
 use payroll_infrastructure::query::{MySqlProjectQuery, MySqlStaffQuery};
 use payroll_infrastructure::repository::{
-    MySqlPayoutRepository, MySqlPayslipRepository, MySqlProjectRepository, MySqlStaffRepository,
+    MySqlApprovedWorkRepository, MySqlPayoutRepository, MySqlPayslipRepository,
+    MySqlProjectRepository, MySqlStaffRepository,
 };
 use payroll_usecase::payslip::{
     CreatePayslipUseCase, FinalizePayslipUseCase, GetPayslipUseCase, ListPayslipsUseCase,
@@ -32,6 +35,7 @@ use payroll_usecase::ports::repository::{PayslipRepository, ProjectRepository, S
 use payroll_usecase::ports::user_directory::UserDirectory;
 use payroll_usecase::project::{CreateProjectUseCase, ListProjectsUseCase};
 use payroll_usecase::staff::{CreateStaffUseCase, GetMeUseCase, ListStaffUseCase};
+use payroll_usecase::work::{GetApprovedWorkUseCase, RecordApprovedWorkUseCase};
 use platform_gen::acme::payroll::v1::payroll_service_server::PayrollServiceServer;
 use platform_gen::acme::payroll::v1::project_service_server::ProjectServiceServer;
 use platform_gen::acme::payroll::v1::staff_service_server::StaffServiceServer;
@@ -92,12 +96,19 @@ pub async fn start_server(
         ProjectServiceServer::new(handlers.project).max_decoding_message_size(MAX_MESSAGE_BYTES),
     );
 
-    // outbox relay を常駐タスクとして動かす。複数インスタンスでも、送るのはロックを取れた1つだけ
+    // outbox relay と、勤怠から届く出来事の受け手を常駐タスクとして動かす。
+    // relay は複数インスタンスでも、送るのはロックを取れた1つだけ
     let relay = tokio::spawn(platform_messaging::relay::run(
         pool.clone(),
         platform_service::build_publisher(&config.messaging, &aws)?,
         RelayLock::for_service(SERVICE),
         Duration::from_millis(config.messaging.relay_interval_ms),
+        cancel.clone(),
+    ));
+    let consumer = tokio::spawn(platform_messaging::consumer::run(
+        platform_messaging::sqs_client(&aws, &config.messaging.sqs_endpoint),
+        config.messaging.inbox_queue_url.clone(),
+        build_event_handler(&pool),
         cancel,
     ));
 
@@ -105,7 +116,7 @@ pub async fn start_server(
         grpc,
         verifier: platform_service::build_verifier(&config.auth),
         pool,
-        tasks: vec![relay],
+        tasks: vec![relay, consumer],
     })
 }
 
@@ -161,6 +172,8 @@ pub fn build_handlers(pool: &MySqlPool, user_directory: Arc<dyn UserDirectory>) 
             ),
             GetPayslipUseCase::new(payslips.clone(), staff.clone()),
             ListPayslipsUseCase::new(payslips, staff.clone()),
+            GetApprovedWorkUseCase::new(Arc::new(MySqlApprovedWorkRepository::new(pool.clone()))),
+            ListProjectsUseCase::new(project_query.clone()),
         ),
         staff: StaffServiceHandler::new(
             CreateStaffUseCase::new(staff.clone(), outbox.clone(), db.clone(), user_directory),
@@ -172,6 +185,14 @@ pub fn build_handlers(pool: &MySqlPool, user_directory: Arc<dyn UserDirectory>) 
             ListProjectsUseCase::new(project_query),
         ),
     }
+}
+
+/// 勤怠から届く出来事の受け手を組み立てる
+pub fn build_event_handler(pool: &MySqlPool) -> TimesheetEventHandler {
+    TimesheetEventHandler::new(RecordApprovedWorkUseCase::new(
+        Arc::new(MySqlApprovedWorkRepository::new(pool.clone())),
+        Arc::new(MySqlDatabase::new(pool.clone())),
+    ))
 }
 
 /// 振込先の応答を待つ上限。1件あたりの上限 × バッチの件数が Lambda のタイムアウトに収まるようにする

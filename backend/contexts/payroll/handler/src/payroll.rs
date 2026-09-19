@@ -7,6 +7,8 @@ use payroll_usecase::payslip::{
     CreatePayslipInput, CreatePayslipLine, CreatePayslipUseCase, FinalizePayslipUseCase,
     GetPayslipUseCase, ListPayslipsUseCase,
 };
+use payroll_usecase::project::ListProjectsUseCase;
+use payroll_usecase::work::GetApprovedWorkUseCase;
 use platform_gen::acme::payroll::v1 as proto;
 use tonic::{Request, Response, Status};
 
@@ -18,6 +20,8 @@ pub struct PayrollServiceHandler {
     finalize_payslip: FinalizePayslipUseCase,
     get_payslip: GetPayslipUseCase,
     list_payslips: ListPayslipsUseCase,
+    get_approved_work: GetApprovedWorkUseCase,
+    list_projects: ListProjectsUseCase,
 }
 
 impl PayrollServiceHandler {
@@ -27,8 +31,17 @@ impl PayrollServiceHandler {
         finalize_payslip: FinalizePayslipUseCase,
         get_payslip: GetPayslipUseCase,
         list_payslips: ListPayslipsUseCase,
+        get_approved_work: GetApprovedWorkUseCase,
+        list_projects: ListProjectsUseCase,
     ) -> Self {
-        Self { create_payslip, finalize_payslip, get_payslip, list_payslips }
+        Self {
+            create_payslip,
+            finalize_payslip,
+            get_payslip,
+            list_payslips,
+            get_approved_work,
+            list_projects,
+        }
     }
 }
 
@@ -115,6 +128,41 @@ impl proto::payroll_service_server::PayrollService for PayrollServiceHandler {
             payslips: payslips.iter().map(to_proto).collect(),
             // 今は全件を返すので、続きはない
             next_page_token: String::new(),
+        }))
+    }
+
+    #[tracing::instrument(skip_all)]
+    async fn get_approved_work(
+        &self,
+        request: Request<proto::GetApprovedWorkRequest>,
+    ) -> Result<Response<proto::GetApprovedWorkResponse>, Status> {
+        // 給与明細を作るのは管理者なので、明細に入れる稼働を見るのも管理者だけ
+        require_admin(&request)?;
+        let req = request.into_inner();
+        let staff_id = StaffId::from_i64(req.staff_id).map_err(invalid_argument)?;
+        let pay_year = u16::try_from(req.pay_year).map_err(|_| invalid_period())?;
+        let pay_month = u8::try_from(req.pay_month).map_err(|_| invalid_period())?;
+        let period = PayPeriod::new(pay_year, pay_month).map_err(invalid_argument)?;
+
+        let Some(work) =
+            self.get_approved_work.execute(staff_id, period).await.map_err(to_status)?
+        else {
+            return Ok(Response::new(proto::GetApprovedWorkResponse::default()));
+        };
+        let projects = self.list_projects.execute().await.map_err(to_status)?;
+        let name = |id: ProjectId| {
+            projects.iter().find(|p| p.id == id).map(|p| p.name.clone()).unwrap_or_default()
+        };
+        Ok(Response::new(proto::GetApprovedWorkResponse {
+            work: work
+                .projects()
+                .iter()
+                .map(|p| proto::ApprovedWork {
+                    project_id: p.project_id.as_i64(),
+                    project_name: name(p.project_id),
+                    work_minutes: p.minutes.as_minutes(),
+                })
+                .collect(),
         }))
     }
 }

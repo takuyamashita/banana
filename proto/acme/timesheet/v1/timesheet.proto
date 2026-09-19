@@ -1,0 +1,133 @@
+syntax = "proto3";
+
+package acme.timesheet.v1;
+
+// 勤務表の記入・申告と、承認
+service TimesheetService {
+  // 自分のその月の勤務表を取得する。まだ書き始めていなければ、稼働のない作成中の勤務表を返す(timesheet_id は 0)。派遣社員のみ
+  rpc GetMyTimesheet(GetMyTimesheetRequest) returns (GetMyTimesheetResponse);
+  // 自分のその月の勤務表の稼働を書く(書いてあった行は、渡した行で置き換わる)。作成中のときだけ。派遣社員のみ
+  rpc SaveMyTimesheet(SaveMyTimesheetRequest) returns (SaveMyTimesheetResponse);
+  // 自分のその月の勤務表を申告する。派遣社員のみ
+  rpc SubmitMyTimesheet(SubmitMyTimesheetRequest) returns (SubmitMyTimesheetResponse);
+  // 稼働を書ける案件を一覧する(給与で登録された案件)。ログインしていれば誰でも
+  rpc ListProjects(ListProjectsRequest) returns (ListProjectsResponse);
+  // 申告された(承認を待っている)勤務表を、申告された順に一覧する。管理者のみ
+  rpc ListSubmittedTimesheets(ListSubmittedTimesheetsRequest) returns (ListSubmittedTimesheetsResponse);
+  // 申告された勤務表を承認する。承認した稼働は給与に知らせる。管理者のみ
+  rpc ApproveTimesheet(ApproveTimesheetRequest) returns (ApproveTimesheetResponse);
+  // 申告された勤務表を、理由を付けて差し戻す。管理者のみ
+  rpc ReturnTimesheet(ReturnTimesheetRequest) returns (ReturnTimesheetResponse);
+}
+
+message GetMyTimesheetRequest {
+  int32 year = 1;
+  int32 month = 2;
+}
+
+message GetMyTimesheetResponse {
+  Timesheet timesheet = 1;
+}
+
+message SaveMyTimesheetRequest {
+  int32 year = 1;
+  int32 month = 2;
+  repeated WorkEntryInput entries = 3;
+}
+
+message WorkEntryInput {
+  // 稼働した日(YYYY-MM-DD)
+  string date = 1;
+  int64 project_id = 2;
+  uint32 work_minutes = 3;
+}
+
+message SaveMyTimesheetResponse {
+  Timesheet timesheet = 1;
+}
+
+message SubmitMyTimesheetRequest {
+  int32 year = 1;
+  int32 month = 2;
+}
+
+message SubmitMyTimesheetResponse {
+  Timesheet timesheet = 1;
+}
+
+message ListProjectsRequest {}
+
+message ListProjectsResponse {
+  repeated Project projects = 1;
+}
+
+message Project {
+  int64 project_id = 1;
+  string name = 2;
+}
+
+message ListSubmittedTimesheetsRequest {
+  // ページング。今は全件を返すので使わない(後からページングを入れても、古いクライアントが1ページ目だけで
+  // 終わったと誤解しないよう、最初から欄を置いておく)
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+message ListSubmittedTimesheetsResponse {
+  repeated Timesheet timesheets = 1;
+  // 続きがあるときの page_token。空なら最後のページ(今は常に空)
+  string next_page_token = 2;
+}
+
+message ApproveTimesheetRequest {
+  int64 timesheet_id = 1;
+}
+
+message ApproveTimesheetResponse {
+  Timesheet timesheet = 1;
+}
+
+message ReturnTimesheetRequest {
+  int64 timesheet_id = 1;
+  // 差し戻しの理由。派遣社員が何を直せばよいかを書く
+  string reason = 2;
+}
+
+message ReturnTimesheetResponse {
+  Timesheet timesheet = 1;
+}
+
+message Timesheet {
+  // まだ書き始めていなければ 0
+  int64 timesheet_id = 1;
+  int64 staff_id = 2;
+  string staff_name = 3;
+  int32 year = 4;
+  int32 month = 5;
+  TimesheetStatus status = 6;
+  // 日付と案件の順
+  repeated WorkEntry entries = 7;
+  // 1か月の稼働の合計(分)
+  uint32 total_minutes = 8;
+  // 差し戻されて直しているときの理由
+  string returned_reason = 9;
+}
+
+message WorkEntry {
+  // 稼働した日(YYYY-MM-DD)
+  string date = 1;
+  int64 project_id = 2;
+  // 案件名(勤怠に届いている今の名前)
+  string project_name = 3;
+  uint32 work_minutes = 4;
+}
+
+enum TimesheetStatus {
+  TIMESHEET_STATUS_UNSPECIFIED = 0;
+  // 作成中(派遣社員が書いている)
+  TIMESHEET_STATUS_DRAFT = 1;
+  // 申告済み(管理者の承認を待っている)
+  TIMESHEET_STATUS_SUBMITTED = 2;
+  // 承認済み
+  TIMESHEET_STATUS_APPROVED = 3;
+}

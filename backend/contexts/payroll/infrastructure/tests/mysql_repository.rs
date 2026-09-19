@@ -850,3 +850,44 @@ async fn registering_staff_and_projects_records_events_in_the_published_shape() 
         id.as_i64()
     );
 }
+
+#[tokio::test]
+async fn approved_work_is_replaced_per_staff_and_month() {
+    use payroll_domain::work::{ApprovedWork, ProjectWork};
+    use payroll_infrastructure::repository::MySqlApprovedWorkRepository;
+    use payroll_usecase::ports::repository::ApprovedWorkRepository;
+
+    let db = db().await;
+    let (staff, project) = seed(&db).await;
+    let other = MySqlProjectRepository::new(db.pool.clone())
+        .insert(
+            &mut MySqlDatabase::new(db.pool.clone()).connection().await.unwrap(),
+            &NewProject::new(ProjectName::new("案件B").unwrap()),
+        )
+        .await
+        .unwrap();
+    let repo = MySqlApprovedWorkRepository::new(db.pool.clone());
+    let period = PayPeriod::new(2026, 9).unwrap();
+    let work = |items: &[(ProjectId, u32)]| {
+        ApprovedWork::new(
+            staff,
+            period,
+            items
+                .iter()
+                .map(|(p, m)| ProjectWork {
+                    project_id: *p,
+                    minutes: WorkMinutes::from_minutes(*m).unwrap(),
+                })
+                .collect(),
+        )
+        .unwrap()
+    };
+    let mut conn = MySqlDatabase::new(db.pool.clone()).connection().await.unwrap();
+
+    repo.save(&mut conn, &work(&[(project, 480), (other, 60)])).await.unwrap();
+    // 届き直した内容で丸ごと置き換わる(前の案件の行は残らない)
+    repo.save(&mut conn, &work(&[(other, 90)])).await.unwrap();
+
+    assert_eq!(repo.find(staff, period).await.unwrap(), Some(work(&[(other, 90)])));
+    assert_eq!(repo.find(staff, PayPeriod::new(2026, 10).unwrap()).await.unwrap(), None);
+}

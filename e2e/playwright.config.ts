@@ -4,6 +4,7 @@ import { defineConfig, devices } from "@playwright/test";
 // ポートは環境変数で変えられる(worktree ごとに別の組を立てるとき、mise が worktree の .env から渡す)
 const WEB = `http://localhost:${process.env["WEB_PORT"] ?? 5173}`;
 const API = `http://localhost:${process.env["API_PORT"] ?? 50051}`;
+const TIMESHEET_API = `http://localhost:${process.env["TIMESHEET_API_PORT"] ?? 50052}`;
 
 export default defineConfig({
   testDir: "./tests",
@@ -18,12 +19,19 @@ export default defineConfig({
     launchOptions: { slowMo: Number(process.env["E2E_SLOW_MO"] ?? 0) },
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
-  // server は /ready(DB にも届く)が 200 になるまで待つ。Vite は変更を即座に反映するので、起動済みならそれを使う
+  // server(給与・勤怠)は /ready(DB にも届く)が 200 になるまで待つ。Vite は変更を即座に反映するので、起動済みならそれを使う
   webServer: [
     {
       command: "cargo run -p payroll-server",
       url: `${API}/ready`,
       // 起動済みの server はコードを変えても古いまま(cargo run は作り直さない)なので、使い回すのは明示したときだけ
+      reuseExistingServer: process.env["E2E_REUSE_SERVER"] === "1",
+      cwd: "..",
+      timeout: 300_000,
+    },
+    {
+      command: "cargo run -p timesheet-server",
+      url: `${TIMESHEET_API}/ready`,
       reuseExistingServer: process.env["E2E_REUSE_SERVER"] === "1",
       cwd: "..",
       timeout: 300_000,

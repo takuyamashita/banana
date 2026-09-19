@@ -22,5 +22,10 @@ pub mod acme {
                 // @@protoc_insertion_point(acme.timesheet.events.v1)
             }
         }
+        // @@protoc_insertion_point(attribute:acme.timesheet.v1)
+        pub mod v1 {
+            include!("acme/timesheet/v1/acme.timesheet.v1.rs");
+            // @@protoc_insertion_point(acme.timesheet.v1)
+        }
     }
 }

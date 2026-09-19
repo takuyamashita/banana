@@ -91,7 +91,7 @@ pub async fn process(deps: &Deps, body: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// ローカルのポーラーが使う受け手
+/// 振込のキューの受け手(Lambda とローカルのポーラーで使う)
 pub struct Consumer(pub Deps);
 
 #[async_trait::async_trait]

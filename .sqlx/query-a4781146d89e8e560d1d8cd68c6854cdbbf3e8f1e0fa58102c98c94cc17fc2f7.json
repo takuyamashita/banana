@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "delete from approved_work where staff_id = ? and work_year = ? and work_month = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "a4781146d89e8e560d1d8cd68c6854cdbbf3e8f1e0fa58102c98c94cc17fc2f7"
+}

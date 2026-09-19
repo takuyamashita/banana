@@ -47,8 +47,16 @@ outputs = ["backend/gen/src/gen/**/*.rs", "frontend/packages/api-client/src/gen/
 run = "buf generate"
 
 [tasks.dev-backend]
-description = "gRPCサーバーを起動"
+description = "gRPCサーバー(給与・勤怠)を起動"
+depends = ["dev:payroll", "dev:timesheet"]
+
+[tasks."dev:payroll"]
+description = "給与サービスの gRPC サーバーを起動(:50051)"
 run = "cargo run -p payroll-server"
+
+[tasks."dev:timesheet"]
+description = "勤怠サービスの gRPC サーバーを起動(:50052)"
+run = "cargo run -p timesheet-server"
 
 [tasks.dev-frontend]
 description = "Viteの開発サーバーを起動"
@@ -68,7 +76,7 @@ env = { SQLX_OFFLINE = "false" }
 
 [tasks.migrate]
 description = "マイグレーションを実行(サービスごと)"
-run = "cargo run -p payroll-migrate"
+run = ["cargo run -p payroll-migrate", "cargo run -p timesheet-migrate"]
 
 [tasks.test]
 description = "Rust(nextest)とフロントのテスト"
@@ -116,11 +124,20 @@ run = "docker compose logs -f"
 
 [tasks."db:reset"]
 description = "DB と Keycloak を空にして作り直し、マイグレーションを流す(Keycloak はボリュームがないので必ず一緒に消す)"
-run = ["docker compose down --volumes", "docker compose up -d --wait", "cargo run -p payroll-migrate"]
+run = [
+  "docker compose down --volumes",
+  "docker compose up -d --wait",
+  "cargo run -p payroll-migrate",
+  "cargo run -p timesheet-migrate",
+]
 
 [tasks."e2e:prepare"]
 description = "E2E の依存サービスを起動してマイグレーション"
-run = ["docker compose up -d --wait mysql keycloak elasticmq", "cargo run -p payroll-migrate"]
+run = [
+  "docker compose up -d --wait mysql keycloak elasticmq",
+  "cargo run -p payroll-migrate",
+  "cargo run -p timesheet-migrate",
+]
 
 [tasks.e2e]
 description = "DB起動・マイグレーション後にPlaywright"

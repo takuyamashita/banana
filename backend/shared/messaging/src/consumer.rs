@@ -23,14 +23,17 @@ pub struct Message {
     pub traceparent: Option<String>,
 }
 
+/// 届いた出来事1件の処理。同じ出来事が2回届いても結果が変わらないように作る
+#[async_trait]
+pub trait Handler: Send + Sync {
+    async fn handle(&self, body: &str) -> anyhow::Result<()>;
+}
+
 /// 受け取った順に処理し、失敗した件のメッセージ ID を返す。失敗した件だけがキューに戻る。
 ///
 /// 同じグループの中では順序を守るため、ある件が失敗したら同じグループの後ろの件は処理せずに失敗として返す。
 /// 別のグループ(別の集約)は、そのまま処理を続ける
-pub async fn handle_batch(
-    messages: &[Message],
-    mut process: impl AsyncFnMut(&str) -> anyhow::Result<()>,
-) -> Vec<String> {
+pub async fn handle_batch(messages: &[Message], handler: &impl Handler) -> Vec<String> {
     let mut failed_groups = HashSet::new();
     let mut failed = Vec::new();
     for message in messages {
@@ -42,19 +45,13 @@ pub async fn handle_batch(
         platform_telemetry::set_parent(&span, |key| {
             (key == "traceparent").then(|| message.traceparent.clone()).flatten()
         });
-        if let Err(err) = process(&message.body).instrument(span).await {
+        if let Err(err) = handler.handle(&message.body).instrument(span).await {
             tracing::warn!(message_id = %message.id, error = %err, "processing failed, will retry");
             failed_groups.insert(message.group.clone());
             failed.push(message.id.clone());
         }
     }
     failed
-}
-
-/// 届いた出来事1件の処理。同じ出来事が2回届いても結果が変わらないように作る
-#[async_trait]
-pub trait Handler: Send + Sync {
-    async fn handle(&self, body: &str) -> anyhow::Result<()>;
 }
 
 /// 1回の受け取りで待つ秒数(ロングポーリング)。止める合図にすぐ気づけるよう、SQS の上限(20秒)より短くする
@@ -89,7 +86,7 @@ pub async fn run(
             continue;
         }
         // 受け取った分は、止める合図が来ても処理し終える(途中でやめると、同じグループの順序が崩れうる)
-        let failed = handle_batch(&messages, async |body: &str| handler.handle(body).await).await;
+        let failed = handle_batch(&messages, &handler).await;
         let done: Vec<_> = messages.iter().filter(|m| !failed.contains(&m.id)).collect();
         if let Err(err) = delete(&sqs, &queue_url, &done).await {
             // 消せなかった件は再配信される。受け手は冪等なので、もう一度処理しても結果は変わらない
@@ -176,6 +173,18 @@ mod tests {
         }
     }
 
+    /// 処理した本文を覚え、本文が "fail" なら失敗する
+    #[derive(Default)]
+    struct Recorder(std::sync::Mutex<Vec<String>>);
+
+    #[async_trait]
+    impl Handler for Recorder {
+        async fn handle(&self, body: &str) -> anyhow::Result<()> {
+            self.0.lock().unwrap().push(body.to_owned());
+            if body == "fail" { Err(anyhow::anyhow!("down")) } else { Ok(()) }
+        }
+    }
+
     #[tokio::test]
     async fn a_failure_holds_back_only_the_rest_of_its_group() {
         let messages = [
@@ -185,16 +194,12 @@ mod tests {
             message("4", "payslip-2", "ok"),
             message("5", "payslip-3", "ok"),
         ];
-        let mut processed = Vec::new();
+        let recorder = Recorder::default();
 
-        let failed = handle_batch(&messages, async |body: &str| {
-            processed.push(body.to_owned());
-            if body == "fail" { Err(anyhow::anyhow!("down")) } else { Ok(()) }
-        })
-        .await;
+        let failed = handle_batch(&messages, &recorder).await;
 
         // 失敗したグループの後ろの件(4)は処理せずに返し、他のグループは処理を続ける
         assert_eq!(failed, ["2", "4"]);
-        assert_eq!(processed.len(), 4);
+        assert_eq!(recorder.0.lock().unwrap().len(), 4);
     }
 }

@@ -21,6 +21,17 @@ pub enum MyTimesheet {
     Started { staff: Staff, timesheet: Timesheet },
 }
 
+impl MyTimesheet {
+    /// 書き始めていれば、その勤務表
+    #[must_use]
+    pub fn timesheet(&self) -> Option<&Timesheet> {
+        match self {
+            Self::NotStarted { .. } => None,
+            Self::Started { timesheet, .. } => Some(timesheet),
+        }
+    }
+}
+
 /// ログインした本人がどの派遣社員かを知る。給与で登録された派遣社員が、まだ勤怠に届いていないこともある
 async fn me(staff: &dyn StaffRepository, user: &AuthenticatedUser) -> Result<Staff, UseCaseError> {
     staff.find_by_user_id(&user.user_id).await?.ok_or_else(|| {
@@ -82,7 +93,7 @@ impl SaveMyTimesheetUseCase {
         user: &AuthenticatedUser,
         month: WorkMonth,
         entries: Vec<WorkEntry>,
-    ) -> Result<Timesheet, UseCaseError> {
+    ) -> Result<MyTimesheet, UseCaseError> {
         let staff = me(self.staff.as_ref(), user).await?;
         self.ensure_known_projects(&entries).await?;
 
@@ -108,7 +119,9 @@ impl SaveMyTimesheetUseCase {
             }
         };
         tx.commit().await?;
-        saved.ok_or_else(|| UseCaseError::Internal("記録した勤務表が見つかりません".into()))
+        let timesheet =
+            saved.ok_or_else(|| UseCaseError::Internal("記録した勤務表が見つかりません".into()))?;
+        Ok(MyTimesheet::Started { staff, timesheet })
     }
 
     async fn ensure_known_projects(&self, entries: &[WorkEntry]) -> Result<(), UseCaseError> {
@@ -153,7 +166,7 @@ impl SubmitMyTimesheetUseCase {
         &self,
         user: &AuthenticatedUser,
         month: WorkMonth,
-    ) -> Result<Timesheet, UseCaseError> {
+    ) -> Result<MyTimesheet, UseCaseError> {
         let staff = me(self.staff.as_ref(), user).await?;
         let Some(existing) = self.timesheets.find_by_staff_month(staff.id(), month).await? else {
             return Err(UseCaseError::FailedPrecondition(
@@ -174,6 +187,6 @@ impl SubmitMyTimesheetUseCase {
             };
         self.timesheets.update(&mut tx, &submitted).await?;
         tx.commit().await?;
-        Ok(submitted)
+        Ok(MyTimesheet::Started { staff, timesheet: submitted })
     }
 }
