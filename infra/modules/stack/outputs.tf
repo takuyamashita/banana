@@ -11,12 +11,16 @@ output "cognito_user_pool_id" {
   value = module.auth.user_pool_id
 }
 
-output "queue_url" {
-  value = module.messaging.queue_url
+output "payroll_events_topic_arn" {
+  value = module.payroll_events.arn
 }
 
-output "database_url_secret_name" {
-  value = module.database.database_url_secret_name
+output "timesheet_events_topic_arn" {
+  value = module.timesheet_events.arn
+}
+
+output "database_url_secret_names" {
+  value = module.database.database_url_secret_names
 }
 
 output "payout_api_key_secret_name" {
@@ -28,24 +32,21 @@ output "alarm_topic_arn" {
 }
 
 # deploy ワークフローが使う値
-output "ecr_repository_url" {
-  value = module.backend.ecr_repository_url
-}
-
 output "ecs_cluster_name" {
-  value = module.backend.cluster_name
+  value = module.load_balancer.cluster_name
 }
 
-output "ecs_service_name" {
-  value = module.backend.service_name
-}
-
-output "migrate_task_definition_arn" {
-  value = module.backend.migrate_task_definition_arn
-}
-
-output "migrate_network_configuration" {
-  value = module.backend.migrate_network_configuration
+# サービスごとのイメージの置き場・ECS サービス・migrate。deploy ワークフローはサービスごとに繰り返す
+# (JSON。キーは backend/Dockerfile の SERVICE と同じ)
+output "services" {
+  value = jsonencode({
+    for name, service in { payroll  = module.payroll, timesheet = module.timesheet } : name => {
+      ecr_repository_url            = service.ecr_repository_url
+      ecs_service_name              = service.service_name
+      migrate_task_definition_arn   = service.migrate_task_definition_arn
+      migrate_network_configuration = service.migrate_network_configuration
+    }
+  })
 }
 
 output "web_bucket_name" {
@@ -57,5 +58,5 @@ output "web_distribution_id" {
 }
 
 output "alb_dns_name" {
-  value = module.backend.alb_dns_name
+  value = module.load_balancer.alb_dns_name
 }

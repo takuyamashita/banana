@@ -3,6 +3,11 @@ variable "name" {
   type        = string
 }
 
+variable "env_prefix" {
+  description = "アプリの設定を上書きする環境変数の接頭辞(PAYROLL なら PAYROLL__SECTION__KEY)"
+  type        = string
+}
+
 variable "env" {
   description = "APP_ENV に渡す環境名(dev/stg/prd)"
   type        = string
@@ -18,23 +23,54 @@ variable "database_security_group_id" {
   type        = string
 }
 
-variable "public_subnet_ids" {
-  description = "ALB を置くサブネット"
-  type        = list(string)
-}
-
 variable "private_subnet_ids" {
   description = "タスクを置くサブネット"
   type        = list(string)
 }
 
-variable "image" {
-  description = "server イメージ(ECR の URI:タグ)。migrate も同じイメージを使う"
+variable "cluster_id" {
+  description = "タスクを動かす ECS クラスター(load-balancer)"
   type        = string
 }
 
-variable "certificate_arn" {
-  description = "ALB の HTTPS リスナーに付ける ACM 証明書"
+variable "cluster_name" {
+  description = "タスクを動かす ECS クラスターの名前(オートスケールの対象の指定に使う)"
+  type        = string
+}
+
+variable "listener_arn" {
+  description = "共有の ALB の HTTPS リスナー。このサービスへの振り分けのルールを足す"
+  type        = string
+}
+
+variable "listener_rule_priority" {
+  description = "振り分けのルールの優先順位(サービスごとに別の値)"
+  type        = number
+}
+
+variable "path_patterns" {
+  description = "このサービスに振り分ける RPC のパス(例: /acme.timesheet.v1.*)"
+  type        = list(string)
+}
+
+variable "alb_security_group_id" {
+  description = "共有の ALB のセキュリティグループ。ここからタスクへの通信を許す"
+  type        = string
+}
+
+variable "alb_arn_suffix" {
+  description = "共有の ALB(アラームの指標の指定に使う)"
+  type        = string
+}
+
+variable "task_policy_json" {
+  description = "server のタスクに足す権限(出来事の送り先・自分のキュー・認証基盤など)。IAM ポリシーの JSON"
+  type        = string
+  default     = null
+}
+
+variable "image" {
+  description = "server イメージ(ECR の URI:タグ)。migrate も同じイメージを使う"
   type        = string
 }
 
@@ -50,16 +86,6 @@ variable "database_admin_secret_arn" {
 
 variable "database_app_user_secret_arn" {
   description = "migrate が作るアプリ用の DB ユーザーのシークレット"
-  type        = string
-}
-
-variable "queue_arn" {
-  description = "outbox relay が送る SQS キュー"
-  type        = string
-}
-
-variable "user_pool_arn" {
-  description = "UserDirectory が操作する Cognito ユーザープール"
   type        = string
 }
 
@@ -87,12 +113,6 @@ variable "max_count" {
   default     = 4
 }
 
-variable "container_insights" {
-  description = "Container Insights(タスクごとの詳しい指標。有料)を有効にするか"
-  type        = bool
-  default     = false
-}
-
 variable "ecr_keep_images" {
   description = "ECR に残すイメージの数(ロールバックに使う)"
   type        = number
@@ -109,12 +129,6 @@ variable "adot_collector_version" {
   description = "ADOT collector のイメージタグ"
   type        = string
   default     = "v0.50.0"
-}
-
-variable "deletion_protection" {
-  description = "ALB の削除保護"
-  type        = bool
-  default     = false
 }
 
 variable "app_environment" {

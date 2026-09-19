@@ -129,6 +129,7 @@ locals {
   connect_origins = distinct(concat(
     [for url in compact([
       var.runtime_config.apiBaseUrl,
+      var.runtime_config.timesheetApiBaseUrl,
       var.runtime_config.oidc.authority,
       var.runtime_config.oidc.endSessionEndpoint,
       var.runtime_config.oidc.revocationEndpoint,

@@ -1,4 +1,5 @@
-# gRPC(+ gRPC-Web)サーバーを ECS Fargate で動かす。ALB → server:50051。
+# 1つのサービス(給与・勤怠など)の gRPC(+ gRPC-Web)サーバーを ECS Fargate で動かす。
+# 共有の ALB(load-balancer)のリスナーに、このサービスの RPC のパスを振り分けるルールを足す。
 # 同じイメージに migrate も入れ、デプロイ前に単発タスクとして実行する
 data "aws_region" "current" {}
 
@@ -35,15 +36,6 @@ resource "aws_cloudwatch_log_group" "this" {
   retention_in_days = 30
 }
 
-resource "aws_ecs_cluster" "this" {
-  name = var.name
-  # タスクごとの CPU・メモリの細かい指標。有料なので、見る必要がある環境だけで有効にする
-  setting {
-    name  = "containerInsights"
-    value = var.container_insights ? "enabled" : "disabled"
-  }
-}
-
 # ---- IAM ----
 
 data "aws_iam_policy_document" "ecs_assume" {
@@ -72,20 +64,12 @@ resource "aws_iam_role" "task" {
 }
 
 data "aws_iam_policy_document" "task" {
+  # サービスごとの権限(出来事の送り先・自分のキュー・認証基盤など)
+  source_policy_documents = var.task_policy_json == null ? [] : [var.task_policy_json]
   # 起動時に DB 接続文字列を読む
   statement {
     actions   = ["secretsmanager:GetSecretValue"]
     resources = [var.database_url_secret_arn]
-  }
-  # outbox relay がイベントを送る
-  statement {
-    actions   = ["sqs:SendMessage", "sqs:GetQueueAttributes"]
-    resources = [var.queue_arn]
-  }
-  # UserDirectory(Cognito)で派遣社員のユーザーを作る・無効化する
-  statement {
-    actions   = ["cognito-idp:AdminCreateUser", "cognito-idp:AdminAddUserToGroup", "cognito-idp:AdminDeleteUser"]
-    resources = [var.user_pool_arn]
   }
   # ADOT collector がトレースを X-Ray に送る
   statement {
@@ -121,23 +105,9 @@ resource "aws_iam_role_policy" "task" {
 
 # ---- ネットワーク ----
 
-resource "aws_security_group" "alb" {
-  name        = "${var.name}-alb"
-  description = "ALB for ${var.name}"
-  vpc_id      = var.vpc_id
-}
-
-resource "aws_vpc_security_group_ingress_rule" "alb_https" {
-  security_group_id = aws_security_group.alb.id
-  cidr_ipv4         = "0.0.0.0/0"
-  ip_protocol       = "tcp"
-  from_port         = 443
-  to_port           = 443
-  description       = "HTTPS from internet"
-}
-
+# 共有の ALB から、このサービスのタスクへ
 resource "aws_vpc_security_group_egress_rule" "alb_to_task" {
-  security_group_id            = aws_security_group.alb.id
+  security_group_id            = var.alb_security_group_id
   referenced_security_group_id = aws_security_group.task.id
   ip_protocol                  = "tcp"
   from_port                    = 50051
@@ -153,14 +123,14 @@ resource "aws_security_group" "task" {
 
 resource "aws_vpc_security_group_ingress_rule" "task_from_alb" {
   security_group_id            = aws_security_group.task.id
-  referenced_security_group_id = aws_security_group.alb.id
+  referenced_security_group_id = var.alb_security_group_id
   ip_protocol                  = "tcp"
   from_port                    = 50051
   to_port                      = 50051
   description                  = "From ALB"
 }
 
-# 外向きは HTTPS(AWS API・JWKS・振込API)と DB だけ
+# 外向きは HTTPS(AWS API・JWKS・外部 API)と DB だけ
 resource "aws_vpc_security_group_egress_rule" "task_https" {
   security_group_id = aws_security_group.task.id
   cidr_ipv4         = "0.0.0.0/0"
@@ -177,15 +147,6 @@ resource "aws_vpc_security_group_egress_rule" "task_mysql" {
   from_port                    = 3306
   to_port                      = 3306
   description                  = "MySQL"
-}
-
-resource "aws_lb" "this" {
-  name                       = var.name
-  load_balancer_type         = "application"
-  subnets                    = var.public_subnet_ids
-  security_groups            = [aws_security_group.alb.id]
-  drop_invalid_header_fields = true
-  enable_deletion_protection = var.deletion_protection
 }
 
 # ブラウザからは gRPC-Web(HTTP/1.1 か HTTP/2 の通常の POST)で来るので、ターゲットは HTTP1 でよい。
@@ -207,15 +168,18 @@ resource "aws_lb_target_group" "this" {
   }
 }
 
-resource "aws_lb_listener" "https" {
-  load_balancer_arn = aws_lb.this.arn
-  port              = 443
-  protocol          = "HTTPS"
-  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
-  certificate_arn   = var.certificate_arn
-  default_action {
+# このサービスの RPC(/<proto のパッケージ>.<サービス>/<メソッド>)を、このサービスに振り分ける
+resource "aws_lb_listener_rule" "this" {
+  listener_arn = var.listener_arn
+  priority     = var.listener_rule_priority
+  action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.this.arn
+  }
+  condition {
+    path_pattern {
+      values = var.path_patterns
+    }
   }
 }
 
@@ -293,9 +257,9 @@ resource "aws_ecs_task_definition" "migrate" {
       essential  = true
       entryPoint = ["/app/migrate"]
       environment = concat(local.environment, [
-        { name = "APP__TELEMETRY__OTLP_ENDPOINT", value = "" },
-        { name = "APP__SECRETS__DATABASE_ADMIN_SECRET_ID", value = var.database_admin_secret_arn },
-        { name = "APP__SECRETS__DATABASE_APP_USER_SECRET_ID", value = var.database_app_user_secret_arn },
+        { name = "${var.env_prefix}__TELEMETRY__OTLP_ENDPOINT", value = "" },
+        { name = "${var.env_prefix}__SECRETS__DATABASE_ADMIN_SECRET_ID", value = var.database_admin_secret_arn },
+        { name = "${var.env_prefix}__SECRETS__DATABASE_APP_USER_SECRET_ID", value = var.database_app_user_secret_arn },
       ])
       logConfiguration = local.log_configuration
     },
@@ -304,7 +268,7 @@ resource "aws_ecs_task_definition" "migrate" {
 
 resource "aws_ecs_service" "this" {
   name                               = "${var.name}-server"
-  cluster                            = aws_ecs_cluster.this.id
+  cluster                            = var.cluster_id
   task_definition                    = aws_ecs_task_definition.server.arn
   desired_count                      = var.desired_count
   launch_type                        = "FARGATE"
@@ -324,7 +288,7 @@ resource "aws_ecs_service" "this" {
     container_name   = "server"
     container_port   = 50051
   }
-  depends_on = [aws_lb_listener.https]
+  depends_on = [aws_lb_listener_rule.this]
   # タスク数はオートスケールが決める(apply で最初の数に戻さない)
   lifecycle {
     ignore_changes = [desired_count]
@@ -337,7 +301,7 @@ resource "aws_ecs_service" "this" {
 # RDS の上限に収まるように max_count を決める
 resource "aws_appautoscaling_target" "this" {
   service_namespace  = "ecs"
-  resource_id        = "service/${aws_ecs_cluster.this.name}/${aws_ecs_service.this.name}"
+  resource_id        = "service/${var.cluster_name}/${aws_ecs_service.this.name}"
   scalable_dimension = "ecs:service:DesiredCount"
   min_capacity       = var.desired_count
   max_capacity       = var.max_count
@@ -365,7 +329,7 @@ resource "aws_cloudwatch_metric_alarm" "no_healthy_task" {
   alarm_description   = "ALB の転送先に正常な server がない。ECS のイベントとタスクのログを見る"
   namespace           = "AWS/ApplicationELB"
   metric_name         = "HealthyHostCount"
-  dimensions          = { LoadBalancer = aws_lb.this.arn_suffix, TargetGroup = aws_lb_target_group.this.arn_suffix }
+  dimensions          = { LoadBalancer = var.alb_arn_suffix, TargetGroup = aws_lb_target_group.this.arn_suffix }
   statistic           = "Minimum"
   period              = 60
   evaluation_periods  = 2
@@ -376,41 +340,20 @@ resource "aws_cloudwatch_metric_alarm" "no_healthy_task" {
   ok_actions          = var.alarm_actions
 }
 
-# server が 5xx を返している、または ALB が server に届かず 5xx を返している。
+# server が 5xx を返している(ALB が届かずに返した 5xx は load-balancer のアラームで見る)。
 # gRPC-Web のエラー(Internal・Unavailable など)は HTTP 200 で返るので、ここには数えられない(アプリのログで見る)
 resource "aws_cloudwatch_metric_alarm" "http_5xx" {
   alarm_name          = "${var.name}-http-5xx"
-  alarm_description   = "ALB か server が 5xx を返している。ALB のアクセスログと server のログを見る"
-  comparison_operator = "GreaterThanOrEqualToThreshold"
-  threshold           = 5
+  alarm_description   = "${var.name} の server が 5xx を返している。server のログを見る"
+  namespace           = "AWS/ApplicationELB"
+  metric_name         = "HTTPCode_Target_5XX_Count"
+  dimensions          = { LoadBalancer = var.alb_arn_suffix, TargetGroup = aws_lb_target_group.this.arn_suffix }
+  statistic           = "Sum"
+  period              = 300
   evaluation_periods  = 1
+  threshold           = 5
+  comparison_operator = "GreaterThanOrEqualToThreshold"
   treat_missing_data  = "notBreaching"
   alarm_actions       = var.alarm_actions
   ok_actions          = var.alarm_actions
-
-  metric_query {
-    id          = "total"
-    expression  = "FILL(target, 0) + FILL(elb, 0)"
-    return_data = true
-  }
-  metric_query {
-    id = "target"
-    metric {
-      namespace   = "AWS/ApplicationELB"
-      metric_name = "HTTPCode_Target_5XX_Count"
-      dimensions  = { LoadBalancer = aws_lb.this.arn_suffix }
-      stat        = "Sum"
-      period      = 300
-    }
-  }
-  metric_query {
-    id = "elb"
-    metric {
-      namespace   = "AWS/ApplicationELB"
-      metric_name = "HTTPCode_ELB_5XX_Count"
-      dimensions  = { LoadBalancer = aws_lb.this.arn_suffix }
-      stat        = "Sum"
-      period      = 300
-    }
-  }
 }

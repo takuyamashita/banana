@@ -89,25 +89,27 @@ jobs:
         working-directory: ${{ env.ENV_DIR }}
         run: |
           terraform init -input=false
-          for key in ecr_repository_url ecs_cluster_name ecs_service_name migrate_task_definition_arn \
-            migrate_network_configuration lambda_artifact_bucket web_bucket_name web_distribution_id; do
+          for key in ecs_cluster_name services lambda_artifact_bucket web_bucket_name web_distribution_id; do
             echo "$key=$(terraform output -raw $key)" >> "$GITHUB_OUTPUT"
           done
 
       # ECR のタグは IMMUTABLE なので、同じ版を2回 push すると失敗する。
       # 既にあれば置かない(再実行やロールバックでは、前に置いたイメージをそのまま使う)
-      - name: server イメージを ECR に置く
+      - name: server イメージを ECR に置く(サービスごと)
         env:
-          REPO_URL: ${{ steps.tf.outputs.ecr_repository_url }}
+          SERVICES: ${{ steps.tf.outputs.services }}
         run: |
-          if aws ecr describe-images --repository-name "${REPO_URL#*/}" --image-ids imageTag="$VERSION" >/dev/null 2>&1; then
-            echo "$REPO_URL:$VERSION は既にあるので置かない"
-            exit 0
-          fi
-          aws ecr get-login-password | docker login --username AWS --password-stdin "${REPO_URL%%/*}"
-          gunzip -c release/server-image.tar.gz | docker load
-          docker tag "server:$VERSION" "$REPO_URL:$VERSION"
-          docker push "$REPO_URL:$VERSION"
+          for service in $(jq -r 'keys[]' <<<"$SERVICES"); do
+            repo_url=$(jq -r --arg s "$service" '.[$s].ecr_repository_url' <<<"$SERVICES")
+            if aws ecr describe-images --repository-name "${repo_url#*/}" --image-ids imageTag="$VERSION" >/dev/null 2>&1; then
+              echo "$repo_url:$VERSION は既にあるので置かない"
+              continue
+            fi
+            aws ecr get-login-password | docker login --username AWS --password-stdin "${repo_url%%/*}"
+            gunzip -c "release/$service-image.tar.gz" | docker load
+            docker tag "$service:$VERSION" "$repo_url:$VERSION"
+            docker push "$repo_url:$VERSION"
+          done
 
       - name: Lambda の zip を S3 に置く
         env:
@@ -121,36 +123,41 @@ jobs:
           aws s3 cp release/payout-dispatcher.zip "s3://$BUCKET/$key"
 
       # run-task の overrides ではイメージを差し替えられない(containerOverrides に image はない)。
-      # 今のタスク定義のイメージだけを新しい版にしたリビジョンを登録し、それで流す
-      - name: migrate(ECS 単発タスク)。失敗したらここで止める
+      # 今のタスク定義のイメージだけを新しい版にしたリビジョンを登録し、それで流す。サービスごとに流し、1つでも失敗したら止める
+      - name: migrate(サービスごとの ECS 単発タスク)。失敗したらここで止める
         env:
           CLUSTER: ${{ steps.tf.outputs.ecs_cluster_name }}
-          TASK_DEFINITION: ${{ steps.tf.outputs.migrate_task_definition_arn }}
-          NETWORK: ${{ steps.tf.outputs.migrate_network_configuration }}
-          IMAGE: ${{ steps.tf.outputs.ecr_repository_url }}:${{ github.sha }}
+          SERVICES: ${{ steps.tf.outputs.services }}
         run: |
-          aws ecs describe-task-definition --task-definition "$TASK_DEFINITION" --query taskDefinition \
-            | jq --arg image "$IMAGE" -f .github/deploy/migrate-task-definition.jq > migrate-task-definition.json
-          task_definition=$(aws ecs register-task-definition --cli-input-json file://migrate-task-definition.json \
-            --query taskDefinition.taskDefinitionArn --output text)
-          task_arn=$(aws ecs run-task --cluster "$CLUSTER" --task-definition "$task_definition" \
-            --launch-type FARGATE --network-configuration "$NETWORK" \
-            --query 'tasks[0].taskArn' --output text)
-          aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$task_arn"
-          code=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$task_arn" \
-            --query 'tasks[0].containers[0].exitCode' --output text)
-          echo "migrate exit code: $code"
-          test "$code" = "0"
+          for service in $(jq -r 'keys[]' <<<"$SERVICES"); do
+            get() { jq -r --arg s "$service" --arg k "$1" '.[$s][$k]' <<<"$SERVICES"; }
+            image="$(get ecr_repository_url):$VERSION"
+            aws ecs describe-task-definition --task-definition "$(get migrate_task_definition_arn)" --query taskDefinition \
+              | jq --arg image "$image" -f .github/deploy/migrate-task-definition.jq > migrate-task-definition.json
+            task_definition=$(aws ecs register-task-definition --cli-input-json file://migrate-task-definition.json \
+              --query taskDefinition.taskDefinitionArn --output text)
+            task_arn=$(aws ecs run-task --cluster "$CLUSTER" --task-definition "$task_definition" \
+              --launch-type FARGATE --network-configuration "$(get migrate_network_configuration)" \
+              --query 'tasks[0].taskArn' --output text)
+            aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$task_arn"
+            code=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$task_arn" \
+              --query 'tasks[0].containers[0].exitCode' --output text)
+            echo "$service migrate exit code: $code"
+            test "$code" = "0"
+          done
 
       - name: terraform apply(承認した plan で、サービス更新・Lambda 更新)
         working-directory: ${{ env.ENV_DIR }}
         run: terraform apply -input=false tfplan
 
       # apply はタスクの入れ替えを待たずに終わる。新しいタスクが起動できないまま次に進まないよう、安定するまで待つ
-      - name: server の入れ替えが終わるのを待つ
+      - name: server の入れ替えが終わるのを待つ(全サービス)
+        env:
+          SERVICES: ${{ steps.tf.outputs.services }}
         run: |
-          aws ecs wait services-stable \
-            --cluster "${{ steps.tf.outputs.ecs_cluster_name }}" --services "${{ steps.tf.outputs.ecs_service_name }}"
+          # shellcheck disable=SC2046 # サービス名を別々の引数として渡す
+          aws ecs wait services-stable --cluster "${{ steps.tf.outputs.ecs_cluster_name }}" \
+            --services $(jq -r '[.[].ecs_service_name] | join(" ")' <<<"$SERVICES")
 
       # assets/ を先に置いてから index.html を差し替える(新しい index.html が、まだない assets/ を指さないように)。
       # 古い assets/ は消さない。前の index.html を開いたままの画面が、後から読みに来る。

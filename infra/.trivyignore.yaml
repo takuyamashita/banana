@@ -1,7 +1,7 @@
 # trivy config の想定内の指摘。理由を書いて個別に無視する(無視は期限を決めて見直す)
 misconfigurations:
   - id: AWS-0053
-    paths: ["modules/backend-service/main.tf"]
+    paths: ["modules/load-balancer/main.tf"]
     statement: ALB はブラウザから直接叩く API の入口なので公開する。受けるのは 443 だけ
   - id: AWS-0104
     paths: ["modules/backend-service/main.tf", "modules/lambda-function/main.tf"]
@@ -12,6 +12,9 @@ misconfigurations:
   - id: AWS-0132
     paths: ["modules/frontend-hosting/main.tf"]
     statement: 公開前提の静的ファイルなので SSE-S3 で足りる。CMK は不要
+  - id: AWS-0136
+    paths: ["modules/event-topic/main.tf"]
+    statement: サービスの間の出来事のトピックは AWS 管理キー(alias/aws/sns)で暗号化する。送れるのは各サービスのタスクロール、受けるのは購読したキューだけ(IAM とキューのポリシーで絞る)。CMK は鍵の管理の手間に見合わない
   - id: AWS-0095
     paths: ["modules/stack/main.tf"]
     statement: アラームの通知に秘密情報は載らない。CloudWatch からの発行は AWS 管理キー(alias/aws/sns)で暗号化したトピックに届かず、CMK と鍵ポリシーが要るので暗号化しない
