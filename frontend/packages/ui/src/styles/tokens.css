@@ -8,8 +8,15 @@
   --color-bg: #f6f7f9;
   --color-surface: #fff;
   --color-border: #d9dde4;
-  --color-accent: #2455c3;
   --color-on-accent: #fff;
+
+  /* システム(給与・勤怠)ごとの色。画面の枠が data-system でどちらかを選び、accent をその色にする */
+  --color-payroll: #2455c3;
+  --color-payroll-tint: #e9effb;
+  --color-timesheet: #a3560b;
+  --color-timesheet-tint: #fbf0e4;
+  --color-accent: var(--color-payroll);
+  --color-accent-tint: var(--color-payroll-tint);
   --color-error: #b3261e;
   --color-success: #1e6b3a;
 
@@ -47,9 +54,23 @@
     --color-bg: #14171d;
     --color-surface: #1d2129;
     --color-border: #333a46;
-    --color-accent: #7ea2f2;
     --color-on-accent: #0e1320;
+    --color-payroll: #7ea2f2;
+    --color-payroll-tint: #1c2536;
+    --color-timesheet: #f0a860;
+    --color-timesheet-tint: #2b2016;
     --color-error: #f2b8b5;
     --color-success: #8fd4a5;
   }
+}
+
+/* data-system を付けた要素の中は、そのシステムの色になる。入れ子にしても内側が勝つよう、両方に書く */
+[data-system="payroll"] {
+  --color-accent: var(--color-payroll);
+  --color-accent-tint: var(--color-payroll-tint);
+}
+
+[data-system="timesheet"] {
+  --color-accent: var(--color-timesheet);
+  --color-accent-tint: var(--color-timesheet-tint);
 }

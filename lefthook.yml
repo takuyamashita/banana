@@ -11,6 +11,8 @@ pre-commit:
       run: pnpm oxfmt --check {staged_files}
     - name: oxlint
       glob: "*.{ts,tsx}"
+      # 生成コードは lint しない(生成コードだけをコミットすると、対象がなくて oxlint が失敗する)
+      exclude: ["**/gen/**", "**/*.gen.ts"]
       run: pnpm oxlint {staged_files}
     - name: stylelint
       glob: "*.css"

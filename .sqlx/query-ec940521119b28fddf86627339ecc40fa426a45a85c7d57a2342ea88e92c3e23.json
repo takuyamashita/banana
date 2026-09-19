@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "insert into timesheet_entries (timesheet_id, work_date, project_id, work_minutes)\n             values (?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "ec940521119b28fddf86627339ecc40fa426a45a85c7d57a2342ea88e92c3e23"
+}

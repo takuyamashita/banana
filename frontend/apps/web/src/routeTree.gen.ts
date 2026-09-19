@@ -14,9 +14,11 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppAdminRouteImport } from './routes/_app/_admin'
 import { Route as AppMeRouteImport } from './routes/_app/me'
+import { Route as AppTimesheetRouteImport } from './routes/_app/timesheet'
 import { Route as AppAdminPayslipsRouteImport } from './routes/_app/_admin/payslips'
 import { Route as AppAdminProjectsRouteImport } from './routes/_app/_admin/projects'
 import { Route as AppAdminStaffRouteImport } from './routes/_app/_admin/staff'
+import { Route as AppAdminTimesheetsRouteImport } from './routes/_app/_admin/timesheets'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -41,6 +43,11 @@ const AppMeRoute = AppMeRouteImport.update({
   path: '/me',
   getParentRoute: () => AppRoute,
 } as any)
+const AppTimesheetRoute = AppTimesheetRouteImport.update({
+  id: '/timesheet',
+  path: '/timesheet',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppAdminPayslipsRoute = AppAdminPayslipsRouteImport.update({
   id: '/payslips',
   path: '/payslips',
@@ -56,22 +63,31 @@ const AppAdminStaffRoute = AppAdminStaffRouteImport.update({
   path: '/staff',
   getParentRoute: () => AppAdminRoute,
 } as any)
+const AppAdminTimesheetsRoute = AppAdminTimesheetsRouteImport.update({
+  id: '/timesheets',
+  path: '/timesheets',
+  getParentRoute: () => AppAdminRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/login': typeof LoginRoute
   '/me': typeof AppMeRoute
+  '/timesheet': typeof AppTimesheetRoute
   '/payslips': typeof AppAdminPayslipsRoute
   '/projects': typeof AppAdminProjectsRoute
   '/staff': typeof AppAdminStaffRoute
+  '/timesheets': typeof AppAdminTimesheetsRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/': typeof AppIndexRoute
   '/me': typeof AppMeRoute
+  '/timesheet': typeof AppTimesheetRoute
   '/payslips': typeof AppAdminPayslipsRoute
   '/projects': typeof AppAdminProjectsRoute
   '/staff': typeof AppAdminStaffRoute
+  '/timesheets': typeof AppAdminTimesheetsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -79,26 +95,46 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/_app/_admin': typeof AppAdminRouteWithChildren
   '/_app/me': typeof AppMeRoute
+  '/_app/timesheet': typeof AppTimesheetRoute
   '/_app/': typeof AppIndexRoute
   '/_app/_admin/payslips': typeof AppAdminPayslipsRoute
   '/_app/_admin/projects': typeof AppAdminProjectsRoute
   '/_app/_admin/staff': typeof AppAdminStaffRoute
+  '/_app/_admin/timesheets': typeof AppAdminTimesheetsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/me' | '/payslips' | '/projects' | '/staff'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/me'
+    | '/timesheet'
+    | '/payslips'
+    | '/projects'
+    | '/staff'
+    | '/timesheets'
   fileRoutesByTo: FileRoutesByTo
-  to: '/login' | '/' | '/me' | '/payslips' | '/projects' | '/staff'
+  to:
+    | '/login'
+    | '/'
+    | '/me'
+    | '/timesheet'
+    | '/payslips'
+    | '/projects'
+    | '/staff'
+    | '/timesheets'
   id:
     | '__root__'
     | '/_app'
     | '/login'
     | '/_app/_admin'
     | '/_app/me'
+    | '/_app/timesheet'
     | '/_app/'
     | '/_app/_admin/payslips'
     | '/_app/_admin/projects'
     | '/_app/_admin/staff'
+    | '/_app/_admin/timesheets'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -143,6 +179,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppMeRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/timesheet': {
+      id: '/_app/timesheet'
+      path: '/timesheet'
+      fullPath: '/timesheet'
+      preLoaderRoute: typeof AppTimesheetRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/_admin/payslips': {
       id: '/_app/_admin/payslips'
       path: '/payslips'
@@ -164,6 +207,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAdminStaffRouteImport
       parentRoute: typeof AppAdminRoute
     }
+    '/_app/_admin/timesheets': {
+      id: '/_app/_admin/timesheets'
+      path: '/timesheets'
+      fullPath: '/timesheets'
+      preLoaderRoute: typeof AppAdminTimesheetsRouteImport
+      parentRoute: typeof AppAdminRoute
+    }
   }
 }
 
@@ -171,12 +221,14 @@ interface AppAdminRouteChildren {
   AppAdminPayslipsRoute: typeof AppAdminPayslipsRoute
   AppAdminProjectsRoute: typeof AppAdminProjectsRoute
   AppAdminStaffRoute: typeof AppAdminStaffRoute
+  AppAdminTimesheetsRoute: typeof AppAdminTimesheetsRoute
 }
 
 const AppAdminRouteChildren: AppAdminRouteChildren = {
   AppAdminPayslipsRoute: AppAdminPayslipsRoute,
   AppAdminProjectsRoute: AppAdminProjectsRoute,
   AppAdminStaffRoute: AppAdminStaffRoute,
+  AppAdminTimesheetsRoute: AppAdminTimesheetsRoute,
 }
 
 const AppAdminRouteWithChildren = AppAdminRoute._addFileChildren(
@@ -186,12 +238,14 @@ const AppAdminRouteWithChildren = AppAdminRoute._addFileChildren(
 interface AppRouteChildren {
   AppAdminRoute: typeof AppAdminRouteWithChildren
   AppMeRoute: typeof AppMeRoute
+  AppTimesheetRoute: typeof AppTimesheetRoute
   AppIndexRoute: typeof AppIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppAdminRoute: AppAdminRouteWithChildren,
   AppMeRoute: AppMeRoute,
+  AppTimesheetRoute: AppTimesheetRoute,
   AppIndexRoute: AppIndexRoute,
 }
 

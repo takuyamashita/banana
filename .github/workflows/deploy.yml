@@ -1,6 +1,6 @@
 name: deploy
 
-# 1回ビルドした成果物(server イメージ・Lambda の zip・フロント)を、dev → stg → prod の順に昇格させる。
+# 1回ビルドした成果物(サービスごとの server イメージ・Lambda の zip・フロント)を、dev → stg → prod の順に昇格させる。
 # stg・prod は GitHub Environments の承認を経る。どの環境まで進めるかは through で選ぶ。
 # 同じ版(git sha)をもう一度デプロイすると、ECR・S3 に既にある成果物をそのまま使う(再実行・ロールバック)。
 # 古い版に戻すときは、その版のタグを指定して実行する。
@@ -43,11 +43,14 @@ jobs:
       - run: rustup toolchain install
       - uses: jdx/mise-action@v4.3.0
 
-      - name: server イメージ(cargo-chef)をビルド
+      # サービスごとのイメージ(中は /app/server と /app/migrate)。サービスの名前は Terraform の出力 services のキーと同じ
+      - name: server イメージ(サービスごと。cargo-chef)をビルド
         run: |
-          docker build --platform linux/arm64 -f backend/app/server/Dockerfile -t "server:$GITHUB_SHA" .
           mkdir -p release
-          docker save "server:$GITHUB_SHA" | gzip > release/server-image.tar.gz
+          for service in payroll timesheet; do
+            docker build --platform linux/arm64 -f backend/Dockerfile --build-arg SERVICE="$service" -t "$service:$GITHUB_SHA" .
+            docker save "$service:$GITHUB_SHA" | gzip > "release/$service-image.tar.gz"
+          done
 
       - name: Lambda の zip をビルド
         run: |

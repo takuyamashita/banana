@@ -5,14 +5,24 @@ members = [
   "backend/shared/kernel",
   "backend/shared/telemetry",
   "backend/shared/auth",
+  "backend/shared/db",
+  "backend/shared/messaging",
+  "backend/shared/service",
   "backend/contexts/payroll/domain",
   "backend/contexts/payroll/usecase",
   "backend/contexts/payroll/infrastructure",
   "backend/contexts/payroll/handler",
-  "backend/app/bootstrap",
-  "backend/app/server",
-  "backend/app/migrate",
-  "backend/app/lambdas/payout-dispatcher",
+  "backend/contexts/timesheet/domain",
+  "backend/contexts/timesheet/usecase",
+  "backend/contexts/timesheet/infrastructure",
+  "backend/contexts/timesheet/handler",
+  "backend/services/payroll/bootstrap",
+  "backend/services/payroll/server",
+  "backend/services/payroll/migrate",
+  "backend/services/payroll/payout-dispatcher",
+  "backend/services/timesheet/bootstrap",
+  "backend/services/timesheet/server",
+  "backend/services/timesheet/migrate",
 ]
 
 [workspace.package]
@@ -26,11 +36,19 @@ platform-gen = { path = "backend/gen" }
 platform-kernel = { path = "backend/shared/kernel" }
 platform-telemetry = { path = "backend/shared/telemetry" }
 platform-auth = { path = "backend/shared/auth" }
+platform-db = { path = "backend/shared/db" }
+platform-messaging = { path = "backend/shared/messaging" }
+platform-service = { path = "backend/shared/service" }
 payroll-domain = { path = "backend/contexts/payroll/domain" }
 payroll-usecase = { path = "backend/contexts/payroll/usecase" }
 payroll-infrastructure = { path = "backend/contexts/payroll/infrastructure" }
 payroll-handler = { path = "backend/contexts/payroll/handler" }
-bootstrap = { path = "backend/app/bootstrap" }
+timesheet-domain = { path = "backend/contexts/timesheet/domain" }
+timesheet-usecase = { path = "backend/contexts/timesheet/usecase" }
+timesheet-infrastructure = { path = "backend/contexts/timesheet/infrastructure" }
+timesheet-handler = { path = "backend/contexts/timesheet/handler" }
+payroll-bootstrap = { path = "backend/services/payroll/bootstrap" }
+timesheet-bootstrap = { path = "backend/services/timesheet/bootstrap" }
 
 # 外部
 anyhow = "1.0.104"
@@ -47,6 +65,7 @@ aws-sdk-cognitoidentityprovider = { version = "1.135.0", default-features = fals
   "default-https-client",
 ] }
 aws-sdk-secretsmanager = { version = "1", default-features = false, features = ["rt-tokio", "default-https-client"] }
+aws-sdk-sns = { version = "1.113.1", default-features = false, features = ["rt-tokio", "default-https-client"] }
 aws-sdk-sqs = { version = "1.111.0", default-features = false, features = ["rt-tokio", "default-https-client"] }
 aws_lambda_events = { version = "1.2.0", default-features = false, features = ["sqs"] }
 axum = { version = "0.8.9", default-features = false, features = ["http1", "http2", "tokio"] }
@@ -57,6 +76,7 @@ lambda_runtime = "1.4.0"
 opentelemetry = "0.32.0"
 opentelemetry-otlp = { version = "0.32.0", default-features = false, features = ["grpc-tonic", "trace"] }
 opentelemetry_sdk = { version = "0.32.0", features = ["rt-tokio"] }
+pbjson = "0.9.0"
 prost = "0.14.4"
 reqwest = { version = "0.13.5", default-features = false, features = ["json", "form", "rustls"] }
 serde = { version = "1.0.229", features = ["derive"] }
@@ -69,6 +89,8 @@ sqlx = { version = "0.9.0", default-features = false, features = [
   "migrate",
   "time",
   "json",
+  # crate ごとの sqlx.toml(query! が見る DB の環境変数をサービスごとに分ける)
+  "sqlx-toml",
 ] }
 testcontainers-modules = { version = "0.15.0", features = ["mysql"] }
 thiserror = "2.0.20"

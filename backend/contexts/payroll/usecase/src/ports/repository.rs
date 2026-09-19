@@ -8,9 +8,10 @@
 
 use async_trait::async_trait;
 use payroll_domain::payout::{NewPayout, Payout, PayoutId};
-use payroll_domain::payslip::{NewPayslip, Payslip, PayslipId};
+use payroll_domain::payslip::{NewPayslip, PayPeriod, Payslip, PayslipId};
 use payroll_domain::project::{NewProject, Project, ProjectId};
 use payroll_domain::staff::{NewStaff, Staff, StaffId};
+use payroll_domain::work::ApprovedWork;
 use platform_kernel::{Email, UserId};
 use thiserror::Error;
 
@@ -94,4 +95,18 @@ pub trait PayoutRepository: Send + Sync {
     async fn insert(&self, db: &mut Db, new: &NewPayout) -> Result<PayoutId, RepositoryError>;
     /// 登録済みの振込依頼の今の内容を記録する。記録されていなければ `Internal`
     async fn update(&self, db: &mut Db, payout: &Payout) -> Result<(), RepositoryError>;
+}
+
+/// 承認された稼働(勤怠から届いた写し)の記録と取り出し
+#[async_trait]
+pub trait ApprovedWorkRepository: Send + Sync {
+    /// 派遣社員のその月の、承認された稼働
+    async fn find(
+        &self,
+        staff_id: StaffId,
+        period: PayPeriod,
+    ) -> Result<Option<ApprovedWork>, RepositoryError>;
+    /// 届いた内容を記録する。同じ派遣社員・同じ月の記録があれば、届いた内容に置き換える
+    /// (同じ出来事が2回届いても、記録は変わらない)
+    async fn save(&self, db: &mut Db, work: &ApprovedWork) -> Result<(), RepositoryError>;
 }

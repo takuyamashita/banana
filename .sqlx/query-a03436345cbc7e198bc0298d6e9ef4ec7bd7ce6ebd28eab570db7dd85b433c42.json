@@ -14,7 +14,7 @@
         },
         "origin": {
           "Table": {
-            "table": "platform.staff",
+            "table": "payroll.staff",
             "name": "id"
           }
         }
@@ -30,7 +30,7 @@
         },
         "origin": {
           "Table": {
-            "table": "platform.staff",
+            "table": "payroll.staff",
             "name": "user_id"
           }
         }
@@ -46,7 +46,7 @@
         },
         "origin": {
           "Table": {
-            "table": "platform.staff",
+            "table": "payroll.staff",
             "name": "email"
           }
         }
@@ -62,7 +62,7 @@
         },
         "origin": {
           "Table": {
-            "table": "platform.staff",
+            "table": "payroll.staff",
             "name": "display_name"
           }
         }

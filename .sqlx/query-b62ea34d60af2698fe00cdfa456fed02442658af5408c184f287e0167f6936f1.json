@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "insert into staff (id, user_id, name) values (?, ?, ?) as new\n             on duplicate key update user_id = new.user_id, name = new.name",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "b62ea34d60af2698fe00cdfa456fed02442658af5408c184f287e0167f6936f1"
+}

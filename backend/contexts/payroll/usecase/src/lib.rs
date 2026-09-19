@@ -3,11 +3,13 @@
 //! - 管理者: 案件と派遣社員を登録し、派遣社員ごとに毎月の給与を確定する
 //! - 派遣社員: 自分の給与明細を見る(他人の給与明細は見られない)
 //! - 給与の確定を受けて、派遣社員の口座へ支給額を振り込む
+//! - 勤怠で承認された稼働を記録し、給与明細の明細行に入れられるようにする
 
 pub mod error;
 pub mod payslip;
 pub mod ports;
 pub mod project;
 pub mod staff;
+pub mod work;
 
 pub use error::UseCaseError;

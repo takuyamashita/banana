@@ -52,7 +52,11 @@ function fakeFullManager(manager: Manager): { manager: AuthManager; handlers: Re
   };
 }
 
-const config: RuntimeConfig = { apiBaseUrl: "http://api", oidc: { authority: "http://id", clientId: "web" } };
+const config: RuntimeConfig = {
+  apiBaseUrl: "http://api",
+  timesheetApiBaseUrl: "http://api",
+  oidc: { authority: "http://id", clientId: "web" },
+};
 
 afterEach(() => window.history.replaceState({}, "", "/"));
 

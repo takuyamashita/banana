@@ -1,5 +1,5 @@
 import { TransportProvider } from "@connectrpc/connect-query";
-import { createApiTransport, type Transport } from "@platform/api-client";
+import { createServicesTransport, type Transport } from "@platform/api-client";
 import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 
@@ -26,7 +26,8 @@ export async function createApp(config: RuntimeConfig): Promise<{
     void router.navigate({ to: "/login", search: { returnTo: router.state.location.href } });
   });
   const queryClient = createQueryClient(() => auth.expire(SESSION_EXPIRED));
-  const transport = createApiTransport({ baseUrl: config.apiBaseUrl, getAccessToken: auth.accessToken });
+  // 給与と勤怠のサービスへ、呼ぶ RPC に応じて振り分ける
+  const transport = createServicesTransport(config, auth.accessToken);
   // ログインからの戻りを、ルーターが URL を読む前に処理する(URL が戻り先の画面になる)
   await auth.restore();
   const router = createAppRouter({ auth, queryClient, transport });

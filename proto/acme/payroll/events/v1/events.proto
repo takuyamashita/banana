@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+// 給与(payroll)サービスが、他のサービスに知らせる出来事。
+//
+// キューに流す封筒(event_id・event_type・aggregate_type・aggregate_id・payload)の payload に、
+// このメッセージを proto の JSON 形(フィールド名は lowerCamelCase、int64 は文字列)で入れる。
+// 受け手は event_type でメッセージを選ぶ。互換のない変更は、新しい event_type(と新しいメッセージ)で出す
+package acme.payroll.events.v1;
+
+// event_type: staff.registered(aggregate_type: staff)
+// 派遣社員が登録された。他のサービスは、これで派遣社員と、そのログイン(利用者 ID)を結びつける
+message StaffRegistered {
+  int64 staff_id = 1;
+  // 認証基盤の利用者 ID(アクセストークンの sub)
+  string user_id = 2;
+  string display_name = 3;
+}
+
+// event_type: project.created(aggregate_type: project)
+// 案件が登録された
+message ProjectCreated {
+  int64 project_id = 1;
+  string name = 2;
+}

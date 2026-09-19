@@ -1,6 +1,6 @@
 use platform_kernel::Unsaved;
 
-use super::{ProjectId, ProjectName};
+use super::{ProjectEvent, ProjectId, ProjectName};
 
 /// 案件。派遣社員が従事する仕事の単位
 #[derive(Debug)]
@@ -26,6 +26,11 @@ impl Project<Unsaved> {
     #[must_use]
     pub fn new(name: ProjectName) -> Self {
         Self { id: Unsaved, name }
+    }
+
+    /// この内容で登録され、案件番号 `id` が振られた、という出来事
+    pub fn created_as(&self, id: ProjectId) -> ProjectEvent {
+        ProjectEvent::Created { project_id: id, name: self.name.clone() }
     }
 }
 

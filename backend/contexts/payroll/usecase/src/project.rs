@@ -6,25 +6,35 @@ use payroll_domain::project::{NewProject, ProjectId, ProjectName};
 
 use crate::UseCaseError;
 use crate::ports::database::Database;
+use crate::ports::events::{EventOutbox, PayrollEvent};
 use crate::ports::queries::{ProjectQuery, ProjectView};
 use crate::ports::repository::ProjectRepository;
 
-/// 管理者が案件を登録する
+/// 管理者が案件を登録する。登録したことは他の業務(勤怠など)に知らせる
 pub struct CreateProjectUseCase {
     repository: Arc<dyn ProjectRepository>,
+    outbox: Arc<dyn EventOutbox>,
     db: Arc<dyn Database>,
 }
 
 impl CreateProjectUseCase {
     #[must_use]
-    pub fn new(repository: Arc<dyn ProjectRepository>, db: Arc<dyn Database>) -> Self {
-        Self { repository, db }
+    pub fn new(
+        repository: Arc<dyn ProjectRepository>,
+        outbox: Arc<dyn EventOutbox>,
+        db: Arc<dyn Database>,
+    ) -> Self {
+        Self { repository, outbox, db }
     }
 
-    /// 案件を登録し、振られた案件番号を返す
+    /// 案件を登録し、振られた案件番号を返す。案件と、登録したという出来事は一緒に記録する
     pub async fn execute(&self, name: ProjectName) -> Result<ProjectId, UseCaseError> {
-        let mut db = self.db.connection().await?;
-        Ok(self.repository.insert(&mut db, &NewProject::new(name)).await?)
+        let new = NewProject::new(name);
+        let mut tx = self.db.transaction().await?;
+        let id = self.repository.insert(&mut tx, &new).await?;
+        self.outbox.append(&mut tx, PayrollEvent::Project(new.created_as(id))).await?;
+        tx.commit().await?;
+        Ok(id)
     }
 }
 

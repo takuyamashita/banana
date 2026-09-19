@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "update timesheets set status = ?, returned_reason = ?, submitted_at = ?, approved_at = ?\n             where id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "776a044b0cca059fa2fc24aceb46ac946e46adf293305056072fd1039916c457"
+}

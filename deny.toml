@@ -41,8 +41,20 @@ deny = [
   # native-tls(OpenSSL)ではなく rustls に揃える
   { crate = "native-tls", reason = "TLS は rustls に揃える" },
   { crate = "openssl-sys", reason = "TLS は rustls に揃える" },
-  # sqlx を直接使ってよいのは DB に触る層だけ。wrappers は「直接依存してよい親」の一覧
-  { crate = "sqlx", wrappers = ["payroll-infrastructure", "bootstrap", "server", "migrate"] },
+  # sqlx を直接使ってよいのは DB に触る層(各コンテキストの infrastructure・共通の DB/メッセージング/サービス)と、
+  # サービスの組み立て役(bootstrap)だけ。wrappers は「直接依存してよい親」の一覧
+  { crate = "sqlx", wrappers = [
+    "payroll-infrastructure",
+    "payroll-bootstrap",
+    "timesheet-infrastructure",
+    "timesheet-bootstrap",
+    "platform-db",
+    "platform-messaging",
+    "platform-service",
+    # API テストが DB を直接確かめる(dev-dependencies だけ)
+    "payroll-server",
+    "timesheet-server",
+  ] },
 ]
 
 [sources]

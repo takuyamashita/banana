@@ -93,6 +93,31 @@ pub struct PayslipLine {
     #[prost(string, tag="5")]
     pub project_name: ::prost::alloc::string::String,
 }
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetApprovedWorkRequest {
+    #[prost(int64, tag="1")]
+    pub staff_id: i64,
+    #[prost(int32, tag="2")]
+    pub pay_year: i32,
+    #[prost(int32, tag="3")]
+    pub pay_month: i32,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetApprovedWorkResponse {
+    /// 案件番号の順。まだ承認されていなければ空
+    #[prost(message, repeated, tag="1")]
+    pub work: ::prost::alloc::vec::Vec<ApprovedWork>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ApprovedWork {
+    #[prost(int64, tag="1")]
+    pub project_id: i64,
+    #[prost(string, tag="2")]
+    pub project_name: ::prost::alloc::string::String,
+    /// 1か月の稼働の合計(分)
+    #[prost(uint32, tag="3")]
+    pub work_minutes: u32,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum PayslipStatus {
@@ -209,4 +234,5 @@ pub struct Staff {
     pub display_name: ::prost::alloc::string::String,
 }
 include!("acme.payroll.v1.tonic.rs");
+include!("acme.payroll.v1.serde.rs");
 // @@protoc_insertion_point(module)

@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "insert into approved_work (staff_id, work_year, work_month, project_id, work_minutes)\n                 values (?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "7f0b0e6faa50f468685d889931e54ebad68bea50f5cca6bef12bb2009f4cbefe"
+}

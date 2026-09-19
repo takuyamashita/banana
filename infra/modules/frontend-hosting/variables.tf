@@ -16,7 +16,8 @@ variable "certificate_arn" {
 variable "runtime_config" {
   description = "フロントが実行時に読む config.json の中身"
   type = object({
-    apiBaseUrl = string
+    apiBaseUrl          = string
+    timesheetApiBaseUrl = string
     oidc = object({
       authority = string
       clientId  = string

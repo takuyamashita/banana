@@ -14,7 +14,7 @@
         },
         "origin": {
           "Table": {
-            "table": "platform.payslips",
+            "table": "payroll.payslips",
             "name": "id"
           }
         }
@@ -30,7 +30,7 @@
         },
         "origin": {
           "Table": {
-            "table": "platform.payslips",
+            "table": "payroll.payslips",
             "name": "staff_id"
           }
         }
@@ -46,7 +46,7 @@
         },
         "origin": {
           "Table": {
-            "table": "platform.payslips",
+            "table": "payroll.payslips",
             "name": "pay_year"
           }
         }
@@ -62,7 +62,7 @@
         },
         "origin": {
           "Table": {
-            "table": "platform.payslips",
+            "table": "payroll.payslips",
             "name": "pay_month"
           }
         }
@@ -78,7 +78,7 @@
         },
         "origin": {
           "Table": {
-            "table": "platform.payslips",
+            "table": "payroll.payslips",
             "name": "status"
           }
         }
@@ -94,7 +94,7 @@
         },
         "origin": {
           "Table": {
-            "table": "platform.payslips",
+            "table": "payroll.payslips",
             "name": "finalized_at"
           }
         }
@@ -110,7 +110,7 @@
         },
         "origin": {
           "Table": {
-            "table": "platform.payslip_lines",
+            "table": "payroll.payslip_lines",
             "name": "project_id"
           }
         }
@@ -126,7 +126,7 @@
         },
         "origin": {
           "Table": {
-            "table": "platform.payslip_lines",
+            "table": "payroll.payslip_lines",
             "name": "project_name"
           }
         }
@@ -142,7 +142,7 @@
         },
         "origin": {
           "Table": {
-            "table": "platform.payslip_lines",
+            "table": "payroll.payslip_lines",
             "name": "work_minutes"
           }
         }
@@ -158,7 +158,7 @@
         },
         "origin": {
           "Table": {
-            "table": "platform.payslip_lines",
+            "table": "payroll.payslip_lines",
             "name": "hourly_rate"
           }
         }

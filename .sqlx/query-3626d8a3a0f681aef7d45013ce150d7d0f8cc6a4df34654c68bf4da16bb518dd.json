@@ -14,7 +14,7 @@
         },
         "origin": {
           "Table": {
-            "table": "platform.projects",
+            "table": "payroll.projects",
             "name": "id"
           }
         }
@@ -30,7 +30,7 @@
         },
         "origin": {
           "Table": {
-            "table": "platform.projects",
+            "table": "payroll.projects",
             "name": "name"
           }
         }

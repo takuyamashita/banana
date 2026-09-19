@@ -18,6 +18,11 @@ variable "subnet_ids" {
   type        = list(string)
 }
 
+variable "services" {
+  description = "データベースを持つサービス。サービスごとに、データベース名・ユーザー名がこの名前になる"
+  type        = list(string)
+}
+
 variable "allowed_security_group_ids" {
   description = "3306 への接続を許可するセキュリティグループ(ECS タスク・Lambda)"
   type        = list(string)

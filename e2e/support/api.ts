@@ -3,6 +3,8 @@
 import { createApiClients, type ApiClients } from "@platform/api-client";
 
 const API = process.env["E2E_API_URL"] ?? `http://localhost:${process.env["API_PORT"] ?? 50051}`;
+const TIMESHEET_API =
+  process.env["E2E_TIMESHEET_API_URL"] ?? `http://localhost:${process.env["TIMESHEET_API_PORT"] ?? 50052}`;
 const KEYCLOAK = process.env["E2E_KEYCLOAK_URL"] ?? `http://localhost:${process.env["KEYCLOAK_PORT"] ?? 8080}`;
 
 export const ADMIN = { email: "admin@example.com", password: "password" };
@@ -26,7 +28,7 @@ async function passwordGrant(email: string, password: string): Promise<string> {
 
 export async function adminApi(): Promise<ApiClients> {
   const token = await passwordGrant(ADMIN.email, ADMIN.password);
-  return createApiClients({ baseUrl: API, getAccessToken: async () => token });
+  return createApiClients({ apiBaseUrl: API, timesheetApiBaseUrl: TIMESHEET_API }, async () => token);
 }
 
 export interface SeededStaff {

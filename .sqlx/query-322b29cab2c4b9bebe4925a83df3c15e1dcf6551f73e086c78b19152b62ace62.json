@@ -1,0 +1,150 @@
+{
+  "db_name": "MySQL",
+  "query": "select id, staff_id, work_year, work_month, status, returned_reason, submitted_at, approved_at\n             from timesheets where status = 'submitted' order by submitted_at, id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | PRIMARY_KEY | AUTO_INCREMENT",
+          "collation": 63,
+          "max_size": 20
+        },
+        "origin": {
+          "Table": {
+            "table": "timesheet.timesheets",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "staff_id",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | MULTIPLE_KEY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 20
+        },
+        "origin": {
+          "Table": {
+            "table": "timesheet.timesheets",
+            "name": "staff_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "work_year",
+        "type_info": {
+          "type": "Short",
+          "flags": "NOT_NULL | UNSIGNED | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 5
+        },
+        "origin": {
+          "Table": {
+            "table": "timesheet.timesheets",
+            "name": "work_year"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "work_month",
+        "type_info": {
+          "type": "Tiny",
+          "flags": "NOT_NULL | UNSIGNED | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 3
+        },
+        "origin": {
+          "Table": {
+            "table": "timesheet.timesheets",
+            "name": "work_month"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "status",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL | MULTIPLE_KEY | NO_DEFAULT_VALUE",
+          "collation": 255,
+          "max_size": 64
+        },
+        "origin": {
+          "Table": {
+            "table": "timesheet.timesheets",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "returned_reason",
+        "type_info": {
+          "type": "VarString",
+          "flags": "",
+          "collation": 255,
+          "max_size": 2000
+        },
+        "origin": {
+          "Table": {
+            "table": "timesheet.timesheets",
+            "name": "returned_reason"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "submitted_at",
+        "type_info": {
+          "type": "Datetime",
+          "flags": "BINARY",
+          "collation": 63,
+          "max_size": 26
+        },
+        "origin": {
+          "Table": {
+            "table": "timesheet.timesheets",
+            "name": "submitted_at"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "approved_at",
+        "type_info": {
+          "type": "Datetime",
+          "flags": "BINARY",
+          "collation": 63,
+          "max_size": 26
+        },
+        "origin": {
+          "Table": {
+            "table": "timesheet.timesheets",
+            "name": "approved_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "322b29cab2c4b9bebe4925a83df3c15e1dcf6551f73e086c78b19152b62ace62"
+}

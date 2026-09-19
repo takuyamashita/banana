@@ -51,7 +51,11 @@ export default {
     {
       files: ["**/styles/tokens.css"],
       rules: {
-        "selector-disallowed-list": [["/^(?!:root$)/"], { message: "tokens.css は :root にだけ書く" }],
+        // [data-system] はシステム(給与・勤怠)ごとの色の切り替えだけ
+        "selector-disallowed-list": [
+          [String.raw`/^(?!:root$|\[data-system="[a-z]+"\]$)/`],
+          { message: "tokens.css は :root と [data-system] にだけ書く" },
+        ],
         "property-allowed-list": [["/^--/", "color-scheme"], { message: "tokens.css は変数だけ" }],
         "at-rule-allowed-list": ["media"],
       },

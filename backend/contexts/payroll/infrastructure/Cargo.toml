@@ -8,9 +8,10 @@ description = "payroll の DB・メッセージング・外部API実装"
 [dependencies]
 async-trait.workspace = true
 aws-sdk-cognitoidentityprovider.workspace = true
-aws-sdk-sqs.workspace = true
 payroll-domain.workspace = true
 payroll-usecase.workspace = true
+platform-db.workspace = true
+platform-gen.workspace = true
 platform-kernel.workspace = true
 platform-telemetry.workspace = true
 reqwest.workspace = true
@@ -20,10 +21,11 @@ sqlx.workspace = true
 thiserror.workspace = true
 time.workspace = true
 tokio.workspace = true
-tokio-util.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+tokio-util.workspace = true
+platform-messaging.workspace = true
 testcontainers-modules.workspace = true
 # 振込 API のテストで、決めた応答を返すだけの HTTP サーバーを立てる
 tokio = { workspace = true, features = ["io-util"] }

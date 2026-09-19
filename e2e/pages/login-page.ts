@@ -21,6 +21,7 @@ export class LoginPage {
       await this.page.locator("#password-confirm").fill(newPassword);
       await this.page.locator("input[type=submit], button[type=submit]").first().click();
     }
-    await this.page.getByRole("heading", { name: "給与管理" }).waitFor();
+    // ログインした人の画面の枠が出るまで待つ(見出しは開いた画面のシステムで変わる)
+    await this.page.getByRole("button", { name: "ログアウト" }).waitFor();
   }
 }

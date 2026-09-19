@@ -29,13 +29,15 @@ cargo.binstall = true
 
 [env]
 APP_ENV = "local"
-# query! は既定でコミット済みの .sqlx/ を使う。DATABASE_URL があると live DB を見に行き、
+# query! は既定でコミット済みの .sqlx/ を使う。接続先の環境変数があると live DB を見に行き、
 # 空の DB では migrate 自体がビルドできなくなるため
 SQLX_OFFLINE = "true"
-# sqlx-cli・migrate の接続先。worktree では .env の値が上書きする
-DATABASE_URL = "mysql://platform:platform@127.0.0.1:3306/platform"
-# ローカル用のダミー認証情報。worktree では、worktree:new がその worktree のポートと接続先(APP__…)を追記する。
-# main では APP__… を渡さないので、server の接続先は config/local.toml の値になる
+# サービスごとの DB。sqlx-cli と、query! のキャッシュを作るとき(各 infrastructure の sqlx.toml)の接続先。
+# worktree では .env の値が上書きする
+PAYROLL_DATABASE_URL = "mysql://payroll:payroll@127.0.0.1:3306/payroll"
+TIMESHEET_DATABASE_URL = "mysql://timesheet:timesheet@127.0.0.1:3306/timesheet"
+# ローカル用のダミー認証情報。worktree では、worktree:new がその worktree のポートと接続先
+# (PAYROLL__…・TIMESHEET__…)を追記する。main では渡さないので、接続先は config/<サービス>/local.toml の値になる
 _.file = ".env"
 
 [tasks.gen]
@@ -45,8 +47,16 @@ outputs = ["backend/gen/src/gen/**/*.rs", "frontend/packages/api-client/src/gen/
 run = "buf generate"
 
 [tasks.dev-backend]
-description = "gRPCサーバーを起動"
-run = "cargo run -p server"
+description = "gRPCサーバー(給与・勤怠)を起動"
+depends = ["dev:payroll", "dev:timesheet"]
+
+[tasks."dev:payroll"]
+description = "給与サービスの gRPC サーバーを起動(:50051)"
+run = "cargo run -p payroll-server"
+
+[tasks."dev:timesheet"]
+description = "勤怠サービスの gRPC サーバーを起動(:50052)"
+run = "cargo run -p timesheet-server"
 
 [tasks.dev-frontend]
 description = "Viteの開発サーバーを起動"
@@ -56,12 +66,17 @@ run = "pnpm --filter web dev"
 # infrastructure に依存する migrate がビルドできない
 [tasks.sqlx-prepare]
 description = "未適用のマイグレーションを当ててから、query! のオフラインキャッシュ(.sqlx/)を更新する"
-run = ["sqlx migrate run --source backend/contexts/payroll/infrastructure/migrations", "cargo sqlx prepare --workspace"]
+run = [
+  "sqlx migrate run --source backend/contexts/payroll/infrastructure/migrations --database-url \"$PAYROLL_DATABASE_URL\"",
+  "sqlx migrate run --source backend/contexts/timesheet/infrastructure/migrations --database-url \"$TIMESHEET_DATABASE_URL\"",
+  # sqlx-cli は DATABASE_URL がないと動かない。各 crate の query! は sqlx.toml の環境変数(サービスごとの DB)を見る
+  "DATABASE_URL=\"$PAYROLL_DATABASE_URL\" cargo sqlx prepare --workspace",
+]
 env = { SQLX_OFFLINE = "false" }
 
 [tasks.migrate]
-description = "マイグレーションを実行"
-run = "cargo run -p migrate"
+description = "マイグレーションを実行(サービスごと)"
+run = ["cargo run -p payroll-migrate", "cargo run -p timesheet-migrate"]
 
 [tasks.test]
 description = "Rust(nextest)とフロントのテスト"
@@ -109,11 +124,20 @@ run = "docker compose logs -f"
 
 [tasks."db:reset"]
 description = "DB と Keycloak を空にして作り直し、マイグレーションを流す(Keycloak はボリュームがないので必ず一緒に消す)"
-run = ["docker compose down --volumes", "docker compose up -d --wait", "cargo run -p migrate"]
+run = [
+  "docker compose down --volumes",
+  "docker compose up -d --wait",
+  "cargo run -p payroll-migrate",
+  "cargo run -p timesheet-migrate",
+]
 
 [tasks."e2e:prepare"]
 description = "E2E の依存サービスを起動してマイグレーション"
-run = ["docker compose up -d --wait mysql keycloak elasticmq", "cargo run -p migrate"]
+run = [
+  "docker compose up -d --wait mysql keycloak elasticmq",
+  "cargo run -p payroll-migrate",
+  "cargo run -p timesheet-migrate",
+]
 
 [tasks.e2e]
 description = "DB起動・マイグレーション後にPlaywright"
@@ -212,9 +236,9 @@ run = "actionlint"
 
 [tasks."lint:docker"]
 run = [
-  "hadolint backend/app/server/Dockerfile",
-  "dockerfmt --check backend/app/server/Dockerfile",
-  "trivy config --quiet --exit-code 1 --severity HIGH,CRITICAL backend/app/server/Dockerfile",
+  "hadolint backend/Dockerfile",
+  "dockerfmt --check backend/Dockerfile",
+  "trivy config --quiet --exit-code 1 --severity HIGH,CRITICAL backend/Dockerfile",
 ]
 
 [tasks."lint:secrets"]

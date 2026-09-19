@@ -1,6 +1,7 @@
 use payroll_domain::payslip::PayslipError;
 use payroll_domain::project::ProjectError;
 use payroll_domain::staff::StaffError;
+use payroll_domain::work::WorkError;
 use platform_kernel::MoneyError;
 use thiserror::Error;
 
@@ -45,6 +46,12 @@ impl From<StaffError> for UseCaseError {
 
 impl From<ProjectError> for UseCaseError {
     fn from(err: ProjectError) -> Self {
+        Self::InvalidInput(err.to_string())
+    }
+}
+
+impl From<WorkError> for UseCaseError {
+    fn from(err: WorkError) -> Self {
         Self::InvalidInput(err.to_string())
     }
 }

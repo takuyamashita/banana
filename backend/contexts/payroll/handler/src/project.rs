@@ -3,8 +3,8 @@ use payroll_usecase::project::{CreateProjectUseCase, ListProjectsUseCase};
 use platform_gen::acme::payroll::v1 as proto;
 use tonic::{Request, Response, Status};
 
-use crate::auth::require_admin;
 use crate::error::{invalid_argument, to_status};
+use platform_auth::require_admin;
 
 pub struct ProjectServiceHandler {
     create_project: CreateProjectUseCase,

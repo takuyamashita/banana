@@ -6,12 +6,15 @@ publish.workspace = true
 description = "proto ⇔ domain の変換と gRPC ハンドラ(tonic + tonic-web)"
 
 [dependencies]
-axum.workspace = true
+anyhow.workspace = true
+async-trait.workspace = true
 payroll-domain.workspace = true
 payroll-usecase.workspace = true
 platform-auth.workspace = true
 platform-gen.workspace = true
 platform-kernel.workspace = true
+platform-messaging.workspace = true
+serde_json.workspace = true
 tonic.workspace = true
 tracing.workspace = true
 

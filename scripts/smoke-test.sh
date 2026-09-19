@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # 起動中のローカル server に対して、主要なシナリオを grpcurl で一通り流す。
-# 前提: docker compose の依存サービスと server(mise run dev-backend)が起動済み
+# 給与と勤怠のサービスの間の出来事(派遣社員・案件の登録 → 勤怠、勤務表の承認 → 給与)も確かめる。
+# 前提: docker compose の依存サービスと server(給与・勤怠。mise run dev-backend)が起動済み
 set -euo pipefail
 # proto の import パスがリポジトリ直下からの相対なので、どこから実行してもリポジトリ直下で動かす
 cd "$(dirname "$0")/.."
@@ -129,6 +130,48 @@ check "派遣社員は給与明細を作成できない" "PermissionDenied" \
   "$(call "$TARO_TOKEN" PayrollService/CreatePayslip "{\"staff_id\":$TARO_ID,\"pay_year\":2026,\"pay_month\":11,\"lines\":$LINES}")"
 check "派遣社員は給与明細を確定できない" "PermissionDenied" \
   "$(call "$TARO_TOKEN" PayrollService/FinalizePayslip "{\"payslip_id\":$DRAFT_ID}")"
+
+# ---- 勤怠(timesheet)サービス ----
+# 給与で登録した派遣社員・案件が出来事で届き、承認した勤務表の稼働が出来事で給与に届く
+TIMESHEET_API=${TIMESHEET_API:-localhost:${TIMESHEET_API_PORT:-50052}}
+t() { grpcurl -plaintext -import-path proto -proto acme/timesheet/v1/timesheet.proto "$@"; }
+tcall() { # tcall <token> <method> <json>
+  t -H "authorization: Bearer $1" -d "$3" "$TIMESHEET_API" "acme.timesheet.v1.TimesheetService/$2" 2>&1 || true
+}
+# 出来事は非同期で届くので、期待した結果になるまで待つ(最大 15 秒)
+eventually() {
+  local expected=$1 out=""
+  shift
+  for _ in $(seq 1 30); do
+    out=$("$@")
+    [[ $out == *"$expected"* ]] && break
+    sleep 0.5
+  done
+  echo "$out"
+}
+
+check "勤怠: health" "ok" "$(curl -s "http://$TIMESHEET_API/health")"
+check "勤怠: 給与で登録した派遣社員が届く" "派遣 太郎" \
+  "$(eventually "派遣 太郎" tcall "$TARO_TOKEN" GetMyTimesheet '{"year":2026,"month":9}')"
+check "勤怠: 給与で登録した案件が届く" "案件-$SUFFIX" \
+  "$(eventually "案件-$SUFFIX" tcall "$TARO_TOKEN" ListProjects '{}')"
+ENTRIES="[{\"date\":\"2026-09-01\",\"project_id\":$PROJECT_ID,\"work_minutes\":480},{\"date\":\"2026-09-02\",\"project_id\":$PROJECT_ID,\"work_minutes\":450}]"
+check "勤怠: 本人が稼働を書く" '"totalMinutes": 930' \
+  "$(tcall "$TARO_TOKEN" SaveMyTimesheet "{\"year\":2026,\"month\":9,\"entries\":$ENTRIES}")"
+check "勤怠: 15分単位でない稼働は InvalidArgument" "InvalidArgument" \
+  "$(tcall "$TARO_TOKEN" SaveMyTimesheet "{\"year\":2026,\"month\":10,\"entries\":[{\"date\":\"2026-10-01\",\"project_id\":$PROJECT_ID,\"work_minutes\":470}]}")"
+TIMESHEET_ID=$(tcall "$TARO_TOKEN" SubmitMyTimesheet '{"year":2026,"month":9}' | id_of .timesheet.timesheetId)
+check_id "勤怠: 申告" "$TIMESHEET_ID"
+check "勤怠: 申告した勤務表は書き直せない" "FailedPrecondition" \
+  "$(tcall "$TARO_TOKEN" SaveMyTimesheet "{\"year\":2026,\"month\":9,\"entries\":$ENTRIES}")"
+check "勤怠: 派遣社員は承認できない" "PermissionDenied" \
+  "$(tcall "$TARO_TOKEN" ApproveTimesheet "{\"timesheet_id\":$TIMESHEET_ID}")"
+check "勤怠: 管理者が承認する" "TIMESHEET_STATUS_APPROVED" \
+  "$(tcall "$ADMIN" ApproveTimesheet "{\"timesheet_id\":$TIMESHEET_ID}")"
+check "給与: 承認した稼働が届く(案件ごとの合計)" '"workMinutes": 930' \
+  "$(eventually '"workMinutes": 930' call "$ADMIN" PayrollService/GetApprovedWork "{\"staff_id\":$TARO_ID,\"pay_year\":2026,\"pay_month\":9}")"
+check "給与: 承認した稼働は派遣社員には見えない" "PermissionDenied" \
+  "$(call "$TARO_TOKEN" PayrollService/GetApprovedWork "{\"staff_id\":$TARO_ID,\"pay_year\":2026,\"pay_month\":9}")"
 
 echo
 echo "passed: $PASS, failed: $FAIL"

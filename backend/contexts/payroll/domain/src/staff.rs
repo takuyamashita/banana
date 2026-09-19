@@ -7,9 +7,11 @@
 mod display_name;
 mod entity;
 mod error;
+mod event;
 mod id;
 
 pub use self::display_name::DisplayName;
 pub use self::entity::{NewStaff, Staff};
 pub use self::error::StaffError;
+pub use self::event::StaffEvent;
 pub use self::id::StaffId;

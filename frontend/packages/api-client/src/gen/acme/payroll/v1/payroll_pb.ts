@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file acme/payroll/v1/payroll.proto.
  */
 export const file_acme_payroll_v1_payroll: GenFile = /*@__PURE__*/
-  fileDesc("Ch1hY21lL3BheXJvbGwvdjEvcGF5cm9sbC5wcm90bxIPYWNtZS5wYXlyb2xsLnYxIn8KFENyZWF0ZVBheXNsaXBSZXF1ZXN0EhAKCHN0YWZmX2lkGAEgASgDEhAKCHBheV95ZWFyGAIgASgFEhEKCXBheV9tb250aBgDIAEoBRIwCgVsaW5lcxgEIAMoCzIhLmFjbWUucGF5cm9sbC52MS5QYXlzbGlwTGluZUlucHV0IlEKEFBheXNsaXBMaW5lSW5wdXQSEgoKcHJvamVjdF9pZBgBIAEoAxIUCgx3b3JrX21pbnV0ZXMYAiABKA0SEwoLaG91cmx5X3JhdGUYAyABKAMiKwoVQ3JlYXRlUGF5c2xpcFJlc3BvbnNlEhIKCnBheXNsaXBfaWQYASABKAMiLAoWRmluYWxpemVQYXlzbGlwUmVxdWVzdBISCgpwYXlzbGlwX2lkGAEgASgDIhkKF0ZpbmFsaXplUGF5c2xpcFJlc3BvbnNlIicKEUdldFBheXNsaXBSZXF1ZXN0EhIKCnBheXNsaXBfaWQYASABKAMiPwoSR2V0UGF5c2xpcFJlc3BvbnNlEikKB3BheXNsaXAYASABKAsyGC5hY21lLnBheXJvbGwudjEuUGF5c2xpcCJOChNMaXN0UGF5c2xpcHNSZXF1ZXN0EhAKCHN0YWZmX2lkGAEgASgDEhEKCXBhZ2Vfc2l6ZRgCIAEoBRISCgpwYWdlX3Rva2VuGAMgASgJIlsKFExpc3RQYXlzbGlwc1Jlc3BvbnNlEioKCHBheXNsaXBzGAEgAygLMhguYWNtZS5wYXlyb2xsLnYxLlBheXNsaXASFwoPbmV4dF9wYWdlX3Rva2VuGAIgASgJIsQBCgdQYXlzbGlwEhIKCnBheXNsaXBfaWQYASABKAMSEAoIc3RhZmZfaWQYAiABKAMSEAoIcGF5X3llYXIYAyABKAUSEQoJcGF5X21vbnRoGAQgASgFEi4KBnN0YXR1cxgFIAEoDjIeLmFjbWUucGF5cm9sbC52MS5QYXlzbGlwU3RhdHVzEhEKCXRvdGFsX3llbhgGIAEoAxIrCgVsaW5lcxgHIAMoCzIcLmFjbWUucGF5cm9sbC52MS5QYXlzbGlwTGluZSJ2CgtQYXlzbGlwTGluZRISCgpwcm9qZWN0X2lkGAEgASgDEhQKDHdvcmtfbWludXRlcxgCIAEoDRITCgtob3VybHlfcmF0ZRgDIAEoAxISCgphbW91bnRfeWVuGAQgASgDEhQKDHByb2plY3RfbmFtZRgFIAEoCSpnCg1QYXlzbGlwU3RhdHVzEh4KGlBBWVNMSVBfU1RBVFVTX1VOU1BFQ0lGSUVEEAASGAoUUEFZU0xJUF9TVEFUVVNfRFJBRlQQARIcChhQQVlTTElQX1NUQVRVU19GSU5BTElaRUQQAjKKAwoOUGF5cm9sbFNlcnZpY2USXgoNQ3JlYXRlUGF5c2xpcBIlLmFjbWUucGF5cm9sbC52MS5DcmVhdGVQYXlzbGlwUmVxdWVzdBomLmFjbWUucGF5cm9sbC52MS5DcmVhdGVQYXlzbGlwUmVzcG9uc2USZAoPRmluYWxpemVQYXlzbGlwEicuYWNtZS5wYXlyb2xsLnYxLkZpbmFsaXplUGF5c2xpcFJlcXVlc3QaKC5hY21lLnBheXJvbGwudjEuRmluYWxpemVQYXlzbGlwUmVzcG9uc2USVQoKR2V0UGF5c2xpcBIiLmFjbWUucGF5cm9sbC52MS5HZXRQYXlzbGlwUmVxdWVzdBojLmFjbWUucGF5cm9sbC52MS5HZXRQYXlzbGlwUmVzcG9uc2USWwoMTGlzdFBheXNsaXBzEiQuYWNtZS5wYXlyb2xsLnYxLkxpc3RQYXlzbGlwc1JlcXVlc3QaJS5hY21lLnBheXJvbGwudjEuTGlzdFBheXNsaXBzUmVzcG9uc2ViBnByb3RvMw");
+  fileDesc("Ch1hY21lL3BheXJvbGwvdjEvcGF5cm9sbC5wcm90bxIPYWNtZS5wYXlyb2xsLnYxIn8KFENyZWF0ZVBheXNsaXBSZXF1ZXN0EhAKCHN0YWZmX2lkGAEgASgDEhAKCHBheV95ZWFyGAIgASgFEhEKCXBheV9tb250aBgDIAEoBRIwCgVsaW5lcxgEIAMoCzIhLmFjbWUucGF5cm9sbC52MS5QYXlzbGlwTGluZUlucHV0IlEKEFBheXNsaXBMaW5lSW5wdXQSEgoKcHJvamVjdF9pZBgBIAEoAxIUCgx3b3JrX21pbnV0ZXMYAiABKA0SEwoLaG91cmx5X3JhdGUYAyABKAMiKwoVQ3JlYXRlUGF5c2xpcFJlc3BvbnNlEhIKCnBheXNsaXBfaWQYASABKAMiLAoWRmluYWxpemVQYXlzbGlwUmVxdWVzdBISCgpwYXlzbGlwX2lkGAEgASgDIhkKF0ZpbmFsaXplUGF5c2xpcFJlc3BvbnNlIicKEUdldFBheXNsaXBSZXF1ZXN0EhIKCnBheXNsaXBfaWQYASABKAMiPwoSR2V0UGF5c2xpcFJlc3BvbnNlEikKB3BheXNsaXAYASABKAsyGC5hY21lLnBheXJvbGwudjEuUGF5c2xpcCJOChNMaXN0UGF5c2xpcHNSZXF1ZXN0EhAKCHN0YWZmX2lkGAEgASgDEhEKCXBhZ2Vfc2l6ZRgCIAEoBRISCgpwYWdlX3Rva2VuGAMgASgJIlsKFExpc3RQYXlzbGlwc1Jlc3BvbnNlEioKCHBheXNsaXBzGAEgAygLMhguYWNtZS5wYXlyb2xsLnYxLlBheXNsaXASFwoPbmV4dF9wYWdlX3Rva2VuGAIgASgJIsQBCgdQYXlzbGlwEhIKCnBheXNsaXBfaWQYASABKAMSEAoIc3RhZmZfaWQYAiABKAMSEAoIcGF5X3llYXIYAyABKAUSEQoJcGF5X21vbnRoGAQgASgFEi4KBnN0YXR1cxgFIAEoDjIeLmFjbWUucGF5cm9sbC52MS5QYXlzbGlwU3RhdHVzEhEKCXRvdGFsX3llbhgGIAEoAxIrCgVsaW5lcxgHIAMoCzIcLmFjbWUucGF5cm9sbC52MS5QYXlzbGlwTGluZSJ2CgtQYXlzbGlwTGluZRISCgpwcm9qZWN0X2lkGAEgASgDEhQKDHdvcmtfbWludXRlcxgCIAEoDRITCgtob3VybHlfcmF0ZRgDIAEoAxISCgphbW91bnRfeWVuGAQgASgDEhQKDHByb2plY3RfbmFtZRgFIAEoCSJPChZHZXRBcHByb3ZlZFdvcmtSZXF1ZXN0EhAKCHN0YWZmX2lkGAEgASgDEhAKCHBheV95ZWFyGAIgASgFEhEKCXBheV9tb250aBgDIAEoBSJGChdHZXRBcHByb3ZlZFdvcmtSZXNwb25zZRIrCgR3b3JrGAEgAygLMh0uYWNtZS5wYXlyb2xsLnYxLkFwcHJvdmVkV29yayJOCgxBcHByb3ZlZFdvcmsSEgoKcHJvamVjdF9pZBgBIAEoAxIUCgxwcm9qZWN0X25hbWUYAiABKAkSFAoMd29ya19taW51dGVzGAMgASgNKmcKDVBheXNsaXBTdGF0dXMSHgoaUEFZU0xJUF9TVEFUVVNfVU5TUEVDSUZJRUQQABIYChRQQVlTTElQX1NUQVRVU19EUkFGVBABEhwKGFBBWVNMSVBfU1RBVFVTX0ZJTkFMSVpFRBACMvADCg5QYXlyb2xsU2VydmljZRJeCg1DcmVhdGVQYXlzbGlwEiUuYWNtZS5wYXlyb2xsLnYxLkNyZWF0ZVBheXNsaXBSZXF1ZXN0GiYuYWNtZS5wYXlyb2xsLnYxLkNyZWF0ZVBheXNsaXBSZXNwb25zZRJkCg9GaW5hbGl6ZVBheXNsaXASJy5hY21lLnBheXJvbGwudjEuRmluYWxpemVQYXlzbGlwUmVxdWVzdBooLmFjbWUucGF5cm9sbC52MS5GaW5hbGl6ZVBheXNsaXBSZXNwb25zZRJVCgpHZXRQYXlzbGlwEiIuYWNtZS5wYXlyb2xsLnYxLkdldFBheXNsaXBSZXF1ZXN0GiMuYWNtZS5wYXlyb2xsLnYxLkdldFBheXNsaXBSZXNwb25zZRJbCgxMaXN0UGF5c2xpcHMSJC5hY21lLnBheXJvbGwudjEuTGlzdFBheXNsaXBzUmVxdWVzdBolLmFjbWUucGF5cm9sbC52MS5MaXN0UGF5c2xpcHNSZXNwb25zZRJkCg9HZXRBcHByb3ZlZFdvcmsSJy5hY21lLnBheXJvbGwudjEuR2V0QXBwcm92ZWRXb3JrUmVxdWVzdBooLmFjbWUucGF5cm9sbC52MS5HZXRBcHByb3ZlZFdvcmtSZXNwb25zZWIGcHJvdG8z");
 
 /**
  * @generated from message acme.payroll.v1.CreatePayslipRequest
@@ -496,6 +496,135 @@ export const PayslipLineSchema: GenMessage<PayslipLine, {jsonType: PayslipLineJs
   messageDesc(file_acme_payroll_v1_payroll, 10);
 
 /**
+ * @generated from message acme.payroll.v1.GetApprovedWorkRequest
+ */
+export type GetApprovedWorkRequest = Message<"acme.payroll.v1.GetApprovedWorkRequest"> & {
+  /**
+   * @generated from field: int64 staff_id = 1;
+   */
+  staffId: bigint;
+
+  /**
+   * @generated from field: int32 pay_year = 2;
+   */
+  payYear: number;
+
+  /**
+   * @generated from field: int32 pay_month = 3;
+   */
+  payMonth: number;
+};
+
+/**
+ * @generated from message acme.payroll.v1.GetApprovedWorkRequest
+ */
+export type GetApprovedWorkRequestJson = {
+  /**
+   * @generated from field: int64 staff_id = 1;
+   */
+  staffId?: string;
+
+  /**
+   * @generated from field: int32 pay_year = 2;
+   */
+  payYear?: number;
+
+  /**
+   * @generated from field: int32 pay_month = 3;
+   */
+  payMonth?: number;
+};
+
+/**
+ * Describes the message acme.payroll.v1.GetApprovedWorkRequest.
+ * Use `create(GetApprovedWorkRequestSchema)` to create a new message.
+ */
+export const GetApprovedWorkRequestSchema: GenMessage<GetApprovedWorkRequest, {jsonType: GetApprovedWorkRequestJson}> = /*@__PURE__*/
+  messageDesc(file_acme_payroll_v1_payroll, 11);
+
+/**
+ * @generated from message acme.payroll.v1.GetApprovedWorkResponse
+ */
+export type GetApprovedWorkResponse = Message<"acme.payroll.v1.GetApprovedWorkResponse"> & {
+  /**
+   * 案件番号の順。まだ承認されていなければ空
+   *
+   * @generated from field: repeated acme.payroll.v1.ApprovedWork work = 1;
+   */
+  work: ApprovedWork[];
+};
+
+/**
+ * @generated from message acme.payroll.v1.GetApprovedWorkResponse
+ */
+export type GetApprovedWorkResponseJson = {
+  /**
+   * 案件番号の順。まだ承認されていなければ空
+   *
+   * @generated from field: repeated acme.payroll.v1.ApprovedWork work = 1;
+   */
+  work?: ApprovedWorkJson[];
+};
+
+/**
+ * Describes the message acme.payroll.v1.GetApprovedWorkResponse.
+ * Use `create(GetApprovedWorkResponseSchema)` to create a new message.
+ */
+export const GetApprovedWorkResponseSchema: GenMessage<GetApprovedWorkResponse, {jsonType: GetApprovedWorkResponseJson}> = /*@__PURE__*/
+  messageDesc(file_acme_payroll_v1_payroll, 12);
+
+/**
+ * @generated from message acme.payroll.v1.ApprovedWork
+ */
+export type ApprovedWork = Message<"acme.payroll.v1.ApprovedWork"> & {
+  /**
+   * @generated from field: int64 project_id = 1;
+   */
+  projectId: bigint;
+
+  /**
+   * @generated from field: string project_name = 2;
+   */
+  projectName: string;
+
+  /**
+   * 1か月の稼働の合計(分)
+   *
+   * @generated from field: uint32 work_minutes = 3;
+   */
+  workMinutes: number;
+};
+
+/**
+ * @generated from message acme.payroll.v1.ApprovedWork
+ */
+export type ApprovedWorkJson = {
+  /**
+   * @generated from field: int64 project_id = 1;
+   */
+  projectId?: string;
+
+  /**
+   * @generated from field: string project_name = 2;
+   */
+  projectName?: string;
+
+  /**
+   * 1か月の稼働の合計(分)
+   *
+   * @generated from field: uint32 work_minutes = 3;
+   */
+  workMinutes?: number;
+};
+
+/**
+ * Describes the message acme.payroll.v1.ApprovedWork.
+ * Use `create(ApprovedWorkSchema)` to create a new message.
+ */
+export const ApprovedWorkSchema: GenMessage<ApprovedWork, {jsonType: ApprovedWorkJson}> = /*@__PURE__*/
+  messageDesc(file_acme_payroll_v1_payroll, 13);
+
+/**
  * @generated from enum acme.payroll.v1.PayslipStatus
  */
 export enum PayslipStatus {
@@ -571,6 +700,17 @@ export const PayrollService: GenService<{
     methodKind: "unary";
     input: typeof ListPayslipsRequestSchema;
     output: typeof ListPayslipsResponseSchema;
+  },
+  /**
+   * 勤怠で承認された、派遣社員のその月の案件ごとの稼働を取得する(給与明細の明細行に入れるのに使う)。
+   * まだ承認されていなければ空。管理者のみ
+   *
+   * @generated from rpc acme.payroll.v1.PayrollService.GetApprovedWork
+   */
+  getApprovedWork: {
+    methodKind: "unary";
+    input: typeof GetApprovedWorkRequestSchema;
+    output: typeof GetApprovedWorkResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_acme_payroll_v1_payroll, 0);

@@ -15,6 +15,7 @@ const port = (name: string, fallback: number) => {
 const localRuntimeConfig = (): Plugin => {
   const body = JSON.stringify({
     apiBaseUrl: `http://localhost:${port("API_PORT", 50051)}`,
+    timesheetApiBaseUrl: `http://localhost:${port("TIMESHEET_API_PORT", 50052)}`,
     oidc: {
       authority: `http://localhost:${port("KEYCLOAK_PORT", 8080)}/realms/platform`,
       clientId: "web",

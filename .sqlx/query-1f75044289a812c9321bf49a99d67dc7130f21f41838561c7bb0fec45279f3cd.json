@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "insert into timesheets (staff_id, work_year, work_month, status, returned_reason)\n             values (?, ?, ?, 'draft', ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "1f75044289a812c9321bf49a99d67dc7130f21f41838561c7bb0fec45279f3cd"
+}

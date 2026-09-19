@@ -31,6 +31,7 @@ export const utilities = {
   "radius-2": ["border-radius"],
   "bg-surface": ["background"],
   "bg-accent": ["background"],
+  "bg-accent-tint": ["background"],
   "bg-transparent": ["background"],
   "fg-muted": ["color"],
   "fg-accent": ["color"],

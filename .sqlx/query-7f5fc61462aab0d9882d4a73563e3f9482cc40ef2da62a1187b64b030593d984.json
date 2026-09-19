@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "insert into projects (id, name) values (?, ?) as new\n             on duplicate key update name = new.name",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "7f5fc61462aab0d9882d4a73563e3f9482cc40ef2da62a1187b64b030593d984"
+}

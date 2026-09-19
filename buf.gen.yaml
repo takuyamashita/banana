@@ -8,6 +8,9 @@ plugins:
     out: backend/gen/src/gen
   - remote: buf.build/community/neoeinstein-tonic:v0.5.0
     out: backend/gen/src/gen
+  # サービスの間の出来事(acme.*.events.v1)を、proto の JSON 形でキューに流すための serde の実装
+  - remote: buf.build/community/neoeinstein-prost-serde:v0.4.0
+    out: backend/gen/src/gen
   - remote: buf.build/community/neoeinstein-prost-crate:v0.5.0
     out: backend/gen/src/gen
     opt:

@@ -1,0 +1,44 @@
+use aws_lambda_events::sqs::{SqsBatchResponse, SqsEvent};
+use lambda_runtime::{Error, LambdaEvent, service_fn};
+use payout_dispatcher::{Consumer, Deps, Message, handle_batch};
+
+#[tokio::main]
+async fn main() -> Result<(), Error> {
+    let config = payroll_bootstrap::load_config()?;
+    let telemetry = payroll_bootstrap::init_telemetry(&config, "payout-dispatcher")?;
+    let telemetry = &telemetry;
+
+    // DB 接続などは run の外で1回だけ行い、コールドスタートを抑える
+    let consumer = Consumer(Deps::build().await?);
+    let consumer = &consumer;
+
+    lambda_runtime::run(service_fn(move |event: LambdaEvent<SqsEvent>| async move {
+        let messages: Vec<Message> = event
+            .payload
+            .records
+            .into_iter()
+            .map(|record| Message {
+                id: record.message_id.unwrap_or_default(),
+                // Lambda はイベントソースが消すので使わない
+                receipt_handle: String::new(),
+                group: record.attributes.get("MessageGroupId").cloned().unwrap_or_default(),
+                traceparent: record
+                    .message_attributes
+                    .get("traceparent")
+                    .and_then(|a| a.string_value.clone()),
+                body: record.body.unwrap_or_default(),
+            })
+            .collect();
+
+        // 失敗した件だけを返してキューに戻す(イベントソースの ReportBatchItemFailures)。
+        // 成功した件と、失敗と関係のない給与明細の件は再配信されない
+        let mut response = SqsBatchResponse::default();
+        for id in handle_batch(&messages, consumer).await {
+            response.add_failure(id);
+        }
+        // Lambda は呼び出しの合間に止まるので、溜まったスパンをここで送り切る
+        telemetry.flush();
+        Ok::<_, Error>(response)
+    }))
+    .await
+}

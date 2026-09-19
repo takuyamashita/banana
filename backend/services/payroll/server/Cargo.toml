@@ -1,0 +1,28 @@
+[package]
+name = "payroll-server"
+version = "0.1.0"
+edition.workspace = true
+publish.workspace = true
+description = "給与サービスの gRPC(+ gRPC-Web)サーバー。outbox relay も常駐タスクとして動かす"
+
+[dependencies]
+anyhow.workspace = true
+payroll-bootstrap.workspace = true
+platform-service.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+async-trait.workspace = true
+axum.workspace = true
+payroll-infrastructure.workspace = true
+payroll-usecase.workspace = true
+platform-gen.workspace = true
+platform-kernel.workspace = true
+platform-messaging.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+testcontainers-modules.workspace = true
+tonic.workspace = true
+
+[lints]
+workspace = true
