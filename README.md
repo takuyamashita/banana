@@ -39,6 +39,7 @@ mise run dev-frontend             # Vite :5173
 | `mise run deps:stop`    | 依存サービスを止める(データは残す)                                                                                 |
 | `mise run e2e`          | 依存サービス起動・マイグレーション・server/Vite 起動・Playwright                                                   |
 | `mise run e2e:video`    | 動作確認の動画(mp4)を e2e/videos-out/ に撮る。`-- --only-changed=origin/main` で PR の台本だけ(台本は e2e/videos/) |
+| `mise run pr:video`     | この PR の台本で動画を撮り、今のブランチの PR に貼る(gh の `--attach`。初回は本文、撮り直しはコメント)             |
 | `mise run sqlx-prepare` | マイグレーションか `query!` を変えたら、DB に当てて .sqlx/ を更新する                                              |
 | `scripts/smoke-test.sh` | 起動中の server に grpcurl で主要シナリオを流す                                                                    |
 | `mise run lambda-build` | payout-dispatcher の zip を作る                                                                                    |

@@ -13,6 +13,8 @@ hadolint = "2.15.1"
 actionlint = "1.7.12"
 grpcurl = "1.9.4"
 jq = "1.8.2"
+# PR の操作(mise run pr:video が動画を PR に貼る。--attach は 2.99.0 から)
+gh = "2.101.0"
 cargo-binstall = "1.23.0"
 "cargo:cargo-lambda" = "1.9.2"
 # 既定機能は native-tls(libssl-dev が要る)なので、MySQL + rustls に絞ってビルドする
@@ -137,6 +139,11 @@ depends = ["e2e:prepare"]
 # ffmpeg はこのタスクを動かしたときだけ入れる(mise install・CI では入らない)。Playwright 付属のものは webm しか作れない
 tools = { "conda:ffmpeg" = "9.0.2" }
 run = "e2e/scripts/video.sh"
+
+# この PR の台本で動作確認の動画を撮り、今のブランチの PR に貼る(gh の --attach)。初回は本文に、撮り直しはコメントに
+[tasks."pr:video"]
+description = "この PR の動作確認の動画を撮り、PR に貼る"
+run = "e2e/scripts/pr-video.sh"
 
 [tasks."e2e:debug"]
 description = "Playwright Inspector で1手順ずつ止めながら実行"
