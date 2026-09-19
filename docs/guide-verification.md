@@ -52,12 +52,17 @@
   - `PayslipEvent`・`PayrollEvent` に `#[must_use]` を付け、workspace の lints で `unused_must_use = "deny"` にした。`Result<PayslipEvent, _>` を `?` で包んで捨てた場合も、`(FinalizedPayslip, PayslipEvent)` のタプルごと捨てた場合も検出される(「unused `PayslipEvent` in tuple element 1」)ことを確認した。
 - **給与明細の状態を型で分ける**: 当初は `status` フィールドを持つ1つの型で、`finalize(&mut self)` が作成中かを実行時に確かめ、確定済みなら `AlreadyFinalized` を返していた。
   - 作成中と確定済みを別の型(`DraftPayslip`・`FinalizedPayslip`)にし、`finalize(self) -> (FinalizedPayslip, PayslipEvent)` は作成中の型にだけ置いた。確定済みに `finalize` を呼ぶとコンパイルエラー(E0599)になることを compile_fail の doc テストで固定し、`AlreadyFinalized` はなくした。
-  - 状態は型引数で持つ。`PayslipIn<State, Id>`(状態は `PhantomData<State>`)に共通のフィールドとアクセサを1回だけ書き、`DraftPayslip<Id> = PayslipIn<Draft, Id>`・`FinalizedPayslip<Id> = PayslipIn<Finalized, Id>` を別名にする。`PayslipIn` と状態の目印(`Draft`・`Finalized`)は再公開せず、外から名前で書けるのは `DraftPayslip`・`FinalizedPayslip`・`Payslip`・`NewPayslip` の4つだけ。`PhantomData` は外せない(型引数をどのフィールドでも使わないと E0392)。
-  - 状態ごとの構造体を並べた enum(型引数は登録の軸だけ)も試した。`PhantomData` と `PayslipIn` が消え、エラーメッセージも `FinalizedPayslip<Id>` と読みやすくなるが、共通のフィールドとアクセサを状態の数だけ書くことになる。比べたうえで型引数の形を採った。状態ごとに固有の情報(確定日時など)が必要になったら見直す。
-  - `Payslip` のアクセサで `Self::Draft(p) | Self::Finalized(p) => p.lines()` とは書けない(型が違うので E0308)。状態ごとに同じ式を書き写す `macro_rules!` マクロ `each_state!(self, p => p.lines())` で書く。マクロは展開後に腕ごとに型が決まるので通り、`match` なので網羅チェックも残る。状態を増やすときはマクロに1行足す。
-    - 途中で試したもの: 同じ型のフィールドに分解する or パターン(`Self::Draft(PayslipIn { lines, .. }) | ..`。通るがアクセサごとに長い)、共通部分の構造体 `PayslipContent`(状態ごとのフィールドがない今は間接が増えるだけ)、trait のデフォルト実装(フィールドに触れないので、フィールドを返すメソッドは結局1つずつ書く)。`enum_dispatch` などの crate は domain の依存ルール(platform-kernel・thiserror・time のみ)に反するので使わない。
+  - 給与明細は `Payslip<S = PayslipStatus, Id = PayslipId>` の1つの型にした。状態 `S` は作成中(`Draft`)・確定済み(`Finalized`)の目印か、実行時に決まる状態(`PayslipStatus`。型引数を省略したときの既定)のどれか。別名は `DraftPayslip<Id> = Payslip<Draft, Id>`・`FinalizedPayslip<Id>`・`NewPayslip = Payslip<PayslipStatus, Unsaved>`。
+    - アクセサ(`staff_id`・`period`・`lines`・`total`・`status`・`id`)は `impl<S: State, Id>` に1回だけ書く。`State` は3つの状態の型が実装する trait で、`status()` を1回で書くために置く。目印と `State` は再公開しない。
+    - 状態ごとに分けるときは `into_state()` で `PayslipState { Draft, Finalized }` にして `match` する。全状態を扱ったかはコンパイラが確かめる。
+    - 状態は値(`state: S`)で持つので、状態ごとの情報(確定日時など)を状態の型に持たせられる。
+    - 状態の型から実行時の状態へ戻す `From` は状態ごとに書く(`impl<S: State> From<Payslip<S, Id>>` とまとめると、標準の `From<T> for T` と重なって E0119)。
+  - 比べて採らなかった形:
+    - 状態だけを型引数で持つ形(`PayslipIn<State, Id>` + `PhantomData<State>`)+ 状態を問わないものは `enum Payslip { Draft, Finalized }`: アクセサが `PayslipIn` と enum の2か所になる。enum 側は `Self::Draft(p) | Self::Finalized(p) => p.lines()` と書けず(型が違うので E0308)、`each_state!` マクロで1行にしていた。`PhantomData` は値を持たないので、状態ごとの情報も持てない。
+    - 状態ごとの構造体を並べた enum(型引数は登録の軸だけ): 一番素直だが、共通のフィールドとアクセサを状態の数だけ書く。
+    - 共通部分の構造体(`PayslipContent`)・trait のデフォルト実装(フィールドに触れないので結局1つずつ書く)・`enum_dispatch` などの crate(domain の依存ルールに反する)。
   - Rust では `&mut self` の書き換えも所有権で1か所に限られるので、「元を消費して新しいものを返す」こと自体の利点は小さい。消費する形にしたのは、戻り値の型を変える(状態を型で表す)ためだけ。
-  - リポジトリは状態を問わない `Payslip` を返し、状態の確かめは usecase が `match` か `let Payslip::Draft(draft) = payslip else { .. }` で行う。確かめずに `payslip.finalize()` と書くとコンパイルエラー(E0599「no method named `finalize` found for enum `Payslip`」)になり、確かめてから取り出した `draft.finalize()` は通ることを試して確認した。状態が違うときは `FailedPrecondition` を返し、存在しない(`NotFound`)と区別する。
+  - リポジトリは状態を問わない `Payslip`(状態は実行時に決まる)を返し、状態の確かめは usecase が `let PayslipState::Draft(draft) = payslip.into_state() else { .. }` で行う。確かめずに `payslip.finalize()` と書くとコンパイルエラー(E0599)になり、確かめてから取り出した `draft.finalize()` は通る。状態が違うときは `FailedPrecondition` を返し、存在しない(`NotFound`)と区別する。
   - `find_draft(id) -> Option<DraftPayslip>` のような状態ごとの取り出しはリポジトリに置かない。状態が違うのか存在しないのかが区別できず、状態が増えるたびにメソッドも増えるため。同じ確かめ方が複数のユースケースに出てきたら、`Payslip` に `into_draft()` のような取り出しを足す(今は新規作成直後の `finalize` だけなので未実装)。
 - **リポジトリは書き込み先を受け取り、トランザクションを張るかは usecase が決める**: ガイドの「1トランザクションで複数集約を更新しない」は、1つのユースケースで複数の集約を扱う場面が出ると守れない。制約は「コンテキストをまたいで1トランザクションで更新しない」に緩めた。
   - 採用した形:
