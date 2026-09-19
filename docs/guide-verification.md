@@ -177,7 +177,7 @@ AWS には apply していないので、手元で再現できる形と静的な
   - `infra/bootstrap`(state・成果物のバケット、GitHub OIDC のプロバイダーと Environment ごとのロール)をコードにした。
   - デプロイは plan(読み取りロール、概要に表示)→ 承認 → その plan を apply に分けた。
   - `lint:tf` に `terraform validate`、`lint:actions`(actionlint を入れていたが呼んでいなかった)。gitleaks の許可をやめ(ファイル単位で最小に。今は許可なしで通る)、履歴の誤検出は `.gitleaksignore` に。定期の `security` ワークフロー(履歴全体の gitleaks・cargo deny advisories・pnpm audit・actionlint)。Dockerfile のベースをダイジェストで固定し、arm64 を指定してビルドする。
-- **リポジトリを insert・update にそろえた(レビュー後の見直し)**: 状態の記録を出来事ごとのメソッド(`record_finalized`。`where status = 'draft'` で遷移を守る)から、どの集約も `insert` と `update` を持つ形に戻した。update は集約の今の状態を丸ごと書き、明細行は消して入れ直す(Spring Data JDBC も同じやり方)。どの状態へ移ってよいかは domain と usecase の責務で、ロックせずに読んだ古い内容の書き戻しは usecase が `find_for_update` で防ぐ。リポジトリのテストで「書いたものがそのまま読み戻る」ことを確かめる(状態ごと・明細行の差し替え・同じ内容で2回・記録がない・制約違反で何も変わらない。明細行の削除を外すとテストが落ちることも確かめた)。楽観ロック(version 列)は未決。
+- **リポジトリを insert・update にそろえた(レビュー後の見直し)**: 状態の記録を出来事ごとのメソッド(`record_finalized`。`where status = 'draft'` で遷移を守る)から、どの集約も `insert` と `update` を持つ形に戻した。update は集約の今の状態を丸ごと書き、明細行は消して入れ直す(Spring Data JDBC も同じやり方)。どの状態へ移ってよいかは domain と usecase の責務で、ロックせずに読んだ古い内容の書き戻しは usecase が `find_for_update` で防ぐ。リポジトリのテストで「書いたものがそのまま読み戻る」ことを確かめる(状態ごと・明細行の差し替え・同じ内容で2回・記録がない・制約違反で何も変わらない。明細行の削除を外すとテストが落ちることも確かめた)。同時更新の制御(find_for_update か version による楽観ロックか)は、usecase が状況に応じて選ぶことにした(リポジトリには機械的に入れない)。
 - **気づいた手順の穴**: マイグレーションと `query!` を同時に変えると、キャッシュが古いままで migrate 自体がビルドできない。`mise run sqlx-prepare` が sqlx-cli で先にマイグレーションを当ててからキャッシュを更新するようにした。
 
 ## この環境では確かめていないこと
