@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 use platform_kernel::{Money, Unsaved};
 
 use super::{PayPeriod, PayslipError, PayslipEvent, PayslipId, PayslipLine};
@@ -22,11 +20,42 @@ pub struct Draft;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Finalized;
 
-/// ある状態にある給与明細。派遣社員1人の、ある1か月分の給与を表す。
+/// 給与明細がとりうる状態
+pub trait State: Copy {
+    fn status(self) -> PayslipStatus;
+}
+
+impl State for Draft {
+    fn status(self) -> PayslipStatus {
+        PayslipStatus::Draft
+    }
+}
+
+impl State for Finalized {
+    fn status(self) -> PayslipStatus {
+        PayslipStatus::Finalized
+    }
+}
+
+impl State for PayslipStatus {
+    fn status(self) -> PayslipStatus {
+        self
+    }
+}
+
+/// 給与明細には明細行が1件以上ある。稼働のない月の給与明細は作らない
+fn ensure_lines(lines: &[PayslipLine]) -> Result<(), PayslipError> {
+    if lines.is_empty() {
+        return Err(PayslipError::EmptyLines);
+    }
+    Ok(())
+}
+
+/// 給与明細。派遣社員1人の、ある1か月分の給与を表す。
 ///
 /// 同じ派遣社員・同じ月の給与明細は、有効なものが常に1つだけ存在する。
 #[derive(Debug)]
-pub struct PayslipIn<State, Id = PayslipId> {
+pub struct Payslip<S = PayslipStatus, Id = PayslipId> {
     /// 給与明細番号
     id: Id,
     /// 給与を受け取る派遣社員
@@ -36,28 +65,26 @@ pub struct PayslipIn<State, Id = PayslipId> {
     /// 案件ごとの稼働と時給。1件以上ある
     lines: Vec<PayslipLine>,
     /// 作成中か、確定済みか
-    state: PhantomData<State>,
+    state: S,
 }
 
 /// 作成中の給与明細
-pub type DraftPayslip<Id = PayslipId> = PayslipIn<Draft, Id>;
+pub type DraftPayslip<Id = PayslipId> = Payslip<Draft, Id>;
 
 /// 確定済みの給与明細
-pub type FinalizedPayslip<Id = PayslipId> = PayslipIn<Finalized, Id>;
+pub type FinalizedPayslip<Id = PayslipId> = Payslip<Finalized, Id>;
 
-impl<State, Id> PayslipIn<State, Id> {
-    fn with_id(
-        id: Id,
-        staff_id: StaffId,
-        period: PayPeriod,
-        lines: Vec<PayslipLine>,
-    ) -> Result<Self, PayslipError> {
-        if lines.is_empty() {
-            return Err(PayslipError::EmptyLines);
-        }
-        Ok(Self { id, staff_id, period, lines, state: PhantomData })
+/// まだ登録していない給与明細
+pub type NewPayslip = Payslip<PayslipStatus, Unsaved>;
+
+impl<S, Id> Payslip<S, Id> {
+    fn with_state<T>(self, state: T) -> Payslip<T, Id> {
+        let Self { id, staff_id, period, lines, state: _ } = self;
+        Payslip { id, staff_id, period, lines, state }
     }
+}
 
+impl<S: State, Id> Payslip<S, Id> {
     #[must_use]
     pub fn staff_id(&self) -> StaffId {
         self.staff_id
@@ -78,9 +105,14 @@ impl<State, Id> PayslipIn<State, Id> {
     pub fn total(&self) -> Money {
         self.lines.iter().map(PayslipLine::amount).fold(Money::ZERO, |acc, m| acc + m)
     }
+
+    #[must_use]
+    pub fn status(&self) -> PayslipStatus {
+        self.state.status()
+    }
 }
 
-impl<State> PayslipIn<State, PayslipId> {
+impl<S: State> Payslip<S, PayslipId> {
     #[must_use]
     pub fn id(&self) -> PayslipId {
         self.id
@@ -95,73 +127,40 @@ impl<Id> DraftPayslip<Id> {
             period: self.period,
             total: self.total(),
         };
-        let Self { id, staff_id, period, lines, state: _ } = self;
-        (PayslipIn { id, staff_id, period, lines, state: PhantomData }, event)
+        (self.with_state(Finalized), event)
     }
 }
 
-/// 給与明細。作成中か確定済みのどちらか
+/// 状態ごとに分けた給与明細
 #[derive(Debug)]
-pub enum Payslip<Id = PayslipId> {
+pub enum PayslipState<Id = PayslipId> {
     Draft(DraftPayslip<Id>),
     Finalized(FinalizedPayslip<Id>),
 }
 
-/// まだ登録していない給与明細
-pub type NewPayslip = Payslip<Unsaved>;
-
-macro_rules! each_state {
-    ($payslip:expr, $p:ident => $body:expr) => {
-        match $payslip {
-            Payslip::Draft($p) => $body,
-            Payslip::Finalized($p) => $body,
-        }
-    };
-}
-
-impl<Id> Payslip<Id> {
-    #[must_use]
-    pub fn staff_id(&self) -> StaffId {
-        each_state!(self, p => p.staff_id())
-    }
-
-    #[must_use]
-    pub fn period(&self) -> PayPeriod {
-        each_state!(self, p => p.period())
-    }
-
-    #[must_use]
-    pub fn lines(&self) -> &[PayslipLine] {
-        each_state!(self, p => p.lines())
-    }
-
-    /// 支給額。各明細行の金額(それぞれ円未満切り捨て済み)の合計
-    #[must_use]
-    pub fn total(&self) -> Money {
-        each_state!(self, p => p.total())
-    }
-
-    #[must_use]
-    pub fn status(&self) -> PayslipStatus {
-        match self {
-            Self::Draft(_) => PayslipStatus::Draft,
-            Self::Finalized(_) => PayslipStatus::Finalized,
+impl<Id> Payslip<PayslipStatus, Id> {
+    /// 作成中か確定済みかで分ける
+    pub fn into_state(self) -> PayslipState<Id> {
+        match self.state {
+            PayslipStatus::Draft => PayslipState::Draft(self.with_state(Draft)),
+            PayslipStatus::Finalized => PayslipState::Finalized(self.with_state(Finalized)),
         }
     }
 }
 
-impl Payslip<Unsaved> {
+impl Payslip<PayslipStatus, Unsaved> {
     /// 作成中の給与明細を新しく作る。明細行は1件以上必要
     pub fn draft(
         staff_id: StaffId,
         period: PayPeriod,
         lines: Vec<PayslipLine>,
     ) -> Result<DraftPayslip<Unsaved>, PayslipError> {
-        PayslipIn::with_id(Unsaved, staff_id, period, lines)
+        ensure_lines(&lines)?;
+        Ok(Payslip { id: Unsaved, staff_id, period, lines, state: Draft })
     }
 }
 
-impl Payslip<PayslipId> {
+impl Payslip<PayslipStatus, PayslipId> {
     /// 登録済みの給与明細を、記録されている内容から組み立て直す
     pub fn reconstruct(
         id: PayslipId,
@@ -170,29 +169,20 @@ impl Payslip<PayslipId> {
         lines: Vec<PayslipLine>,
         status: PayslipStatus,
     ) -> Result<Self, PayslipError> {
-        Ok(match status {
-            PayslipStatus::Draft => Self::Draft(PayslipIn::with_id(id, staff_id, period, lines)?),
-            PayslipStatus::Finalized => {
-                Self::Finalized(PayslipIn::with_id(id, staff_id, period, lines)?)
-            }
-        })
-    }
-
-    #[must_use]
-    pub fn id(&self) -> PayslipId {
-        each_state!(self, p => p.id())
+        ensure_lines(&lines)?;
+        Ok(Payslip { id, staff_id, period, lines, state: status })
     }
 }
 
-impl<Id> From<DraftPayslip<Id>> for Payslip<Id> {
+impl<Id> From<DraftPayslip<Id>> for Payslip<PayslipStatus, Id> {
     fn from(payslip: DraftPayslip<Id>) -> Self {
-        Self::Draft(payslip)
+        payslip.with_state(PayslipStatus::Draft)
     }
 }
 
-impl<Id> From<FinalizedPayslip<Id>> for Payslip<Id> {
+impl<Id> From<FinalizedPayslip<Id>> for Payslip<PayslipStatus, Id> {
     fn from(payslip: FinalizedPayslip<Id>) -> Self {
-        Self::Finalized(payslip)
+        payslip.with_state(PayslipStatus::Finalized)
     }
 }
 
@@ -238,6 +228,6 @@ mod tests {
                 total: Money::from_yen(15_000).unwrap()
             }
         );
-        assert_eq!(Payslip::from(finalized).status(), PayslipStatus::Finalized);
+        assert_eq!(finalized.status(), PayslipStatus::Finalized);
     }
 }
