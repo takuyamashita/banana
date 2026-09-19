@@ -38,9 +38,16 @@ slug() { echo "$1" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9\n-' '-'; }
 
 dir_of() { echo "$(dirname "$(main_dir)")/$(basename "$(main_dir)")-$(slug "$1")"; }
 
+# 英数字を含まない名前(日本語だけなど)は、どれも同じ「---」になって見分けられない
+check_name() {
+  [[ $(slug "$1") =~ [a-z0-9] ]] || { echo "名前には英数字を含めてください: $1" >&2; exit 1; }
+}
+
 cmd_new() {
   local name=${1:?"worktree の名前(ブランチ名)を指定してください"}
+  check_name "$name"
   local dir; dir=$(dir_of "$name")
+  # feature/x と feature-x のように、違う名前が同じディレクトリになることもある
   [[ -e $dir ]] && { echo "既にあります: $dir" >&2; exit 1; }
 
   # 使われていない一番小さいスロットを選ぶ
@@ -52,7 +59,11 @@ cmd_new() {
 
   if git show-ref --verify --quiet "refs/heads/$name"; then
     git worktree add "$dir" "$name"
+  elif git show-ref --verify --quiet "refs/remotes/origin/$name"; then
+    # リモートにしかないブランチ(他の人の PR など)は、それを追跡するブランチとして取り出す
+    git worktree add --track -b "$name" "$dir" "origin/$name"
   else
+    # 新しいブランチは、今いる worktree の HEAD から作る
     git worktree add -b "$name" "$dir"
   fi
 
@@ -79,11 +90,24 @@ cmd_new() {
 
 cmd_remove() {
   local name=${1:?"worktree の名前を指定してください"}
+  check_name "$name"
   local dir; dir=$(dir_of "$name")
   [[ -f "$dir/.env.worktree" ]] || { echo "worktree:new で作った worktree ではありません: $dir" >&2; exit 1; }
+
+  # 名前が同じディレクトリに潰れる別の worktree(feature/x と feature-x)を消さないよう、ブランチを確かめる
+  local branch; branch=$(git -C "$dir" branch --show-current)
+  [[ $branch == "$name" ]] || { echo "$dir はブランチ $branch の worktree です($name ではありません)" >&2; exit 1; }
+  # データを消す前に、コミットしていない変更がないことを確かめる
+  if [[ -n $(git -C "$dir" status --porcelain) ]]; then
+    echo "コミットしていない変更があります。コミットするか片付けてから実行してください: $dir" >&2
+    git -C "$dir" status --short >&2
+    exit 1
+  fi
+
   local project; project=$(sed -n 's/^COMPOSE_NAME=//p' "$dir/.env.worktree")
-  docker compose --project-name "$project" down --volumes --remove-orphans
   git worktree remove "$dir"
+  # compose ファイルがなくても、プロジェクト名だけで片付けられる
+  docker compose --project-name "$project" down --volumes --remove-orphans
   echo "片付けました: $dir(ブランチ $name は残しています。不要なら git branch -d $name)"
 }
 
