@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 use platform_kernel::{Money, Unsaved};
 
 use super::{PayPeriod, PayslipError, PayslipEvent, PayslipId, PayslipLine};
@@ -14,24 +12,22 @@ pub enum PayslipStatus {
     Finalized,
 }
 
-/// 作成中。内容を確かめている段階で、まだ支給額として確定していない
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Draft;
-
-/// 確定済み。支給額が決まり、以後は変更できない。振込の対象になる
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Finalized;
+/// 給与明細には明細行が1件以上ある。稼働のない月の給与明細は作らない
+fn ensure_lines(lines: &[PayslipLine]) -> Result<(), PayslipError> {
+    if lines.is_empty() {
+        return Err(PayslipError::EmptyLines);
+    }
+    Ok(())
+}
 
 /// 支給額。各明細行の金額(それぞれ円未満切り捨て済み)の合計
 fn total_of(lines: &[PayslipLine]) -> Money {
     lines.iter().map(PayslipLine::amount).fold(Money::ZERO, |acc, m| acc + m)
 }
 
-/// ある状態にある給与明細。派遣社員1人の、ある1か月分の給与を表す。
-///
-/// 同じ派遣社員・同じ月の給与明細は、有効なものが常に1つだけ存在する。
+/// 作成中の給与明細。派遣社員1人の、ある1か月分の給与を、まだ支給額として確定していない段階で表す
 #[derive(Debug)]
-pub struct PayslipIn<State, Id = PayslipId> {
+pub struct DraftPayslip<Id = PayslipId> {
     /// 給与明細番号
     id: Id,
     /// 給与を受け取る派遣社員
@@ -40,29 +36,63 @@ pub struct PayslipIn<State, Id = PayslipId> {
     period: PayPeriod,
     /// 案件ごとの稼働と時給。1件以上ある
     lines: Vec<PayslipLine>,
-    /// 作成中か、確定済みか
-    state: PhantomData<State>,
 }
 
-/// 作成中の給与明細
-pub type DraftPayslip<Id = PayslipId> = PayslipIn<Draft, Id>;
-
-/// 確定済みの給与明細
-pub type FinalizedPayslip<Id = PayslipId> = PayslipIn<Finalized, Id>;
-
-impl<State, Id> PayslipIn<State, Id> {
-    fn with_id(
-        id: Id,
-        staff_id: StaffId,
-        period: PayPeriod,
-        lines: Vec<PayslipLine>,
-    ) -> Result<Self, PayslipError> {
-        if lines.is_empty() {
-            return Err(PayslipError::EmptyLines);
-        }
-        Ok(Self { id, staff_id, period, lines, state: PhantomData })
+impl<Id> DraftPayslip<Id> {
+    #[must_use]
+    pub fn staff_id(&self) -> StaffId {
+        self.staff_id
     }
 
+    #[must_use]
+    pub fn period(&self) -> PayPeriod {
+        self.period
+    }
+
+    #[must_use]
+    pub fn lines(&self) -> &[PayslipLine] {
+        &self.lines
+    }
+
+    /// 支給額。各明細行の金額(それぞれ円未満切り捨て済み)の合計
+    #[must_use]
+    pub fn total(&self) -> Money {
+        total_of(&self.lines)
+    }
+
+    /// 給与明細を確定し、支給額を決める。確定した給与明細と、確定したという出来事を返す
+    pub fn finalize(self) -> (FinalizedPayslip<Id>, PayslipEvent) {
+        let event = PayslipEvent::Finalized {
+            staff_id: self.staff_id,
+            period: self.period,
+            total: self.total(),
+        };
+        let Self { id, staff_id, period, lines } = self;
+        (FinalizedPayslip { id, staff_id, period, lines }, event)
+    }
+}
+
+impl DraftPayslip<PayslipId> {
+    #[must_use]
+    pub fn id(&self) -> PayslipId {
+        self.id
+    }
+}
+
+/// 確定済みの給与明細。支給額が決まり、以後は変更できない。振込の対象になる
+#[derive(Debug)]
+pub struct FinalizedPayslip<Id = PayslipId> {
+    /// 給与明細番号
+    id: Id,
+    /// 給与を受け取る派遣社員
+    staff_id: StaffId,
+    /// 対象月
+    period: PayPeriod,
+    /// 案件ごとの稼働と時給。1件以上ある
+    lines: Vec<PayslipLine>,
+}
+
+impl<Id> FinalizedPayslip<Id> {
     #[must_use]
     pub fn staff_id(&self) -> StaffId {
         self.staff_id
@@ -85,27 +115,16 @@ impl<State, Id> PayslipIn<State, Id> {
     }
 }
 
-impl<State> PayslipIn<State, PayslipId> {
+impl FinalizedPayslip<PayslipId> {
     #[must_use]
     pub fn id(&self) -> PayslipId {
         self.id
     }
 }
 
-impl<Id> DraftPayslip<Id> {
-    /// 給与明細を確定し、支給額を決める。確定した給与明細と、確定したという出来事を返す
-    pub fn finalize(self) -> (FinalizedPayslip<Id>, PayslipEvent) {
-        let event = PayslipEvent::Finalized {
-            staff_id: self.staff_id,
-            period: self.period,
-            total: self.total(),
-        };
-        let Self { id, staff_id, period, lines, state: _ } = self;
-        (PayslipIn { id, staff_id, period, lines, state: PhantomData }, event)
-    }
-}
-
-/// 給与明細。作成中か確定済みのどちらか
+/// 給与明細。作成中か確定済みのどちらか。
+///
+/// 同じ派遣社員・同じ月の給与明細は、有効なものが常に1つだけ存在する。
 #[derive(Debug)]
 pub enum Payslip<Id = PayslipId> {
     Draft(DraftPayslip<Id>),
@@ -119,26 +138,24 @@ impl<Id> Payslip<Id> {
     #[must_use]
     pub fn staff_id(&self) -> StaffId {
         match self {
-            Self::Draft(PayslipIn { staff_id, .. })
-            | Self::Finalized(PayslipIn { staff_id, .. }) => *staff_id,
+            Self::Draft(DraftPayslip { staff_id, .. })
+            | Self::Finalized(FinalizedPayslip { staff_id, .. }) => *staff_id,
         }
     }
 
     #[must_use]
     pub fn period(&self) -> PayPeriod {
         match self {
-            Self::Draft(PayslipIn { period, .. }) | Self::Finalized(PayslipIn { period, .. }) => {
-                *period
-            }
+            Self::Draft(DraftPayslip { period, .. })
+            | Self::Finalized(FinalizedPayslip { period, .. }) => *period,
         }
     }
 
     #[must_use]
     pub fn lines(&self) -> &[PayslipLine] {
         match self {
-            Self::Draft(PayslipIn { lines, .. }) | Self::Finalized(PayslipIn { lines, .. }) => {
-                lines
-            }
+            Self::Draft(DraftPayslip { lines, .. })
+            | Self::Finalized(FinalizedPayslip { lines, .. }) => lines,
         }
     }
 
@@ -164,7 +181,8 @@ impl Payslip<Unsaved> {
         period: PayPeriod,
         lines: Vec<PayslipLine>,
     ) -> Result<DraftPayslip<Unsaved>, PayslipError> {
-        PayslipIn::with_id(Unsaved, staff_id, period, lines)
+        ensure_lines(&lines)?;
+        Ok(DraftPayslip { id: Unsaved, staff_id, period, lines })
     }
 }
 
@@ -177,10 +195,11 @@ impl Payslip<PayslipId> {
         lines: Vec<PayslipLine>,
         status: PayslipStatus,
     ) -> Result<Self, PayslipError> {
+        ensure_lines(&lines)?;
         Ok(match status {
-            PayslipStatus::Draft => Self::Draft(PayslipIn::with_id(id, staff_id, period, lines)?),
+            PayslipStatus::Draft => Self::Draft(DraftPayslip { id, staff_id, period, lines }),
             PayslipStatus::Finalized => {
-                Self::Finalized(PayslipIn::with_id(id, staff_id, period, lines)?)
+                Self::Finalized(FinalizedPayslip { id, staff_id, period, lines })
             }
         })
     }
@@ -188,7 +207,9 @@ impl Payslip<PayslipId> {
     #[must_use]
     pub fn id(&self) -> PayslipId {
         match self {
-            Self::Draft(PayslipIn { id, .. }) | Self::Finalized(PayslipIn { id, .. }) => *id,
+            Self::Draft(DraftPayslip { id, .. }) | Self::Finalized(FinalizedPayslip { id, .. }) => {
+                *id
+            }
         }
     }
 }
