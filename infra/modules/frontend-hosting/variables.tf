@@ -20,6 +20,10 @@ variable "runtime_config" {
     oidc = object({
       authority = string
       clientId  = string
+      # ディスカバリに載っていない宛先を補う(Cognito の /logout・/oauth2/revoke)
+      endSessionEndpoint      = optional(string)
+      revocationEndpoint      = optional(string)
+      postLogoutRedirectParam = optional(string)
     })
   })
 }

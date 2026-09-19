@@ -82,6 +82,10 @@ module "frontend" {
     oidc = {
       authority = module.auth.issuer
       clientId  = module.auth.web_client_id
+      # Cognito のログアウトは /logout に client_id と logout_uri(logout_urls のどれか)を渡す
+      endSessionEndpoint      = "${module.auth.hosted_ui_url}/logout"
+      revocationEndpoint      = "${module.auth.hosted_ui_url}/oauth2/revoke"
+      postLogoutRedirectParam = "logout_uri"
     }
   }
 }

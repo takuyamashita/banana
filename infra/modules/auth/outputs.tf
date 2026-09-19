@@ -16,3 +16,9 @@ output "web_client_id" {
 output "issuer" {
   value = "https://cognito-idp.${data.aws_region.current.region}.amazonaws.com/${aws_cognito_user_pool.this.id}"
 }
+
+# マネージドログインの URL。フロントの config.json のログアウト先(/logout)と失効先(/oauth2/revoke)に使う。
+# Cognito の OIDC ディスカバリには end_session_endpoint が載らないため
+output "hosted_ui_url" {
+  value = "https://${aws_cognito_user_pool_domain.this.domain}.auth.${data.aws_region.current.region}.amazoncognito.com"
+}

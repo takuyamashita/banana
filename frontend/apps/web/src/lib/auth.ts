@@ -4,7 +4,13 @@ import type { RuntimeConfig } from "./config";
 
 /// Keycloak(ローカル)と Cognito(stg/prd)のどちらも標準の OIDC + PKCE で扱う。差は config.json だけ
 export function createUserManager(config: RuntimeConfig): UserManager {
+  const { endSessionEndpoint, revocationEndpoint } = config.oidc;
   return new UserManager({
+    // Cognito はディスカバリに end_session_endpoint を載せないので、config.json の値で補う
+    metadataSeed: {
+      ...(endSessionEndpoint ? { end_session_endpoint: endSessionEndpoint } : {}),
+      ...(revocationEndpoint ? { revocation_endpoint: revocationEndpoint } : {}),
+    },
     authority: config.oidc.authority,
     client_id: config.oidc.clientId,
     redirect_uri: `${window.location.origin}/`,
@@ -16,15 +22,14 @@ export function createUserManager(config: RuntimeConfig): UserManager {
   });
 }
 
-/// ログアウト。Cognito は OIDC ディスカバリに end_session_endpoint を載せないので
-/// signoutRedirect が失敗する。その場合はローカルのセッションだけ消して戻る
-export async function signOut(manager: UserManager): Promise<void> {
-  try {
-    await manager.signoutRedirect();
-  } catch {
-    await manager.removeUser();
-    window.location.assign("/");
-  }
+/// ログアウト。リフレッシュトークンを失効させてから、IdP のセッションも終わらせる。
+/// ブラウザのセッションだけを消すと IdP にログインが残り、共用の端末では次の人が
+/// パスワードなしで前の人としてログインできてしまう
+export async function signOut(manager: UserManager, config: RuntimeConfig): Promise<void> {
+  // 失効に失敗しても(失効の宛先がない IdP など)、IdP のログアウトは続ける
+  await manager.revokeTokens(["refresh_token"]).catch(() => undefined);
+  const param = config.oidc.postLogoutRedirectParam;
+  await manager.signoutRedirect(param ? { extraQueryParams: { [param]: `${window.location.origin}/` } } : undefined);
 }
 
 // 認可コードは1回しか交換できない。StrictMode の開発時は effect が2回走るので、

@@ -66,7 +66,10 @@ export function App({ config }: { config: RuntimeConfig }) {
         <header className="header">
           <h1>給与管理</h1>
           <span className="who">{user.profile.email}</span>
-          <Button variant="secondary" onClick={() => void signOut(manager)}>
+          <Button
+            variant="secondary"
+            onClick={() => void signOut(manager, config).catch((err: unknown) => setError(errorMessage(err)))}
+          >
             ログアウト
           </Button>
         </header>
