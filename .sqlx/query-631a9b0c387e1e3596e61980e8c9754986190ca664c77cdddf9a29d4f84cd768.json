@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "insert into payslips (staff_id, pay_year, pay_month, status, finalized_at)\n             values (?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "631a9b0c387e1e3596e61980e8c9754986190ca664c77cdddf9a29d4f84cd768"
+}

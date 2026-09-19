@@ -11,6 +11,7 @@ use axum::extract::Request;
 use axum::middleware::Next;
 use axum::response::Response;
 use payroll_handler::{PayrollServiceHandler, ProjectServiceHandler, StaffServiceHandler};
+use payroll_infrastructure::clock::SystemClock;
 use payroll_infrastructure::database::MySqlDatabase;
 use payroll_infrastructure::messaging::outbox::MySqlEventOutbox;
 use payroll_infrastructure::query::{MySqlProjectQuery, MySqlStaffQuery};
@@ -89,6 +90,7 @@ async fn api() -> Api {
                 staff.clone(),
                 Arc::new(MySqlEventOutbox),
                 db.clone(),
+                Arc::new(SystemClock),
             ),
             GetPayslipUseCase::new(payslips.clone(), staff.clone()),
             ListPayslipsUseCase::new(payslips, staff.clone()),

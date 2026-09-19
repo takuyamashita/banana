@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use anyhow::Context as _;
 use payroll_handler::{PayrollServiceHandler, ProjectServiceHandler, StaffServiceHandler};
+use payroll_infrastructure::clock::SystemClock;
 use payroll_infrastructure::database::MySqlDatabase;
 use payroll_infrastructure::external::{
     BankPayoutGateway, CognitoUserDirectory, KeycloakUserDirectory, LoggingPayoutGateway,
@@ -130,7 +131,13 @@ pub fn build_handlers(pool: &MySqlPool, user_directory: Arc<dyn UserDirectory>) 
 
     Handlers {
         payroll: PayrollServiceHandler::new(
-            FinalizePayslipUseCase::new(payslips.clone(), staff.clone(), outbox, db.clone()),
+            FinalizePayslipUseCase::new(
+                payslips.clone(),
+                staff.clone(),
+                outbox,
+                db.clone(),
+                Arc::new(SystemClock),
+            ),
             GetPayslipUseCase::new(payslips.clone(), staff.clone()),
             ListPayslipsUseCase::new(payslips, staff.clone()),
         ),

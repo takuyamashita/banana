@@ -4,6 +4,7 @@ use payroll_domain::payslip::{PayPeriod, Payslip, PayslipId, PayslipLine};
 use payroll_domain::staff::StaffId;
 
 use crate::UseCaseError;
+use crate::ports::clock::Clock;
 use crate::ports::database::Database;
 use crate::ports::events::{EventOutbox, PayrollEvent};
 use crate::ports::repository::{PayslipRepository, StaffRepository};
@@ -27,6 +28,7 @@ pub struct FinalizePayslipUseCase {
     staff: Arc<dyn StaffRepository>,
     outbox: Arc<dyn EventOutbox>,
     db: Arc<dyn Database>,
+    clock: Arc<dyn Clock>,
 }
 
 impl FinalizePayslipUseCase {
@@ -36,8 +38,9 @@ impl FinalizePayslipUseCase {
         staff: Arc<dyn StaffRepository>,
         outbox: Arc<dyn EventOutbox>,
         db: Arc<dyn Database>,
+        clock: Arc<dyn Clock>,
     ) -> Self {
-        Self { payslips, staff, outbox, db }
+        Self { payslips, staff, outbox, db, clock }
     }
 
     /// 給与を確定し、振られた給与明細番号を返す。
@@ -54,7 +57,7 @@ impl FinalizePayslipUseCase {
         }
 
         let draft = Payslip::draft(input.staff_id, input.period, input.lines)?;
-        let (payslip, finalized) = draft.finalize();
+        let (payslip, finalized) = draft.finalize(self.clock.now());
 
         let mut tx = self.db.transaction().await?;
         let id = self.payslips.insert(&mut tx, &payslip.into()).await?;

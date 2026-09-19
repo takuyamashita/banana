@@ -1,5 +1,6 @@
 //! payroll の infrastructure。usecase の ports(リポジトリ・クエリ・外部API)を実装する
 
+pub mod clock;
 pub mod database;
 pub mod db;
 pub mod external;

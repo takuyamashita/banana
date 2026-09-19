@@ -3,7 +3,8 @@ allow-unwrap-in-tests = true
 allow-expect-in-tests = true
 
 disallowed-methods = [
-  { path = "payroll_domain::payslip::Payslip::reconstruct", reason = "永続化からの再構築はrepository実装専用です。handlerでは usecase を呼んでください" },
+  { path = "payroll_domain::payslip::Payslip::reconstruct_draft", reason = "永続化からの再構築はrepository実装専用です。handlerでは usecase を呼んでください" },
+  { path = "payroll_domain::payslip::Payslip::reconstruct_finalized", reason = "永続化からの再構築はrepository実装専用です。handlerでは usecase を呼んでください" },
   { path = "payroll_domain::staff::Staff::reconstruct", reason = "永続化からの再構築はrepository実装専用です" },
   { path = "payroll_domain::project::Project::reconstruct", reason = "永続化からの再構築はrepository実装専用です" },
 ]

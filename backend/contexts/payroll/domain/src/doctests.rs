@@ -25,6 +25,7 @@ struct UnsavedHasNoId;
 /// use payroll_domain::project::ProjectId;
 /// use payroll_domain::staff::StaffId;
 /// use platform_kernel::Money;
+/// use time::OffsetDateTime;
 ///
 /// let line = PayslipLine::new(
 ///     ProjectId::from_i64(1).unwrap(),
@@ -33,8 +34,8 @@ struct UnsavedHasNoId;
 /// );
 /// let period = PayPeriod::new(2026, 9).unwrap();
 /// let draft = Payslip::draft(StaffId::from_i64(1).unwrap(), period, vec![line]).unwrap();
-/// let (finalized, _event) = draft.finalize();
-/// finalized.finalize();
+/// let (finalized, _event) = draft.finalize(OffsetDateTime::UNIX_EPOCH);
+/// finalized.finalize(OffsetDateTime::UNIX_EPOCH);
 /// ```
 ///
 /// ```
@@ -42,6 +43,7 @@ struct UnsavedHasNoId;
 /// use payroll_domain::project::ProjectId;
 /// use payroll_domain::staff::StaffId;
 /// use platform_kernel::Money;
+/// use time::OffsetDateTime;
 ///
 /// let line = PayslipLine::new(
 ///     ProjectId::from_i64(1).unwrap(),
@@ -50,6 +52,6 @@ struct UnsavedHasNoId;
 /// );
 /// let period = PayPeriod::new(2026, 9).unwrap();
 /// let draft = Payslip::draft(StaffId::from_i64(1).unwrap(), period, vec![line]).unwrap();
-/// let (_finalized, _event) = draft.finalize();
+/// let (_finalized, _event) = draft.finalize(OffsetDateTime::UNIX_EPOCH);
 /// ```
 struct FinalizedPayslipCannotBeFinalizedAgain;

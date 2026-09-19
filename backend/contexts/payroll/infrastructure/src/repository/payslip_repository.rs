@@ -9,6 +9,7 @@ use payroll_usecase::ports::repository::{PayslipRepository, RepositoryError};
 use platform_kernel::Money;
 use sqlx::Connection as _;
 use sqlx::mysql::MySqlPool;
+use time::{OffsetDateTime, PrimitiveDateTime, UtcOffset};
 
 use crate::database::mysql;
 use crate::db::{corrupted, db_err};
@@ -31,6 +32,7 @@ struct JoinedRow {
     pay_year: u16,
     pay_month: u8,
     status: String,
+    finalized_at: Option<PrimitiveDateTime>,
     project_id: i64,
     work_minutes: u32,
     hourly_rate: i64,
@@ -41,7 +43,7 @@ impl PayslipRepository for MySqlPayslipRepository {
     async fn find(&self, id: PayslipId) -> Result<Option<Payslip>, RepositoryError> {
         let rows = sqlx::query_as!(
             JoinedRow,
-            "select p.id, p.staff_id, p.pay_year, p.pay_month, p.status,
+            "select p.id, p.staff_id, p.pay_year, p.pay_month, p.status, p.finalized_at,
                     l.project_id, l.work_minutes, l.hourly_rate
              from payslips p
              join payslip_lines l on l.payslip_id = p.id
@@ -59,7 +61,7 @@ impl PayslipRepository for MySqlPayslipRepository {
     async fn list_by_staff(&self, staff_id: StaffId) -> Result<Vec<Payslip>, RepositoryError> {
         let rows = sqlx::query_as!(
             JoinedRow,
-            "select p.id, p.staff_id, p.pay_year, p.pay_month, p.status,
+            "select p.id, p.staff_id, p.pay_year, p.pay_month, p.status, p.finalized_at,
                     l.project_id, l.work_minutes, l.hourly_rate
              from payslips p
              join payslip_lines l on l.payslip_id = p.id
@@ -80,12 +82,12 @@ impl PayslipRepository for MySqlPayslipRepository {
         let mut tx = mysql(db)?.begin().await.map_err(db_err)?;
         let result = sqlx::query!(
             "insert into payslips (staff_id, pay_year, pay_month, status, finalized_at)
-             values (?, ?, ?, ?, if(? = 'finalized', current_timestamp(6), null))",
+             values (?, ?, ?, ?, ?)",
             new.content().staff_id().as_i64(),
             new.content().period().year(),
             new.content().period().month(),
             encode_status(new.status()),
-            encode_status(new.status()),
+            finalized_at(new),
         )
         .execute(&mut *tx)
         .await
@@ -116,12 +118,9 @@ impl PayslipRepository for MySqlPayslipRepository {
     async fn update(&self, db: &mut Db, payslip: &Payslip) -> Result<(), RepositoryError> {
         let conn = mysql(db)?;
         sqlx::query!(
-            "update payslips
-             set status = ?,
-                 finalized_at = if(? = 'finalized', coalesce(finalized_at, current_timestamp(6)), null)
-             where id = ?",
+            "update payslips set status = ?, finalized_at = ? where id = ?",
             encode_status(payslip.status()),
-            encode_status(payslip.status()),
+            finalized_at(payslip),
             payslip.content().id().as_i64(),
         )
         .execute(&mut *conn)
@@ -162,19 +161,34 @@ fn assemble(rows: Vec<JoinedRow>) -> Result<Vec<Payslip>, RepositoryError> {
 }
 
 fn reconstruct(head: &JoinedRow, lines: Vec<PayslipLine>) -> Result<Payslip, RepositoryError> {
-    let status = match head.status.as_str() {
-        "draft" => PayslipStatus::Draft,
-        "finalized" => PayslipStatus::Finalized,
-        other => return Err(RepositoryError::CorruptedData(format!("unknown status: {other}"))),
-    };
-    Payslip::reconstruct(
-        PayslipId::from_i64(head.id).map_err(corrupted)?,
-        StaffId::from_i64(head.staff_id).map_err(corrupted)?,
-        PayPeriod::new(head.pay_year, head.pay_month).map_err(corrupted)?,
-        lines,
-        status,
-    )
+    let id = PayslipId::from_i64(head.id).map_err(corrupted)?;
+    let staff_id = StaffId::from_i64(head.staff_id).map_err(corrupted)?;
+    let period = PayPeriod::new(head.pay_year, head.pay_month).map_err(corrupted)?;
+    match (head.status.as_str(), head.finalized_at) {
+        ("draft", None) => Payslip::reconstruct_draft(id, staff_id, period, lines),
+        ("finalized", Some(at)) => {
+            Payslip::reconstruct_finalized(id, staff_id, period, lines, at.assume_utc())
+        }
+        (status, at) => {
+            return Err(RepositoryError::CorruptedData(format!(
+                "status と finalized_at が合わない: {status}, {at:?}"
+            )));
+        }
+    }
     .map_err(corrupted)
+}
+
+/// 確定済みなら確定日時を返す。DB の datetime は UTC で持つ(接続の time_zone も UTC)
+fn finalized_at<Id>(payslip: &Payslip<Id>) -> Option<PrimitiveDateTime> {
+    match payslip {
+        Payslip::Draft(_) => None,
+        Payslip::Finalized(p) => Some(utc(p.finalized_at())),
+    }
+}
+
+fn utc(at: OffsetDateTime) -> PrimitiveDateTime {
+    let at = at.to_offset(UtcOffset::UTC);
+    PrimitiveDateTime::new(at.date(), at.time())
 }
 
 fn encode_status(status: PayslipStatus) -> &'static str {

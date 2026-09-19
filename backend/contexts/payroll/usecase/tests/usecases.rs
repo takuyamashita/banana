@@ -9,25 +9,28 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use payroll_domain::payslip::{
-    NewPayslip, PayPeriod, Payslip, PayslipEvent, PayslipId, PayslipLine, PayslipStatus,
-    WorkMinutes,
+    NewPayslip, PayPeriod, Payslip, PayslipEvent, PayslipId, PayslipLine, WorkMinutes,
 };
 use payroll_domain::project::ProjectId;
 use payroll_domain::staff::{DisplayName, NewStaff, Staff, StaffId};
 use payroll_usecase::UseCaseError;
 use payroll_usecase::payslip::{FinalizePayslipInput, FinalizePayslipUseCase, GetPayslipUseCase};
+use payroll_usecase::ports::clock::Clock;
 use payroll_usecase::ports::database::{Database, Db, DbHandle, Transaction};
 use payroll_usecase::ports::events::{EventOutbox, PayrollEvent};
 use payroll_usecase::ports::repository::{PayslipRepository, RepositoryError, StaffRepository};
 use payroll_usecase::ports::user_directory::{UserDirectory, UserDirectoryError};
 use payroll_usecase::staff::{CreateStaffInput, CreateStaffUseCase};
 use platform_kernel::{AuthenticatedUser, Email, Money, Role, UserId};
+use time::OffsetDateTime;
+use time::macros::datetime;
 
 // ---- フェイク ----
 // フェイクも「リポジトリ実装」なので reconstruct を呼ぶ必要がある。usecase の clippy.toml は
 // crate 全体(tests/ も含む)に効くため、ここだけ明示的に許可する
 
-type PayslipRow = (PayslipId, StaffId, PayPeriod, Vec<PayslipLine>);
+/// 番号・派遣社員・対象月・明細行・確定日時(作成中なら None)
+type PayslipRow = (PayslipId, StaffId, PayPeriod, Vec<PayslipLine>, Option<OffsetDateTime>);
 type StaffRow = (StaffId, UserId, Email);
 
 /// 確定済みの記録。取り出しはここを見て、トランザクションは commit でここへ反映する
@@ -71,7 +74,11 @@ fn next_id(len: usize) -> i64 {
 
 #[allow(clippy::disallowed_methods, reason = "フェイクのリポジトリ実装")]
 fn to_payslip(r: &PayslipRow) -> Payslip {
-    Payslip::reconstruct(r.0, r.1, r.2, r.3.clone(), PayslipStatus::Finalized).unwrap()
+    match r.4 {
+        Some(at) => Payslip::reconstruct_finalized(r.0, r.1, r.2, r.3.clone(), at),
+        None => Payslip::reconstruct_draft(r.0, r.1, r.2, r.3.clone()),
+    }
+    .unwrap()
 }
 
 #[allow(clippy::disallowed_methods, reason = "フェイクのリポジトリ実装")]
@@ -145,7 +152,11 @@ impl PayslipRepository for FakePayslips {
         Ok(fake(db).write(|r| {
             let id = PayslipId::from_i64(next_id(r.payslips.len())).unwrap();
             let c = new.content();
-            r.payslips.push((id, c.staff_id(), c.period(), c.lines().to_vec()));
+            let finalized_at = match new {
+                Payslip::Draft(_) => None,
+                Payslip::Finalized(p) => Some(p.finalized_at()),
+            };
+            r.payslips.push((id, c.staff_id(), c.period(), c.lines().to_vec(), finalized_at));
             id
         }))
     }
@@ -196,6 +207,17 @@ impl EventOutbox for FakeOutbox {
     }
 }
 
+/// いつ聞いても同じ日時を返す時計
+struct FixedClock;
+
+const NOW: OffsetDateTime = datetime!(2026-09-30 10:00 UTC);
+
+impl Clock for FixedClock {
+    fn now(&self) -> OffsetDateTime {
+        NOW
+    }
+}
+
 #[derive(Default)]
 struct FakeDirectory {
     disabled: Mutex<Vec<UserId>>,
@@ -224,6 +246,7 @@ fn finalize_usecase(world: &Arc<World>) -> FinalizePayslipUseCase {
         Arc::new(FakeStaff(world.clone())),
         Arc::new(FakeOutbox(world.clone())),
         Arc::new(FakeDatabase(world.clone())),
+        Arc::new(FixedClock),
     )
 }
 
@@ -257,6 +280,8 @@ async fn finalize_records_the_payslip_and_its_event_together() {
 
     let records = world.records();
     assert_eq!(records.payslips.len(), 1);
+    // 確定日時は時計の今
+    assert_eq!(records.payslips[0].4, Some(NOW));
     assert!(matches!(
         records.events.as_slice(),
         [PayrollEvent::Payslip { id: event_id, event: PayslipEvent::Finalized { total, .. } }]

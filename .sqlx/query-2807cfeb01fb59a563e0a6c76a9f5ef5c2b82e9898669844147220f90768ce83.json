@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "select p.id, p.staff_id, p.pay_year, p.pay_month, p.status,\n                    l.project_id, l.work_minutes, l.hourly_rate\n             from payslips p\n             join payslip_lines l on l.payslip_id = p.id\n             where p.staff_id = ? and p.superseded_at is null\n             order by p.pay_year desc, p.pay_month desc, p.id, l.id",
+  "query": "select p.id, p.staff_id, p.pay_year, p.pay_month, p.status, p.finalized_at,\n                    l.project_id, l.work_minutes, l.hourly_rate\n             from payslips p\n             join payslip_lines l on l.payslip_id = p.id\n             where p.id = ?\n             order by l.id",
   "describe": {
     "columns": [
       {
@@ -85,6 +85,22 @@
       },
       {
         "ordinal": 5,
+        "name": "finalized_at",
+        "type_info": {
+          "type": "Datetime",
+          "flags": "BINARY",
+          "collation": 63,
+          "max_size": 26
+        },
+        "origin": {
+          "Table": {
+            "table": "platform.payslips",
+            "name": "finalized_at"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
         "name": "project_id",
         "type_info": {
           "type": "LongLong",
@@ -100,7 +116,7 @@
         }
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "work_minutes",
         "type_info": {
           "type": "Long",
@@ -116,7 +132,7 @@
         }
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "hourly_rate",
         "type_info": {
           "type": "LongLong",
@@ -141,10 +157,11 @@
       false,
       false,
       false,
+      true,
       false,
       false,
       false
     ]
   },
-  "hash": "c6ede6bc32110ef3a7e53bb07eab62e8f0c535a1649f8c93ffa96b27d0b26c07"
+  "hash": "2807cfeb01fb59a563e0a6c76a9f5ef5c2b82e9898669844147220f90768ce83"
 }

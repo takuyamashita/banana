@@ -1,4 +1,5 @@
 use platform_kernel::{Money, Unsaved};
+use time::OffsetDateTime;
 
 use super::{PayPeriod, PayslipError, PayslipEvent, PayslipId, PayslipLine};
 use crate::staff::StaffId;
@@ -80,14 +81,15 @@ impl<Id> DraftPayslip<Id> {
         &self.content
     }
 
-    /// 給与明細を確定し、支給額を決める。確定した給与明細と、確定したという出来事を返す
-    pub fn finalize(self) -> (FinalizedPayslip<Id>, PayslipEvent) {
+    /// 給与明細を `finalized_at` の日時で確定し、支給額を決める。
+    /// 確定した給与明細と、確定したという出来事を返す
+    pub fn finalize(self, finalized_at: OffsetDateTime) -> (FinalizedPayslip<Id>, PayslipEvent) {
         let event = PayslipEvent::Finalized {
             staff_id: self.content.staff_id,
             period: self.content.period,
             total: self.content.total(),
         };
-        (FinalizedPayslip { content: self.content }, event)
+        (FinalizedPayslip { content: self.content, finalized_at }, event)
     }
 }
 
@@ -95,12 +97,19 @@ impl<Id> DraftPayslip<Id> {
 #[derive(Debug)]
 pub struct FinalizedPayslip<Id = PayslipId> {
     content: PayslipContent<Id>,
+    /// 確定した日時。この時点で支給額が決まった
+    finalized_at: OffsetDateTime,
 }
 
 impl<Id> FinalizedPayslip<Id> {
     #[must_use]
     pub fn content(&self) -> &PayslipContent<Id> {
         &self.content
+    }
+
+    #[must_use]
+    pub fn finalized_at(&self) -> OffsetDateTime {
+        self.finalized_at
     }
 }
 
@@ -146,19 +155,27 @@ impl Payslip<Unsaved> {
 }
 
 impl Payslip<PayslipId> {
-    /// 登録済みの給与明細を、記録されている内容から組み立て直す
-    pub fn reconstruct(
+    /// 登録済みの作成中の給与明細を、記録されている内容から組み立て直す
+    pub fn reconstruct_draft(
         id: PayslipId,
         staff_id: StaffId,
         period: PayPeriod,
         lines: Vec<PayslipLine>,
-        status: PayslipStatus,
     ) -> Result<Self, PayslipError> {
         let content = PayslipContent::new(id, staff_id, period, lines)?;
-        Ok(match status {
-            PayslipStatus::Draft => Self::Draft(DraftPayslip { content }),
-            PayslipStatus::Finalized => Self::Finalized(FinalizedPayslip { content }),
-        })
+        Ok(Self::Draft(DraftPayslip { content }))
+    }
+
+    /// 登録済みの確定済みの給与明細を、記録されている内容から組み立て直す
+    pub fn reconstruct_finalized(
+        id: PayslipId,
+        staff_id: StaffId,
+        period: PayPeriod,
+        lines: Vec<PayslipLine>,
+        finalized_at: OffsetDateTime,
+    ) -> Result<Self, PayslipError> {
+        let content = PayslipContent::new(id, staff_id, period, lines)?;
+        Ok(Self::Finalized(FinalizedPayslip { content, finalized_at }))
     }
 }
 
@@ -176,6 +193,8 @@ impl<Id> From<FinalizedPayslip<Id>> for Payslip<Id> {
 
 #[cfg(test)]
 mod tests {
+    use time::macros::datetime;
+
     use super::*;
     use crate::payslip::WorkMinutes;
     use crate::project::ProjectId;
@@ -203,7 +222,9 @@ mod tests {
         let period = PayPeriod::new(2026, 9).unwrap();
         let draft = Payslip::draft(staff(), period, vec![line(600, 1_500)]).unwrap();
 
-        let (finalized, event) = draft.finalize();
+        let at = datetime!(2026-09-30 10:00 UTC);
+
+        let (finalized, event) = draft.finalize(at);
 
         assert_eq!(
             event,
@@ -213,6 +234,7 @@ mod tests {
                 total: Money::from_yen(15_000).unwrap()
             }
         );
+        assert_eq!(finalized.finalized_at(), at);
         assert_eq!(Payslip::from(finalized).status(), PayslipStatus::Finalized);
     }
 }

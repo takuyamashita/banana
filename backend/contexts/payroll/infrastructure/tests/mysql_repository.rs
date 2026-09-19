@@ -23,6 +23,8 @@ use sqlx::MySqlPool;
 use testcontainers_modules::mysql::Mysql;
 use testcontainers_modules::testcontainers::runners::AsyncRunner;
 use testcontainers_modules::testcontainers::{ContainerAsync, ImageExt};
+use time::OffsetDateTime;
+use time::macros::datetime;
 
 struct TestDb {
     pool: MySqlPool,
@@ -76,8 +78,11 @@ fn draft(staff: StaffId, project: ProjectId, month: u8) -> DraftPayslip<Unsaved>
 }
 
 /// 給与確定のユースケースと同じく、給与明細とその出来事を1つのトランザクションで記録する
+/// 確定した日時。DB の datetime(6) はマイクロ秒まで持つ
+const FINALIZED_AT: OffsetDateTime = datetime!(2026-09-30 10:00:00.123456 UTC);
+
 async fn finalize(db: &TestDb, draft: DraftPayslip<Unsaved>) -> Result<PayslipId, RepositoryError> {
-    let (payslip, finalized) = draft.finalize();
+    let (payslip, finalized) = draft.finalize(FINALIZED_AT);
     let mut tx = MySqlDatabase::new(db.pool.clone()).transaction().await?;
     let id = MySqlPayslipRepository::new(db.pool.clone()).insert(&mut tx, &payslip.into()).await?;
     MySqlEventOutbox.append(&mut tx, PayrollEvent::Payslip { id, event: finalized }).await?;
@@ -100,7 +105,8 @@ async fn payslip_and_its_event_are_committed_together() {
     let id = finalize(&db, draft(staff, project, 9)).await.unwrap();
 
     let found = repo.find(id).await.unwrap().unwrap();
-    assert_eq!(found.status(), PayslipStatus::Finalized);
+    let Payslip::Finalized(finalized) = &found else { panic!("確定済みのはず: {found:?}") };
+    assert_eq!(finalized.finalized_at(), FINALIZED_AT);
     assert_eq!(found.content().lines().len(), 2);
     // 600分×1500/60 = 15,000 と 45分×1001/60 = 750.75 → 750
     assert_eq!(found.content().total().as_yen(), 15_750);
@@ -120,7 +126,7 @@ async fn records_are_discarded_when_the_transaction_is_not_committed() {
     let (staff, project) = seed(&db).await;
     let repo = MySqlPayslipRepository::new(db.pool.clone());
 
-    let (payslip, finalized) = draft(staff, project, 9).finalize();
+    let (payslip, finalized) = draft(staff, project, 9).finalize(FINALIZED_AT);
     let payslip = payslip.into();
     {
         let mut tx = MySqlDatabase::new(db.pool.clone()).transaction().await.unwrap();
@@ -147,8 +153,9 @@ async fn payslip_written_outside_a_transaction_is_kept_whole() {
     let id = repo.insert(&mut conn, &draft(staff, project, 9).into()).await.unwrap();
     drop(conn);
 
-    // 接続に書いた給与明細は、明細行まで一緒に確定している
+    // 接続に書いた給与明細は、明細行まで一緒に確定している。作成中なので確定日時はない
     let found = repo.find(id).await.unwrap().unwrap();
+    assert_eq!(found.status(), PayslipStatus::Draft);
     assert_eq!(found.content().lines().len(), 2);
 }
 
@@ -181,6 +188,13 @@ async fn corrupted_row_is_reported_not_panicked() {
         .execute(&db.pool)
         .await
         .unwrap();
+    assert!(matches!(repo.find(id).await, Err(RepositoryError::CorruptedData(_))));
 
+    // 確定済みなのに確定日時がない行も壊れたデータ
+    sqlx::query("update payslips set status = 'finalized', finalized_at = null where id = ?")
+        .bind(id.as_i64())
+        .execute(&db.pool)
+        .await
+        .unwrap();
     assert!(matches!(repo.find(id).await, Err(RepositoryError::CorruptedData(_))));
 }
