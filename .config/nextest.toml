@@ -1,10 +1,10 @@
-# testcontainers で MySQL を立てるテスト(DB 結合テスト・API テスト)は、同時に走らせる数を抑える。
+# testcontainers で MySQL を立てるテスト(DB 結合テスト・API テスト・DB ユーザーのテスト)は、同時に走らせる数を抑える。
 # 一度に多数を立てると、起動待ちで遅くなり、カーネルの上限(fs.aio-max-nr など)にも当たりやすい
 [test-groups]
 mysql = { max-threads = 8 }
 
 [[profile.default.overrides]]
-filter = "(package(payroll-infrastructure) | package(server)) & kind(test)"
+filter = "(package(payroll-infrastructure) | package(server) | package(migrate)) & kind(test)"
 test-group = "mysql"
 
 [profile.default]

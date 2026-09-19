@@ -153,25 +153,53 @@ AWS には apply していないので、手元で再現できる形と静的な
 - **Performance Insights を db.t4g.micro・small で有効にしていた**: AWS のドキュメントでは対象外で、dev・stg の RDS が作れない(apply していないので実際のエラーは未確認)。変数にして prod だけ有効にした。
 - あわせて、Lambda の SQS トリガーに同時実行の上限(`maximum_concurrency`)を付け、Lambda の DB 接続数を 2 にした。月末に一斉に確定したとき、RDS の接続数を使い切らないようにするため。
 
+## 観点別レビューを受けた改善(2026-09-19)
+
+レビューの D(誤りではないが、標準として足りないもの)を領域ごとに直した。ガイドは全タブを更新し、決まりを「標準」の形で書き、給与確定に固有の中身は「題材」として例に回した(1 の「このガイドの読み方」)。命名規約・機能の足し方・エラー設計・自分の題材で始める・やらないこと・用語集・判断の残し方の節を足した。
+
+- **ドメイン**: 15分単位でない稼働は切り捨てずに拒否する(切り捨てると働いた分が払われない)。時給・稼働・明細行・年に業務の上限を置き、金額は `checked_add` だけにした。金額・合計・月の範囲は作るときに計算して持つ。未登録は `DraftPayslip<Unsaved>` にし、確定は登録済みの作成中にだけ置いた。出来事に給与明細番号と確定日時を入れた。
+- **永続化**: 状態の記録は `record_finalized`(作成中の行だけを書き換え、そうでなければ Conflict)。`find_for_update` はトランザクション以外を断る。DB のエラーは「やり直せば通りうるか」で Unavailable と Internal に分けた(MySQL のエラー番号は `code()` ではなく `number()`)。接続にロック待ち10秒・貸し出し待ち5秒。CHECK 制約。マイグレーションは1ファイル1DDL。
+- **非同期**: 封筒に event_type などを入れ、受け手は種類で振り分けて知らないものは読み飛ばす。冪等キーは業務の言葉(`payroll-payslip-<番号>-finalized`)。relay は1行ずつ送り、失敗は回数を数えて同じ集約の後ろを止め、10回で諦める。
+- **API・認証**: 必須のクレーム(exp・iss・aud)、typ・token_use・client_id、nbf。JWKS の取り直しを1本にまとめ、失敗も間隔に数える。認証基盤に届かないときは UNAVAILABLE。登録時に staff ロールを付け、DB への登録に失敗したら発行した利用者を消す。全 RPC の認証・権限を API テストの表で確かめる。一覧にページングの欄。処理時間・同時数・受信サイズの上限。
+- **テスト**: API テストは本番の組み立てを通す。E2E は利用者ごとのブラウザ、server の使い回しは明示したときだけ。nextest の設定、カバレッジ、振込 API のアダプタのテスト。守りたいコードを壊してテストが落ちることを確かめた(同時確定のテストはタイミング次第で通ったので、ロック待ちのテストを足した)。
+- **開発体験・運用**: リクエスト → 出来事の記録 → SQS → Lambda が1つのトレースになる(Jaeger で確認)。停止は期限つき。/health と /ready を分けた。起動時に設定を確かめる。worktree の値は worktree の `.env` に。compose は 127.0.0.1 にだけ公開。ツールの版を固定。
+- **フロント**:
+  - 明細行に作成時点の案件名を残す(migration 009・010。既定値つきで追加 → 既存の行を埋める。既定値は次の版で外す)。本人の画面でも案件名が出る。
+  - データ取得を TanStack Query + connect-query に移した。一覧のキーに入力が入るので、派遣社員を選び直したときに前の人の一覧が出ない。送信中はボタンを押せない。
+  - トークン切れ・更新失敗・Unauthenticated でログイン画面に戻す。IdP の `?error=` を扱い、成否によらず URL から認可コードを消す。アクセストークンが切れていてもリフレッシュトークンがあれば続ける。
+  - エラーの文言はコードで決め、想定外の詳細は出さない。入力は「数字として読めるか」だけ確かめる(`BigInt("1.5")` の例外、`Number("")` の 0 を送らない)。状態の表示は網羅の switch。`/config.json` が読めなければ白い画面にせず伝える。tsconfig を厳しくした。
+  - テストは 3件 → 26件、E2E にセッション切れを足した(5件)。
+  - 配信: assets/ を先に immutable で、index.html は no-cache で後から置き、--delete をやめた。SPA の 403 振り替えを外し、CloudFront に CSP などのセキュリティヘッダーを付けた。ビルド成果物を vite preview で配り、同じ CSP でログインからログアウトまで違反がないこと、connect-src から API を外すと違反が出ることを確かめた(Playwright で応答にヘッダーを足す方法は、ローカルネットワークの制限で IdP に届かず使えなかった)。
+- **インフラ・CI**:
+  - 3環境の構成を `modules/stack` にまとめ、環境の差を入力(規模と保護の強さ)に絞った。構成を動かしたので `moved` で state を付け替える。
+  - DB の管理者は RDS に管理させ(`manage_master_user_password`)、migrate だけが使う。アプリは読み書きだけのユーザーで接続し、そのユーザーは migrate がマイグレーションの後に作る(Terraform からは VPC 内の DB に届かない)。ユーザー名とパスワードは SQL に埋め込むので検証してから `AssertSqlSafe` で包み、実 MySQL のテストで DDL が拒まれること・パスワードの付け替え・埋め込みの拒否を確かめた。検証を外すと実際に表が消えることも確かめた。
+  - migrate を別の IAM ロールに。DB への外向きを VPC CIDR ではなく DB の SG に限定。NAT を AZ ごとに(prod)、S3 ゲートウェイエンドポイント。オートスケール(CPU 60%)。アラーム(正常なタスクなし・5xx・Lambda の失敗)を SNS へ。ECR・S3 の世代管理。Container Insights は prod だけ。Cognito の MFA は prod で必須。
+  - `infra/bootstrap`(state・成果物のバケット、GitHub OIDC のプロバイダーと Environment ごとのロール)をコードにした。
+  - デプロイは plan(読み取りロール、概要に表示)→ 承認 → その plan を apply に分けた。
+  - `lint:tf` に `terraform validate`、`lint:actions`(actionlint を入れていたが呼んでいなかった)。gitleaks の許可をやめ(ファイル単位で最小に。今は許可なしで通る)、履歴の誤検出は `.gitleaksignore` に。定期の `security` ワークフロー(履歴全体の gitleaks・cargo deny advisories・pnpm audit・actionlint)。Dockerfile のベースをダイジェストで固定し、arm64 を指定してビルドする。
+- **気づいた手順の穴**: マイグレーションと `query!` を同時に変えると、キャッシュが古いままで migrate 自体がビルドできない。`mise run sqlx-prepare` が sqlx-cli で先にマイグレーションを当ててからキャッシュを更新するようにした。
+
 ## この環境では確かめていないこと
 
-- AWS への `terraform apply` と実際のデプロイ(`deploy`・`deploy-environment` ワークフロー)。Terraform は validate・tflint・trivy まで、ワークフローは actionlint と、使っている AWS CLI の引数検証・jq の変換まで。最初の1回に要る Terraform の外の準備(state・成果物のバケット、OIDC のロール、証明書)も未確認。
+- AWS への `terraform apply` と実際のデプロイ(`deploy`・`deploy-environment` ワークフロー。plan・承認・apply の分割を含む)。Terraform は validate・tflint・trivy まで、ワークフローは actionlint と、使っている AWS CLI の引数検証・jq の変換まで。`infra/bootstrap` の apply、RDS の管理者シークレットでの migrate、CloudFront の CSP、アラームの通知も未確認。
 - Cognito での動作(クレーム mapper はユニットテストあり、UserDirectory はコードのみ)。Cognito の OIDC ディスカバリには `end_session_endpoint` がないため、ログアウトは失敗時にローカルのセッションだけ消す実装にした(未検証)。
 - GitHub Actions のうち frontend・proto・infra・deploy ワークフローの実行(backend・e2e は GitHub 上で成功済み。actionlint は全ワークフローで通過)。
-- トレースの中身と送信。telemetry crate は OTLP の送信先を初期化するだけで、リクエストや処理のスパンを作る箇所がない。そのため E2E で server を動かした後も、Jaeger に server のサービスが出ない(2026-09-19 のレビューで確認)。ADOT collector 経由の X-Ray 送信も未確認。
+- ADOT collector 経由の X-Ray 送信(ローカルの Jaeger では、server のリクエストから Lambda の処理までが1つのトレースになることを確認済み)。
 
 ## 確認済みの動作
 
-| 対象                                                                                                                                                      | 方法                                                                                         | 結果                                                       |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| Rust の lint(fmt・clippy pedantic・cargo-deny・依存ルール)                                                                                                | `mise run lint:rust`                                                                         | 通過                                                       |
-| domain・usecase の単体テスト、DB 結合テスト(testcontainers)、API テスト(tonic クライアント)                                                               | `mise run test:rust`                                                                         | 47件通過                                                   |
-| フロントの lint・型・コンポーネントテスト・ビルド                                                                                                         | `mise run lint:ts`・`test:ts`・`pnpm --filter web build`                                     | 通過(3件)                                                  |
-| gRPC の主要シナリオ(認証・認可・二重確定・入力検証・金額計算)                                                                                             | `scripts/smoke-test.sh`                                                                      | 24件通過                                                   |
-| outbox → relay → ElasticMQ → consumer(再配信の冪等性を含む)                                                                                               | local_poller(振込依頼の記録まで)・ElasticMQ の DLQ(5回で移る)・`cargo lambda invoke`         | 期待どおり                                                 |
-| ブラウザの一連の流れ(Keycloak ログイン・ログアウト・初回パスワード変更・給与明細の作成と確定・本人だけが確定済みの明細を見られる・作成中は本人に見えない) | `mise run e2e`(Playwright)                                                                   | 4件通過(ログアウト後の再ログインを含む)                    |
-| worktree での並行開発(main とスロット 1 の worktree で依存サービス・server・Vite を別に立てる)                                                            | `mise run worktree:new`・両方で同時に `mise run e2e`・worktree 側で smoke・`worktree:remove` | 両方 3件通過、smoke 23件通過、コンテナ・ボリュームも片付く |
-| server イメージ(cargo-chef・distroless)                                                                                                                   | ビルド・起動・`/health`・SIGTERM・イメージ内 migrate・設定ファイルなしで起動                 | 62MB、0.05秒でグレースフルに停止                           |
-| Terraform(3環境)                                                                                                                                          | validate・tflint・trivy                                                                      | 通過                                                       |
-| デプロイのワークフロー(migrate のタスク定義の登録・古い overrides が弾かれること)                                                                         | actionlint・AWS CLI コンテナでの引数検証・jq の変換                                          | 通過(AWS への実行は未確認)                                 |
-| ワークフロー                                                                                                                                              | actionlint                                                                                   | 通過                                                       |
+| 対象                                                                                                                                                                      | 方法                                                                                         | 結果                                                       |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Rust の lint(fmt・clippy pedantic・cargo-deny・依存ルール)                                                                                                                | `mise run lint:rust`                                                                         | 通過                                                       |
+| domain・usecase の単体テスト、DB 結合テスト(testcontainers)、API テスト(tonic クライアント)、DB ユーザーの権限                                                            | `mise run test:rust`                                                                         | 85件通過                                                   |
+| フロントの lint・型・コンポーネントテスト・ビルド                                                                                                                         | `mise run lint:ts`・`test:ts`・`pnpm --filter web build`                                     | 通過(26件)                                                 |
+| gRPC の主要シナリオ(認証・認可・二重確定・入力検証・金額計算・明細行の案件名)                                                                                             | `mise run smoke`                                                                             | 26件通過                                                   |
+| outbox → relay → ElasticMQ → consumer(再配信の冪等性を含む)                                                                                                               | local_poller(振込依頼の記録まで)・ElasticMQ の DLQ(5回で移る)・`cargo lambda invoke`         | 期待どおり                                                 |
+| ブラウザの一連の流れ(Keycloak ログイン・ログアウト・初回パスワード変更・給与明細の作成と確定・本人だけが確定済みの明細を見られる・作成中は本人に見えない・セッション切れ) | `mise run e2e`(Playwright)                                                                   | 5件通過                                                    |
+| worktree での並行開発(main とスロット 1 の worktree で依存サービス・server・Vite を別に立てる)                                                                            | `mise run worktree:new`・両方で同時に `mise run e2e`・worktree 側で smoke・`worktree:remove` | 両方 3件通過、smoke 23件通過、コンテナ・ボリュームも片付く |
+| server イメージ(cargo-chef・distroless)                                                                                                                                   | ビルド・起動・`/health`・SIGTERM・イメージ内 migrate・設定ファイルなしで起動                 | 62MB、0.05秒でグレースフルに停止                           |
+| Terraform(3環境と bootstrap)                                                                                                                                              | validate・tflint・trivy                                                                      | 通過                                                       |
+| CloudFront と同じ CSP の下での画面                                                                                                                                        | ビルド成果物を vite preview で配り、同じヘッダーでログイン〜ログアウト                       | 違反なし(connect-src から API を外すと違反が出る)          |
+| ダイジェスト固定したベースでのイメージ                                                                                                                                    | `docker build`・イメージ内の migrate をローカル DB に                                        | 通過                                                       |
+| デプロイのワークフロー(migrate のタスク定義の登録・古い overrides が弾かれること)                                                                                         | actionlint・AWS CLI コンテナでの引数検証・jq の変換                                          | 通過(AWS への実行は未確認)                                 |
+| ワークフロー                                                                                                                                                              | actionlint                                                                                   | 通過                                                       |
