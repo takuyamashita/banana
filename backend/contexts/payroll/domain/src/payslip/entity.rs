@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use platform_kernel::{Money, Unsaved};
 
-use super::{PayPeriod, PayslipError, PayslipId, PayslipLine};
+use super::{PayPeriod, PayslipError, PayslipEvent, PayslipId, PayslipLine};
 use crate::staff::StaffId;
 
 /// 給与明細の状態
@@ -12,23 +12,6 @@ pub enum PayslipStatus {
     Draft,
     /// 確定済み。支給額が決まり、以後は変更できない。振込の対象になる
     Finalized,
-}
-
-/// 給与明細に起きた、他の業務が知るべき出来事。
-///
-/// 出来事は起こした操作の戻り値として返る。受け取った側は必ず記録し、後続の業務に知らせる
-#[must_use = "給与明細の出来事は記録して後続の業務に知らせる必要がある"]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PayslipEvent {
-    /// 給与明細が確定し、支給額が決まった。振込はこれを受けて行う
-    Finalized {
-        /// 支給を受ける派遣社員
-        staff_id: StaffId,
-        /// 対象月
-        period: PayPeriod,
-        /// 確定した支給額(全明細行の合計)
-        total: Money,
-    },
 }
 
 /// 作成中。内容を確かめている段階で、まだ支給額として確定していない
